@@ -194,20 +194,28 @@ fact_check_evidence -- web-search hits backing each fact-check.
                     --       ('confirms'|'contradicts'|'context'|'unclear'|
                     --       'not_found'), summary, retrieved_at
 article_fact_cards  -- per-article inspector output.
-                    -- cols: article_id+language (FK), summary, key_claims_json,
-                    --       history_check, severity, viz_spec_json, cost_usd
+                    -- cols: article_id, language, summary, key_claims_json,
+                    --       history_check, severity, visualization_spec_json,
+                    --       web_evidence_json, cost_usd, inspection_run_id,
+                    --       published
 dv_en_inconsistencies -- EN/DV translation diffs.
                     -- cols: en_article_id, dv_article_id (FKs), severity,
                     --       category, en_quote, dv_quote, dv_translation_to_en
-manifesto_promises  -- 2023 campaign promises.
-                    -- cols: category, promise, delivery_status, evidence_note,
-                    --       published
-manifesto_evidence  -- which articles support each promise's delivery status
+manifesto_promises  -- 2023 campaign promises with delivery tracking.
+                    -- cols: section, promise_text_dv, promise_text_en,
+                    --       category, subject, target_value, deadline_stated,
+                    --       delivery_status, delivery_evidence_json (JSON:
+                    --       linked article_ids + fact_check_ids + notes),
+                    --       chunk_index, published
 qna_sessions        -- agentic-ask multi-turn memory.
                     -- cols: id (uuid), messages_json (full message history),
                     --       total_cost_usd, n_turns, created_at, last_used_at
-scrape_runs         -- audit log of pipeline cycles (used for freshness)
-web_users           -- admin/editor accounts for the web UI's publish workflow
+scrape_runs         -- audit log of pipeline cycles.
+                    -- cols: category_id, language, started_at, finished_at,
+                    --       pages_scraped, articles_scraped, articles_new,
+                    --       status, resume_page, error_message
+web_users           -- admin/editor accounts for the web UI's publish workflow.
+                    -- cols: username, password_hash, role, created_at
 ```
 
 **Article ↔ fact-check linkage** is via the JSON column `fact_checks.source_article_ids` — a list of `articles.id` values. Use SQLite's `json_each()` to traverse it (or `LIKE` on the serialized form as a fallback).
