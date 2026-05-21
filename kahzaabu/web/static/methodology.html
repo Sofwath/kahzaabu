@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>kahzaabu — methodology</title>
+<link rel="stylesheet" href="/static/css/kahzaabu.css" />
+</head>
+<body>
+<header class="site">
+    <div class="brand">kahzaabu <span class="tag">methodology</span></div>
+    <nav>
+        <a href="/"        data-nav="dashboard">Dashboard</a>
+        <a href="/browse"  data-nav="browse">Articles</a>
+        <a href="/lies"    data-nav="lies">Fact-checks</a>
+        <a href="/compare" data-nav="compare">Compare</a>
+        <a href="/manifesto" data-nav="manifesto">Manifesto</a>
+        <a href="/ask"     data-nav="ask">Ask</a>
+    </nav>
+</header>
+
+<main>
+    <h1>How this works</h1>
+    <p class="muted">
+        kahzaabu is an automated archive and analysis of public press releases
+        from <a href="https://presidency.gov.mv" target="_blank">presidency.gov.mv</a>.
+        It scrapes, indexes, and runs LLM-assisted analysis to surface claims and inconsistencies.
+        The name "kahzaabu" means "falsehood" in Dhivehi.
+    </p>
+
+    <section>
+        <h2>1. Data collection</h2>
+        <p>Every 12 hours, the pipeline checks
+            <code>presidency.gov.mv</code> for new press releases, speeches, VP speeches,
+            and news bulletins. New articles are added to a local SQLite archive. Both the
+            English and Dhivehi versions are stored when available. Currently the archive
+            covers articles from the Muizzu administration onwards (since 2023-11-17).</p>
+    </section>
+
+    <section>
+        <h2>2. Claim extraction</h2>
+        <p>For each new article, a language model (Claude Sonnet) extracts structured claims:</p>
+        <ul>
+            <li><strong>numeric_promise</strong>, <strong>deadline_promise</strong> — forward-looking commitments</li>
+            <li><strong>numeric_update</strong> — current-status numbers (reserves, units delivered, etc.)</li>
+            <li><strong>credit_claim</strong> — taking credit for delivery/completion</li>
+            <li><strong>policy_assertion</strong>, <strong>boast</strong>, <strong>comparison_to_predecessor</strong>, <strong>denial</strong></li>
+        </ul>
+        <p>Each claim is stored with the verbatim quote it came from and a link back to the original article.</p>
+    </section>
+
+    <section>
+        <h2>3. Fact-check curation</h2>
+        <p>Weekly, the pipeline groups claims by topic and identifies inconsistencies across time:</p>
+        <ul>
+            <li><span class="badge lie">LIE</span> — a definite factual claim that is demonstrably false</li>
+            <li><span class="badge contradiction">CONTRADICTION</span> — one claim directly contradicts another</li>
+            <li><span class="badge misleading">MISLEADING</span> — framing that misrepresents reality (e.g. metric switching)</li>
+            <li><span class="badge shifting-numbers">SHIFTING NUMBERS</span> — same subject given different values over time</li>
+            <li><span class="badge credit-theft">CREDIT THEFT</span> — claim of credit for previous-government project</li>
+            <li><span class="badge broken-deadline">BROKEN DEADLINE</span> — stated deadline passed without delivery</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2>4. Web verification</h2>
+        <p>High-impact items (LIE, CONTRADICTION, SHIFTING NUMBERS, CREDIT THEFT) are sent
+        through web search to cross-reference against independent reporting from Maldivian
+        outlets (Mihaaru, Sun.mv, Edition.mv, AvasOnline, Maldives Independent) and
+        international wires. All sources Claude actually retrieves are stored as evidence,
+        labelled <span class="badge good">confirms</span>, <span class="badge lie">contradicts</span>,
+        <span class="badge context">context</span>, or <span class="badge">unclear</span>.</p>
+    </section>
+
+    <section>
+        <h2>5. Per-article inspection</h2>
+        <p>Each article also gets a "fact card": a short summary, the most checkable
+        claims, a history check against prior statements on the same topic, and a
+        visualization (timeline or before/after) when applicable.</p>
+    </section>
+
+    <section>
+        <h2>6. EN vs Dhivehi comparison</h2>
+        <p>When both English and Dhivehi versions exist, the pipeline LLM-compares them
+        and flags <strong>numeric_discrepancy</strong>, <strong>omission</strong>,
+        <strong>softening</strong>, <strong>embellishment</strong>, or other substantive
+        factual differences. Each flagged divergence shows the verbatim text from both
+        languages and a literal back-translation of the Dhivehi.</p>
+    </section>
+
+    <section>
+        <h2>7. Human review before publication</h2>
+        <p>Items produced by the pipeline are <strong>not</strong> auto-published on this site.
+        Each fact-check is reviewed by a human moderator who can publish it, reject it, or
+        edit the public summary before it appears. Items with substantive evidence are
+        prioritized.</p>
+    </section>
+
+    <section>
+        <h2>Limitations &amp; caveats</h2>
+        <ul>
+            <li>LLM outputs can be wrong; human review is the second line of defense, not the first.</li>
+            <li>"Lying" is a conclusion the reader draws. The categorisations here describe the <em>evidence pattern</em> (e.g. SHIFTING NUMBERS), not motive.</li>
+            <li>Translation differences may reflect editorial choice, not deception.</li>
+            <li>Press-release context can be missing — articles cite the original presidency.gov.mv URL so you can verify.</li>
+            <li>The archive is incomplete for periods before 2023-11-17.</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2>Code &amp; transparency</h2>
+        <p>The full pipeline source — scraper, extractor, LLM prompts, web search verifier,
+        translation comparator — is open-source and self-hostable. Every fact-check links
+        back to the underlying article on presidency.gov.mv.</p>
+        <p>Spotted an error or have additional context? Please use the
+            <a href="/corrections">corrections form</a>.</p>
+    </section>
+</main>
+
+<footer class="site">
+    Automated analysis of public press releases from presidency.gov.mv. Not legal advice. ·
+    <a href="/methodology">Methodology</a> · <a href="/corrections">Report a correction</a>
+</footer>
+<script src="/static/js/api.js"></script>
+<script>setNavActive("");</script>
+</body>
+</html>

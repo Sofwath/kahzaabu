@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>kahzaabu — manifesto vs delivery</title>
+<link rel="stylesheet" href="/static/css/kahzaabu.css" />
+<style>
+.status-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 18px; }
+@media (max-width: 900px) { .status-grid { grid-template-columns: repeat(3, 1fr); } }
+.status-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+               padding: 12px 14px; cursor: pointer; transition: transform 0.1s; }
+.status-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+.status-card .num { font-size: 24px; font-weight: 700; }
+.status-card .lbl { font-size: 11px; color: var(--fg-dim); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+.status-card.s-delivered  { border-left: 4px solid var(--good); }
+.status-card.s-in_progress { border-left: 4px solid var(--accent); }
+.status-card.s-modified   { border-left: 4px solid var(--shifting); }
+.status-card.s-broken     { border-left: 4px solid var(--lie); }
+.status-card.s-abandoned  { border-left: 4px solid var(--credit); }
+.status-card.s-unmentioned{ border-left: 4px solid var(--fg-muted); }
+.promise-item {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-left: 4px solid var(--fg-muted); border-radius: 8px;
+    padding: 14px 16px; margin-bottom: 10px;
+}
+.promise-item.s-delivered  { border-left-color: var(--good); }
+.promise-item.s-in_progress { border-left-color: var(--accent); }
+.promise-item.s-modified   { border-left-color: var(--shifting); }
+.promise-item.s-broken     { border-left-color: var(--lie); }
+.promise-item.s-abandoned  { border-left-color: var(--credit); }
+.dv-text { font-size: 14px; line-height: 1.6; }
+.dv-text[lang="dv"] { font-family: "MV Faseyha", "MV Iyyu Nala", sans-serif; }
+</style>
+</head>
+<body>
+<header class="site">
+    <div class="brand">kahzaabu <span class="tag">manifesto vs delivery</span></div>
+    <nav>
+        <a href="/"          data-nav="dashboard">Dashboard</a>
+        <a href="/browse"    data-nav="browse">Articles</a>
+        <a href="/lies"      data-nav="lies">Fact-checks</a>
+        <a href="/compare"   data-nav="compare">Compare</a>
+        <a href="/manifesto" data-nav="manifesto">Manifesto</a>
+        <a href="/ask"       data-nav="ask">Ask</a>
+    </nav>
+</header>
+
+<main>
+    <h1>2023 Manifesto — what was promised, what was delivered</h1>
+    <p class="muted">Every concrete promise extracted from Muizzu's 2023 campaign speech compilation, cross-referenced against his administration's own press releases and our fact-check archive. Click a status card to filter, click any promise to see linked evidence.</p>
+
+    <section>
+        <div class="status-grid" id="status-cards"></div>
+    </section>
+
+    <section class="filters">
+        <input type="text" id="q" placeholder="search promises…" />
+        <select id="status">
+            <option value="">all statuses</option>
+            <option value="delivered">delivered</option>
+            <option value="in_progress">in_progress</option>
+            <option value="modified">modified</option>
+            <option value="broken">broken</option>
+            <option value="abandoned">abandoned</option>
+            <option value="unmentioned">unmentioned</option>
+        </select>
+        <select id="category">
+            <option value="">all categories</option>
+        </select>
+        <button id="apply">Apply</button>
+        <button id="clear" class="clear">Clear</button>
+    </section>
+
+    <section id="items"></section>
+
+    <div class="pagination">
+        <button id="prev">‹ Prev</button>
+        <span id="pageinfo" class="muted"></span>
+        <button id="next">Next ›</button>
+    </div>
+</main>
+
+<footer class="site">
+    Promise extraction is automated from the official manifesto PDF.
+    Delivery status reflects evidence found in the press-release archive — not a final political judgment. ·
+    <a href="/methodology">Methodology</a> · <a href="/corrections">Report a correction</a>
+</footer>
+
+<script src="/static/js/api.js"></script>
+<script>
+setNavActive("manifesto");
+
+const STATUSES = ["delivered", "in_progress", "modified", "broken", "abandoned", "unmentioned"];
+const STATUS_COLOR = {
+    delivered: "good", in_progress: "context", modified: "shifting-numbers",
+    broken: "lie", abandoned: "credit-theft", unmentioned: "context",
+};
+
+const state = { limit: 30, offset: 0, total: 0 };
+
+function buildQuery() {
+    const p = new URLSearchParams();
+    p.set("limit", state.limit);
+    p.set("offset", state.offset);
+    const q = document.getElementById("q").value.trim();
+    const s = document.getElementById("status").value;
+    const c = document.getElementById("category").value;
+    if (q) p.set("q", q);
+    if (s) p.set("status", s);
+    if (c) p.set("category", c);
+    return p.toString();
+}
+
+function renderStatusCards(byStatus) {
+    const wrap = document.getElementById("status-cards");
+    wrap.innerHTML = "";
+    for (const st of STATUSES) {
+        const n = byStatus[st] || 0;
+        const card = el("div", { class: `status-card s-${st}`,
+                                 onclick: () => {
+                                     document.getElementById("status").value = st;
+                                     state.offset = 0; load();
+                                 }},
+            el("div", { class: "num" }, String(n)),
+            el("div", { class: "lbl" }, st.replace("_", " ")));
+        wrap.appendChild(card);
+    }
+}
+
+function renderItem(it) {
+    const div = el("div", { class: `promise-item s-${it.delivery_status}` ,
+                            onclick: () => window.location.href = `/manifesto/${it.id}` });
+    const head = el("div", { class: "flex", style: "margin-bottom: 8px;" });
+    head.appendChild(el("span", { class: `badge ${STATUS_COLOR[it.delivery_status] || "context"}` },
+        it.delivery_status));
+    if (it.category) head.appendChild(el("span", { class: "topic" }, it.category));
+    if (it.target_value) head.appendChild(el("span", { class: "dim", style: "font-size: 12px;" },
+        "🎯 " + it.target_value));
+    if (it.deadline_stated) head.appendChild(el("span", { class: "dim", style: "font-size: 12px;" },
+        "📅 " + it.deadline_stated));
+    div.appendChild(head);
+    div.appendChild(el("div", { class: "claim" }, it.subject || "(no subject)"));
+    if (it.promise_text_en) div.appendChild(el("div", { class: "body" },
+        '"' + it.promise_text_en + '"'));
+    if (it.promise_text_dv) div.appendChild(el("div", { class: "dv-text dim",
+        style: "margin-top: 6px;", lang: "dv", dir: "rtl" }, it.promise_text_dv));
+    if (it.delivery_evidence && it.delivery_evidence.rationale) {
+        div.appendChild(el("div", { class: "dim", style: "font-size: 12px; margin-top: 8px; font-style: italic;" },
+            "→ " + it.delivery_evidence.rationale));
+    }
+    return div;
+}
+
+async function load() {
+    let data;
+    try {
+        data = await fetchJSON("/api/manifesto?" + buildQuery());
+    } catch (e) {
+        document.getElementById("items").innerHTML =
+            `<div class="card" style="border-left: 4px solid var(--lie);"><strong>Error:</strong> ${escapeHtml(e.message)}</div>`;
+        return;
+    }
+    state.total = data.total;
+    renderStatusCards(data.by_status);
+    // populate category filter once
+    const catSel = document.getElementById("category");
+    if (catSel.options.length === 1) {
+        for (const [cat, n] of Object.entries(data.by_category || {})) {
+            if (!cat) continue;
+            catSel.appendChild(el("option", { value: cat }, `${cat} (${n})`));
+        }
+    }
+    const c = document.getElementById("items");
+    c.innerHTML = "";
+    if (data.items.length === 0) {
+        c.innerHTML = '<div class="muted">no promises match these filters</div>';
+    } else {
+        for (const it of data.items) c.appendChild(renderItem(it));
+    }
+    document.getElementById("pageinfo").textContent =
+        `${data.total.toLocaleString()} promises  ·  showing ${state.offset + 1}-${Math.min(state.offset + state.limit, data.total)}`;
+    document.getElementById("prev").disabled = state.offset === 0;
+    document.getElementById("next").disabled = state.offset + state.limit >= data.total;
+}
+
+document.getElementById("apply").addEventListener("click", () => { state.offset = 0; load(); });
+document.getElementById("clear").addEventListener("click", () => {
+    document.getElementById("q").value = "";
+    document.getElementById("status").value = "";
+    document.getElementById("category").value = "";
+    state.offset = 0; load();
+});
+document.getElementById("prev").addEventListener("click", () => { state.offset = Math.max(0, state.offset - state.limit); load(); });
+document.getElementById("next").addEventListener("click", () => { state.offset += state.limit; load(); });
+document.getElementById("q").addEventListener("keydown", e => { if (e.key === "Enter") { state.offset = 0; load(); }});
+
+// URL params
+for (const id of ["q", "status", "category"]) {
+    const v = qs(id);
+    if (v) document.getElementById(id).value = v;
+}
+
+load();
+</script>
+</body>
+</html>

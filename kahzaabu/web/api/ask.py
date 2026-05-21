@@ -1,0 +1,89 @@
+"""POST /api/ask — agentic natural-language Q&A.
+
+Wraps qna_agentic.ask_agentic() (multi-tool agent with web_search + session memory).
+
+Hardening for public deployment:
+- rate-limited to 10/min per IP for anonymous users
+- 500-char hard cap on question
+- daily cap on /api/ask spend (env KAHZAABU_ASK_DAILY_CAP_USD)
+- LRU cache for repeat questions WITHOUT session_id (1h TTL)
+- authenticated admins/editors bypass the daily cap (but still respect rate limit)
+- session_id round-trip lets the front-end continue a conversation
+"""
+from __future__ import annotations
+
+import os
+import sqlite3
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
+
+from ... import claims_db
+from ..db_dep import get_db
+from ..limits import ASK_DAILY_CAP_USD, ask_cache, limiter
+from .auth import current_user
+
+router = APIRouter()
+
+
+class AskRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=500)
+    session_id: Optional[str] = Field(default=None, max_length=64)
+    enable_web: bool = True
+    max_iterations: int = Field(default=5, ge=1, le=8)
+
+
+@router.post("/ask")
+@limiter.limit("10/minute")
+def ask(request: Request, req: AskRequest,
+        user: Optional[dict] = Depends(current_user),
+        conn: sqlite3.Connection = Depends(get_db)) -> dict:
+    if "ANTHROPIC_API_KEY" not in os.environ:
+        raise HTTPException(503, "ANTHROPIC_API_KEY not configured on server")
+
+    # Daily cap applies only to anonymous public callers.
+    if not user:
+        daily = claims_db.daily_spend(conn)
+        if daily >= ASK_DAILY_CAP_USD:
+            raise HTTPException(
+                503,
+                f"daily question budget exhausted (${daily:.2f} / ${ASK_DAILY_CAP_USD:.2f}). "
+                "Try again tomorrow, or log in as admin to bypass.",
+            )
+
+    # Cache only for first-turn questions (no session_id). Following turns vary.
+    if not req.session_id:
+        key = f"{req.question.strip().lower()}|{req.enable_web}|{req.max_iterations}"
+        cached = ask_cache.get(key)
+        if cached:
+            out = dict(cached)
+            out["_cached"] = True
+            return out
+    else:
+        key = None
+
+    from ...qna_agentic import ask_agentic
+    try:
+        res = ask_agentic(
+            conn, req.question,
+            session_id=req.session_id,
+            max_iterations=req.max_iterations,
+            enable_web=req.enable_web,
+            daily_budget_usd=ASK_DAILY_CAP_USD if not user else 50.0,
+        )
+    except Exception as e:
+        raise HTTPException(500, f"ask failed: {e}")
+
+    out = {
+        "question": req.question,
+        "answer": res["answer"],
+        "session_id": res["session_id"],
+        "n_iterations": res["n_iterations"],
+        "cost_usd": res["cost_usd"],
+        "web_searches": res.get("web_searches", 0),
+        "tool_trace": res.get("tool_trace", []),
+    }
+    if key:
+        ask_cache.set(key, out)
+    return out

@@ -1,0 +1,44 @@
+# systemd unit for the kahzaabu web server.
+#
+# Install on the VPS (as root):
+#   sudo cp scripts/kahzaabu-web.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now kahzaabu-web
+#   sudo systemctl status kahzaabu-web
+#
+# Edit User=, paths, and EnvironmentFile= for your setup before installing.
+
+[Unit]
+Description=kahzaabu web (FastAPI + uvicorn)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kahzaabu
+Group=kahzaabu
+WorkingDirectory=/srv/kahzaabu
+
+# Loaded from a chmod-600 file containing ANTHROPIC_API_KEY=..., KAHZAABU_PUBLIC_MODE=1, etc.
+EnvironmentFile=/etc/kahzaabu/env
+
+# Bind to localhost only — Caddy reverse-proxies to this.
+ExecStart=/srv/kahzaabu/.venv/bin/uvicorn kahzaabu.web.app:app \
+    --host 127.0.0.1 --port 8765 \
+    --workers 2 \
+    --proxy-headers --forwarded-allow-ips '127.0.0.1'
+
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/srv/kahzaabu/data
+
+[Install]
+WantedBy=multi-user.target

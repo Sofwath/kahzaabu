@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>kahzaabu — manifesto promise</title>
+<link rel="stylesheet" href="/static/css/kahzaabu.css" />
+<style>
+.dv-block { font-size: 16px; line-height: 1.8; }
+.dv-block[lang="dv"] { direction: rtl; text-align: right; }
+.evidence-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 16px; margin-bottom: 10px;
+}
+</style>
+</head>
+<body>
+<header class="site">
+    <div class="brand">kahzaabu <span class="tag">manifesto promise</span></div>
+    <nav>
+        <a href="/"          data-nav="dashboard">Dashboard</a>
+        <a href="/browse"    data-nav="browse">Articles</a>
+        <a href="/lies"      data-nav="lies">Fact-checks</a>
+        <a href="/compare"   data-nav="compare">Compare</a>
+        <a href="/manifesto" data-nav="manifesto">Manifesto</a>
+        <a href="/ask"       data-nav="ask">Ask</a>
+    </nav>
+</header>
+
+<main id="root">
+    <p class="muted">Loading…</p>
+</main>
+
+<footer class="site">
+    Automated promise vs delivery analysis. ·
+    <a href="/methodology">Methodology</a> · <a href="/corrections">Report a correction</a>
+</footer>
+
+<script src="/static/js/api.js"></script>
+<script>
+setNavActive("manifesto");
+
+const STATUS_COLOR = {
+    delivered: "good", in_progress: "context", modified: "shifting-numbers",
+    broken: "lie", abandoned: "credit-theft", unmentioned: "context",
+};
+
+function pageId() {
+    const m = window.location.pathname.match(/\/manifesto\/(\d+)/);
+    return m ? parseInt(m[1], 10) : null;
+}
+
+async function load() {
+    const id = pageId();
+    const root = document.getElementById("root");
+    if (!id) { root.innerHTML = "<p>invalid promise id</p>"; return; }
+    let d;
+    try {
+        d = await fetchJSON(`/api/manifesto/${id}`);
+    } catch (e) {
+        root.innerHTML = `<p>error: ${escapeHtml(e.message)}</p>`;
+        return;
+    }
+    root.innerHTML = "";
+
+    root.appendChild(el("h1", null, d.subject || "(no subject)"));
+    const meta = el("div", { class: "article-meta" });
+    meta.appendChild(el("span", null,
+        el("span", { class: `badge ${STATUS_COLOR[d.delivery_status] || "context"}` },
+            d.delivery_status)));
+    if (d.category) meta.appendChild(el("span", null, "📂 " + d.category));
+    if (d.target_value) meta.appendChild(el("span", null, "🎯 " + d.target_value));
+    if (d.deadline_stated) meta.appendChild(el("span", null, "📅 " + d.deadline_stated));
+    meta.appendChild(el("span", null, " ", el("a", { href: "/manifesto" }, "← all promises")));
+    root.appendChild(meta);
+
+    // Promise text
+    root.appendChild(el("h2", null, "Verbatim promise"));
+    if (d.promise_text_en) {
+        root.appendChild(el("div", { class: "card" },
+            el("h4", null, "English (translated)"),
+            el("div", { class: "dv-block" }, '"' + d.promise_text_en + '"')));
+    }
+    if (d.promise_text_dv) {
+        root.appendChild(el("div", { class: "card", style: "margin-top: 12px;" },
+            el("h4", null, "Dhivehi (verbatim from manifesto)"),
+            el("div", { class: "dv-block", lang: "dv", dir: "rtl" }, d.promise_text_dv)));
+    }
+
+    // Verdict / rationale
+    const ev = d.delivery_evidence || {};
+    if (ev.rationale) {
+        root.appendChild(el("h2", null, "Delivery verdict"));
+        const verdictCard = el("div", { class: "card", style: "border-left: 4px solid var(--deadline);" });
+        verdictCard.appendChild(el("h4", null, d.delivery_status.replace("_", " ")));
+        verdictCard.appendChild(el("p", null, ev.rationale));
+        root.appendChild(verdictCard);
+    }
+
+    // Linked articles
+    if (d.linked_articles && d.linked_articles.length) {
+        root.appendChild(el("h2", null, `Linked press releases (${d.linked_articles.length})`));
+        const wrap = el("div");
+        for (const a of d.linked_articles) {
+            wrap.appendChild(el("div", { class: "evidence-card" },
+                el("div", { class: "muted", style: "font-size: 12px;" },
+                    fmtDate(a.published_date) + " · " + a.category),
+                el("div", { style: "margin-top: 4px;" },
+                    el("a", { href: `/article/${a.id}` }, `[${a.id}] ${a.title}`)),
+            ));
+        }
+        root.appendChild(wrap);
+    }
+    // Linked fact-checks
+    if (d.linked_fact_checks && d.linked_fact_checks.length) {
+        root.appendChild(el("h2", null, `Linked fact-checks (${d.linked_fact_checks.length})`));
+        const wrap = el("div");
+        for (const fc of d.linked_fact_checks) {
+            wrap.appendChild(el("div", { class: `evidence-card`, style: "border-left: 4px solid var(--lie);" },
+                el("div", null,
+                    el("span", { class: `badge ${catBadgeClass(fc.category)}` }, fc.category),
+                    " ", el("span", { class: "muted", style: "font-size: 12px;" }, fmtDate(fc.claim_date))),
+                el("div", { style: "margin-top: 4px;" },
+                    el("a", { href: `/lies?q=${encodeURIComponent(fc.claim || '')}` }, fc.claim)),
+            ));
+        }
+        root.appendChild(wrap);
+    }
+}
+
+load();
+</script>
+</body>
+</html>

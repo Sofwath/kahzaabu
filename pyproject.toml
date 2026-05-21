@@ -1,0 +1,21 @@
+[project]
+name = "kahzaabu"
+version = "0.1.0"
+description = "Maldives Presidency content archiver"
+requires-python = ">=3.8"
+dependencies = [
+    "requests>=2.31",
+    "beautifulsoup4>=4.12",
+    "click>=8.1",
+    "lxml>=5.0",
+]
+
+[project.scripts]
+kahzaabu = "kahzaabu.cli:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["kahzaabu*"]

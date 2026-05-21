@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Run the kahzaabu pipeline every 6 hours via launchd.
+
+  Install:
+    1. Edit the paths below to match your environment (REPLACE_ME placeholders).
+    2. cp scripts/com.kahzaabu.pipeline.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.kahzaabu.pipeline.plist
+    4. Start immediately:
+       launchctl start com.kahzaabu.pipeline
+
+  Logs land in /tmp/kahzaabu.pipeline.{out,err}.log
+  To stop:  launchctl unload ~/Library/LaunchAgents/com.kahzaabu.pipeline.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.kahzaabu.pipeline</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/sofwath/Developer/myLabs/kahzaabu/scripts/run_pipeline.sh</string>
+        <string>--budget</string>
+        <string>1.00</string>
+        <string>--curate-min-age</string>
+        <string>168</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/sofwath/Developer/myLabs/kahzaabu</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- The wrapper reads the API key from ~/.config/kahzaabu/api_key.
+             Set ANTHROPIC_API_KEY_FILE here to override that path. -->
+        <key>ANTHROPIC_API_KEY_FILE</key>
+        <string>/Users/sofwath/.config/kahzaabu/api_key</string>
+    </dict>
+
+    <!-- Run every 12 hours (43200s) -->
+    <key>StartInterval</key>
+    <integer>43200</integer>
+
+    <!-- Also run once at boot -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/kahzaabu.pipeline.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/kahzaabu.pipeline.err.log</string>
+</dict>
+</plist>

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>kahzaabu — fact-checks</title>
+<link rel="stylesheet" href="/static/css/kahzaabu.css" />
+</head>
+<body>
+<header class="site">
+    <div class="brand">kahzaabu <span class="tag">fact-checks</span></div>
+    <nav>
+        <a href="/"        data-nav="dashboard">Dashboard</a>
+        <a href="/browse"  data-nav="browse">Articles</a>
+        <a href="/lies"    data-nav="lies">Fact-checks</a>
+        <a href="/compare" data-nav="compare">Compare</a>
+        <a href="/manifesto" data-nav="manifesto">Manifesto</a>
+        <a href="/ask"     data-nav="ask">Ask</a>
+    </nav>
+</header>
+
+<main>
+    <h1>Fact-checks</h1>
+    <p class="muted" id="result-count">Loading…</p>
+
+    <section class="filters">
+        <input type="text" id="q" placeholder="search claims…" />
+        <select id="category">
+            <option value="">all categories</option>
+            <option value="LIE">LIE</option>
+            <option value="CONTRADICTION">CONTRADICTION</option>
+            <option value="MISLEADING">MISLEADING</option>
+            <option value="SHIFTING NUMBERS">SHIFTING NUMBERS</option>
+            <option value="CREDIT THEFT">CREDIT THEFT</option>
+            <option value="BROKEN DEADLINE">BROKEN DEADLINE</option>
+        </select>
+        <select id="topic">
+            <option value="">all topics</option>
+        </select>
+        <input type="date" id="date_from" />
+        <input type="date" id="date_to" />
+        <button id="apply">Apply</button>
+        <button id="clear" class="clear">Clear</button>
+    </section>
+
+    <section id="items"></section>
+    <div class="pagination">
+        <button id="prev">‹ Prev</button>
+        <span id="pageinfo" class="muted"></span>
+        <button id="next">Next ›</button>
+    </div>
+</main>
+
+<footer class="site">Automated analysis of public press releases. Not legal advice. · <a href="/methodology">Methodology</a> · <a href="/corrections">Report a correction</a></footer>
+
+<script src="/static/js/api.js"></script>
+<script>
+setNavActive("lies");
+
+const state = { limit: 20, offset: 0, total: 0 };
+
+function buildQuery() {
+    const p = new URLSearchParams();
+    p.set("limit", state.limit);
+    p.set("offset", state.offset);
+    const q = document.getElementById("q").value.trim();
+    const c = document.getElementById("category").value;
+    const t = document.getElementById("topic").value;
+    const f = document.getElementById("date_from").value;
+    const to = document.getElementById("date_to").value;
+    if (q) p.set("q", q);
+    if (c) p.set("category", c);
+    if (t) p.set("topic", t);
+    if (f) p.set("date_from", f);
+    if (to) p.set("date_to", to);
+    return p.toString();
+}
+
+function renderItem(it) {
+    const div = el("div", { class: `fc-item ${catClass(it.category)}` });
+    const head = el("div", { class: "head" });
+    head.appendChild(el("span", { class: `badge ${catBadgeClass(it.category)}` }, it.category));
+    head.appendChild(el("span", { class: "date" }, fmtDate(it.claim_date)));
+    if (it.topic) head.appendChild(el("span", { class: "topic" }, it.topic));
+    if (it.n_evidence) head.appendChild(el("span", { class: "topic", style: "color: var(--good);" }, `🌐 ${it.n_evidence} web sources`));
+    div.appendChild(head);
+    div.appendChild(el("div", { class: "claim" }, it.claim || ""));
+    if (it.what_actually_happened) {
+        div.appendChild(el("div", { class: "body" }, it.what_actually_happened));
+    }
+    if (it.evidence_quotes && it.evidence_quotes.length) {
+        const qbox = el("div", { class: "quotes" });
+        for (const q of it.evidence_quotes.slice(0, 3)) {
+            qbox.appendChild(el("div", { class: "quote" }, `"${q}"`));
+        }
+        div.appendChild(qbox);
+    }
+    if (it.source_article_ids && it.source_article_ids.length) {
+        const links = el("div", { class: "dim", style: "font-size: 12px; margin-top: 10px;" }, "Source articles: ");
+        it.source_article_ids.forEach((aid, i) => {
+            links.appendChild(el("a", { href: `/article/${aid}` }, `[${aid}]`));
+            if (i < it.source_article_ids.length - 1) links.appendChild(document.createTextNode(" "));
+        });
+        links.appendChild(document.createTextNode(" · "));
+        links.appendChild(el("a", { href: `/api/factcheck/${it.id}`, target: "_blank" }, "details"));
+        div.appendChild(links);
+    }
+    return div;
+}
+
+async function load() {
+    const data = await fetchJSON("/api/factchecks?" + buildQuery());
+    state.total = data.total;
+    const container = document.getElementById("items");
+    container.innerHTML = "";
+    for (const it of data.items) container.appendChild(renderItem(it));
+    document.getElementById("result-count").textContent =
+        `${data.total.toLocaleString()} fact-checks match — showing ${state.offset + 1}-${Math.min(state.offset + state.limit, data.total)}`;
+    document.getElementById("pageinfo").textContent =
+        `page ${Math.floor(state.offset / state.limit) + 1} of ${Math.ceil(data.total / state.limit)}`;
+    document.getElementById("prev").disabled = state.offset === 0;
+    document.getElementById("next").disabled = state.offset + state.limit >= data.total;
+}
+
+async function loadTopics() {
+    const stats = await fetchJSON("/api/stats");
+    const sel = document.getElementById("topic");
+    for (const t of stats.fact_checks_by_topic || []) {
+        sel.appendChild(el("option", { value: t.topic }, `${t.topic} (${t.n})`));
+    }
+}
+
+document.getElementById("apply").addEventListener("click", () => { state.offset = 0; load(); });
+document.getElementById("clear").addEventListener("click", () => {
+    for (const id of ["q", "category", "topic", "date_from", "date_to"]) document.getElementById(id).value = "";
+    state.offset = 0; load();
+});
+document.getElementById("prev").addEventListener("click", () => { state.offset = Math.max(0, state.offset - state.limit); load(); });
+document.getElementById("next").addEventListener("click", () => { state.offset += state.limit; load(); });
+document.getElementById("q").addEventListener("keydown", e => { if (e.key === "Enter") { state.offset = 0; load(); }});
+
+// Pre-fill from URL params: category, topic, date_from, date_to, q
+for (const id of ["category", "date_from", "date_to", "q"]) {
+    const v = qs(id);
+    if (v) document.getElementById(id).value = v;
+}
+
+loadTopics().then(() => {
+    // Topic select is populated after loadTopics, so pre-fill it here.
+    const t = qs("topic");
+    if (t) {
+        const sel = document.getElementById("topic");
+        // Add the option if not present (handles cases where the URL passes an
+        // unknown topic name).
+        if (![...sel.options].some(o => o.value === t)) {
+            sel.appendChild(el("option", { value: t }, t));
+        }
+        sel.value = t;
+    }
+    load();
+});
+</script>
+</body>
+</html>

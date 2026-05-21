@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>kahzaabu — EN vs DV detail</title>
+<link rel="stylesheet" href="/static/css/kahzaabu.css" />
+<style>
+.dv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.dv-col {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    max-height: 560px;
+    overflow-y: auto;
+    font-size: 14px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+}
+.dv-col h3 { margin: 0 0 10px 0; color: var(--fg-dim); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+mark.flagged { background: rgba(233,69,96,0.25); color: var(--fg); padding: 0 2px; border-radius: 2px; }
+.inc-list { margin-top: 24px; }
+.inc-item {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--shifting);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+}
+.inc-item.serious  { border-left-color: var(--lie); }
+.inc-item.moderate { border-left-color: var(--deadline); }
+.inc-item.minor    { border-left-color: var(--accent); }
+.inc-item .qrow { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+.inc-item .qcol { background: var(--bg-card-2); padding: 8px 10px; border-radius: 6px; font-size: 13px; }
+.inc-item .qcol .lbl { font-size: 10px; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+<header class="site">
+    <div class="brand">kahzaabu <span class="tag">compare detail</span></div>
+    <nav>
+        <a href="/"        data-nav="dashboard">Dashboard</a>
+        <a href="/browse"  data-nav="browse">Articles</a>
+        <a href="/lies"    data-nav="lies">Fact-checks</a>
+        <a href="/compare" data-nav="compare">Compare</a>
+        <a href="/manifesto" data-nav="manifesto">Manifesto</a>
+        <a href="/ask"     data-nav="ask">Ask</a>
+    </nav>
+</header>
+
+<main id="root">
+    <p class="muted">Loading…</p>
+</main>
+
+<footer class="site">Verify any flagged divergence against the source articles directly. · <a href="/methodology">Methodology</a> · <a href="/corrections">Report a correction</a></footer>
+
+<script src="/static/js/api.js"></script>
+<script>
+setNavActive("compare");
+
+function pageId() {
+    const m = window.location.pathname.match(/\/compare\/(\d+)/);
+    return m ? parseInt(m[1], 10) : null;
+}
+
+function highlightQuotes(text, quotes) {
+    if (!text) return "";
+    let out = escapeHtml(text);
+    for (const q of quotes) {
+        if (!q) continue;
+        const safe = escapeHtml(q).replaceAll("\n", " ").trim();
+        if (safe.length < 8) continue;
+        // Crude case-insensitive replace
+        const re = new RegExp(safe.substring(0, 80).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+        out = out.replace(re, m => `<mark class="flagged">${m}</mark>`);
+    }
+    return out;
+}
+
+async function load() {
+    const id = pageId();
+    const root = document.getElementById("root");
+    if (!id) { root.innerHTML = "<p>invalid article id</p>"; return; }
+    let d;
+    try {
+        d = await fetchJSON(`/api/compare/${id}`);
+    } catch (e) {
+        root.innerHTML = `<p>error: ${escapeHtml(e.message)}</p>`;
+        return;
+    }
+    if (!d.exists) {
+        root.innerHTML = `<p class="muted">No DV-EN comparison recorded for article ${id}.</p>
+            <p>Run: <code>kahzaabu dv-compare --limit 1</code> to generate one.</p>`;
+        return;
+    }
+    root.innerHTML = "";
+    root.appendChild(el("h1", null, d.title || "(untitled)"));
+    root.appendChild(el("div", { class: "article-meta" },
+        el("span", null, "📅 ", fmtDate(d.published_date)),
+        el("span", null, "🆔 EN:", String(d.en_article_id), " / DV:", String(d.dv_article_id)),
+        el("span", null, `📊 ${d.n_inconsistencies || 0} inconsistencies (${d.max_severity || "—"})`),
+        el("span", null, "🕒 compared ", (d.compared_at || "").substring(0, 19)),
+    ));
+
+    // Side-by-side
+    const enQuotes = (d.inconsistencies || []).map(x => x.en_quote);
+    const dvQuotes = (d.inconsistencies || []).map(x => x.dv_quote);
+    const grid = el("div", { class: "dv-grid" });
+    const enCol = el("div", { class: "dv-col" });
+    enCol.appendChild(el("h3", null, "ENGLISH"));
+    enCol.innerHTML += highlightQuotes(d.en_body || "", enQuotes);
+    const dvCol = el("div", { class: "dv-col", lang: "dv", dir: "rtl" });
+    dvCol.appendChild(el("h3", null, "DHIVEHI"));
+    dvCol.innerHTML += highlightQuotes(d.dv_body || "", dvQuotes);
+    grid.appendChild(enCol);
+    grid.appendChild(dvCol);
+    root.appendChild(grid);
+
+    // Inconsistencies list
+    if (d.inconsistencies && d.inconsistencies.length) {
+        root.appendChild(el("h2", { class: "inc-list" }, `Inconsistencies (${d.inconsistencies.length})`));
+        for (const inc of d.inconsistencies) {
+            const div = el("div", { class: `inc-item ${inc.severity || "minor"}` });
+            const head = el("div", { class: "flex", style: "margin-bottom: 8px;" });
+            head.appendChild(el("span", { class: `badge ${{serious: "lie", moderate: "misleading", minor: "context"}[inc.severity] || "context"}` }, inc.severity || "minor"));
+            head.appendChild(el("span", { class: "topic" }, inc.category || "other"));
+            div.appendChild(head);
+            div.appendChild(el("div", null, inc.explanation || ""));
+            const qrow = el("div", { class: "qrow" },
+                el("div", { class: "qcol" }, el("div", { class: "lbl" }, "EN"), inc.en_quote || "—"),
+                el("div", { class: "qcol", lang: "dv", dir: "rtl" }, el("div", { class: "lbl", dir: "ltr" }, "DV"), inc.dv_quote || "—"),
+            );
+            div.appendChild(qrow);
+            if (inc.dv_translation_to_en) {
+                div.appendChild(el("div", { class: "qcol", style: "margin-top: 8px;" },
+                    el("div", { class: "lbl" }, "DV → EN literal"), inc.dv_translation_to_en));
+            }
+            root.appendChild(div);
+        }
+    }
+}
+
+load();
+</script>
+</body>
+</html>

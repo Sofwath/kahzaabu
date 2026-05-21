@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>kahzaabu — report a correction</title>
+<link rel="stylesheet" href="/static/css/kahzaabu.css" />
+</head>
+<body>
+<header class="site">
+    <div class="brand">kahzaabu <span class="tag">corrections</span></div>
+    <nav>
+        <a href="/"        data-nav="dashboard">Dashboard</a>
+        <a href="/browse"  data-nav="browse">Articles</a>
+        <a href="/lies"    data-nav="lies">Fact-checks</a>
+        <a href="/compare" data-nav="compare">Compare</a>
+        <a href="/manifesto" data-nav="manifesto">Manifesto</a>
+        <a href="/ask"     data-nav="ask">Ask</a>
+    </nav>
+</header>
+
+<main>
+    <h1>Report a correction</h1>
+    <p class="muted">
+        Spotted an error in a fact-check, a missing source, or a mis-classification?
+        Submit it here and a moderator will review.
+    </p>
+
+    <section id="form-section">
+        <div class="card" style="max-width: 720px;">
+            <label class="lbl" style="display:block; font-size: 12px; margin-bottom: 4px;">Related fact-check ID (optional)</label>
+            <input id="fc_id" type="number" class="ask-input" placeholder="e.g. 156" style="margin-bottom: 12px;" />
+
+            <label class="lbl" style="display:block; font-size: 12px; margin-bottom: 4px;">Related article ID (optional)</label>
+            <input id="article_id" type="number" class="ask-input" placeholder="e.g. 36677" style="margin-bottom: 12px;" />
+
+            <label class="lbl" style="display:block; font-size: 12px; margin-bottom: 4px;">Your contact (optional, e.g. email)</label>
+            <input id="contact" type="text" class="ask-input" maxlength="200" placeholder="we'll only use this to follow up if needed" style="margin-bottom: 12px;" />
+
+            <label class="lbl" style="display:block; font-size: 12px; margin-bottom: 4px;">Correction details *</label>
+            <textarea id="body" class="ask-input" rows="6" maxlength="3000" placeholder="Describe what's wrong, with citations or evidence if available."></textarea>
+
+            <div class="mt16">
+                <button id="submit" class="ask-button">Submit</button>
+                <span id="status" class="mt8 dim" style="margin-left: 12px;"></span>
+            </div>
+        </div>
+    </section>
+</main>
+
+<footer class="site">
+    Automated analysis of public press releases. Not legal advice. ·
+    <a href="/methodology">Methodology</a> · <a href="/corrections">Report a correction</a>
+</footer>
+
+<script src="/static/js/api.js"></script>
+<script>
+setNavActive("");
+
+async function submit() {
+    const body = document.getElementById("body").value.trim();
+    if (!body) { document.getElementById("status").textContent = "please write a description first"; return; }
+    const payload = {
+        body,
+        fact_check_id: parseInt(document.getElementById("fc_id").value, 10) || null,
+        article_id:   parseInt(document.getElementById("article_id").value, 10) || null,
+        reporter_contact: document.getElementById("contact").value.trim() || null,
+    };
+    const btn = document.getElementById("submit");
+    const stat = document.getElementById("status");
+    btn.disabled = true; stat.textContent = "submitting...";
+    try {
+        const r = await fetchJSON("/api/corrections", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+        document.getElementById("form-section").innerHTML =
+            `<div class="card" style="border-left: 4px solid var(--good);">
+                <strong>Thanks — correction received.</strong>
+                <p class="muted mt8">Reference id: ${r.id}. A moderator will review.</p>
+                <p><a href="/">Back to dashboard</a></p>
+             </div>`;
+    } catch (e) {
+        stat.textContent = "submit failed: " + e.message;
+        btn.disabled = false;
+    }
+}
+document.getElementById("submit").addEventListener("click", submit);
+</script>
+</body>
+</html>

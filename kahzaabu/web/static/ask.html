@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>kahzaabu — ask</title>
+<link rel="stylesheet" href="/static/css/kahzaabu.css" />
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+</head>
+<body>
+<header class="site">
+    <div class="brand">kahzaabu <span class="tag">ask</span></div>
+    <nav>
+        <a href="/"        data-nav="dashboard">Dashboard</a>
+        <a href="/browse"  data-nav="browse">Articles</a>
+        <a href="/lies"    data-nav="lies">Fact-checks</a>
+        <a href="/compare" data-nav="compare">Compare</a>
+        <a href="/manifesto" data-nav="manifesto">Manifesto</a>
+        <a href="/ask"     data-nav="ask">Ask</a>
+    </nav>
+</header>
+
+<main>
+    <h1>Ask the archive</h1>
+    <p class="muted">Natural-language questions over articles, claims, and fact-checks. "Kahzaabu" and "Muizzu" refer to the same person.</p>
+
+    <section>
+        <input type="text" class="ask-input" id="q" placeholder='e.g. "what lies did muizzu tell about housing?"  /  "what did kahzaabu do this week?"' maxlength="500" />
+        <button class="ask-button" id="go">Ask</button>
+        <label class="dim mt8" style="margin-left: 12px; font-size: 13px;">
+            <input type="checkbox" id="enable-web" checked />
+            web search
+        </label>
+        <span id="hint" class="dim mt8" style="margin-left: 12px;">⌨️  Cmd-Enter to submit</span>
+    </section>
+
+    <section id="suggest" class="mt16">
+        <div class="muted" style="font-size: 13px; margin-bottom: 8px;">Try:</div>
+        <div class="flex gap8">
+        </div>
+    </section>
+
+    <section id="result" class="mt16"></section>
+</main>
+
+<footer class="site">Each question costs ~$0.02-0.05 in API spend. Be specific. · <a href="/methodology">Methodology</a> · <a href="/corrections">Report a correction</a></footer>
+
+<script src="/static/js/api.js"></script>
+<script>
+setNavActive("ask");
+
+const SUGGESTIONS = [
+    "what is kahzaabu up to this week?",
+    "what lies did muizzu tell about housing?",
+    "what did he promise about Sukuk?",
+    "what credit has he claimed for previous government projects?",
+    "what did he do in Addu?",
+    "what shifting numbers are in the corpus?",
+];
+
+const suggestWrap = document.querySelector("#suggest .flex");
+for (const s of SUGGESTIONS) {
+    suggestWrap.appendChild(el("button", {
+        class: "clear", style: "background: var(--bg-card); border: 1px solid var(--border); color: var(--fg-dim); padding: 6px 12px; border-radius: 16px; font-size: 12px; cursor: pointer;",
+        onclick: () => { document.getElementById("q").value = s; ask(); },
+    }, s));
+}
+
+// Maintain conversation memory across turns.
+let SESSION_ID = null;
+const TURNS = [];  // {q, ans, tool_trace, cost, web_searches}
+
+async function ask() {
+    const q = document.getElementById("q").value.trim();
+    if (!q) return;
+    const btn = document.getElementById("go");
+    const res = document.getElementById("result");
+    btn.disabled = true; btn.textContent = "Researching…";
+    try {
+        const data = await fetchJSON("/api/ask", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                question: q,
+                session_id: SESSION_ID,
+                enable_web: document.getElementById("enable-web")?.checked ?? true,
+            }),
+        });
+        SESSION_ID = data.session_id;
+        TURNS.push({
+            q,
+            ans: data.answer,
+            tool_trace: data.tool_trace || [],
+            cost: data.cost_usd,
+            web_searches: data.web_searches || 0,
+            n_iterations: data.n_iterations,
+        });
+        renderTurns();
+        document.getElementById("q").value = "";
+        document.getElementById("q").focus();
+        res.scrollTop = res.scrollHeight;
+    } catch (e) {
+        res.appendChild(el("div", { class: "card", style: "border-left: 4px solid var(--lie); margin-top: 12px;" },
+            el("strong", null, "Failed: "), e.message,
+        ));
+    } finally {
+        btn.disabled = false;
+        btn.textContent = SESSION_ID ? "Follow up" : "Ask";
+    }
+}
+
+function renderTurns() {
+    const res = document.getElementById("result");
+    res.innerHTML = "";
+    if (SESSION_ID) {
+        res.appendChild(el("div", {
+            class: "mt8 dim",
+            style: "font-size: 12px; margin-bottom: 12px;",
+        },
+            `🧵 session ${SESSION_ID.substring(0, 8)} · ${TURNS.length} turn${TURNS.length === 1 ? "" : "s"} · `,
+            el("a", { href: "#", onclick: (e) => { e.preventDefault(); resetSession(); } }, "start new"),
+        ));
+    }
+    for (let i = 0; i < TURNS.length; i++) {
+        const t = TURNS[i];
+        const block = el("div", {
+            class: "mt16",
+            style: i > 0 ? "padding-top: 16px; border-top: 1px solid var(--border);" : "",
+        });
+        block.appendChild(el("div", {
+            class: "muted",
+            style: "font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;",
+        }, `Turn ${i + 1}`));
+        block.appendChild(el("div", {
+            style: "font-weight: 600; color: var(--fg); margin-bottom: 12px;",
+        }, "❯ " + t.q));
+        if (t.tool_trace && t.tool_trace.length) {
+            const trace = el("details", { style: "margin-bottom: 10px;" });
+            const sum = el("summary", {
+                style: "cursor: pointer; color: var(--fg-dim); font-size: 12px;",
+            }, `🔧 ${t.tool_trace.length} tool call${t.tool_trace.length === 1 ? "" : "s"} (${t.n_iterations} iteration${t.n_iterations === 1 ? "" : "s"}${t.web_searches ? `, ${t.web_searches} web search${t.web_searches === 1 ? "" : "es"}` : ""})`);
+            trace.appendChild(sum);
+            const ul = el("ul", {
+                style: "margin: 6px 0; padding-left: 22px; font-size: 12px; color: var(--fg-dim); font-family: ui-monospace, 'SF Mono', monospace;",
+            });
+            for (const tc of t.tool_trace) {
+                const args = JSON.stringify(tc.args || {});
+                ul.appendChild(el("li", null, `${tc.tool}(${args.length > 70 ? args.substring(0, 70) + "…" : args})`));
+            }
+            trace.appendChild(ul);
+            block.appendChild(trace);
+        }
+        const ansBox = el("div", { class: "ask-answer" });
+        if (t.ans) {
+            ansBox.innerHTML = marked.parse(t.ans);
+            ansBox.innerHTML = ansBox.innerHTML.replace(/\[(\d{5})\]/g, (m, id) => `<a href="/article/${id}">[${id}]</a>`);
+        } else {
+            ansBox.appendChild(el("div", { class: "muted" }, "(no answer)"));
+        }
+        block.appendChild(ansBox);
+        block.appendChild(el("div", { class: "ask-meta" }, `cost: $${(t.cost || 0).toFixed(4)}`));
+        res.appendChild(block);
+    }
+}
+
+function resetSession() {
+    SESSION_ID = null;
+    TURNS.length = 0;
+    document.getElementById("result").innerHTML = "";
+    document.getElementById("go").textContent = "Ask";
+}
+
+document.getElementById("go").addEventListener("click", ask);
+document.getElementById("q").addEventListener("keydown", e => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) ask();
+    else if (e.key === "Enter" && !e.shiftKey) ask();
+});
+
+// Optional: pre-fill from ?q= param
+const qparam = qs("q");
+if (qparam) {
+    document.getElementById("q").value = qparam;
+    ask();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Virtual envs (any name)
+.venv/
+.venv-*/
+venv/
+env/
+
+# SQLite DB + WAL/SHM lock files — user data, not source
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# User-curated JSON data (fact-checks, claims, manifesto extracts)
+# These accumulate during the user's analysis runs and shouldn't be committed.
+data/*.json
+data/*.csv
+data/*.html
+data/exports/
+data/manifesto/*.pdf
+data/manifesto/*.txt
+data/infographics/
+
+# Phase script outputs / images
+data/*.png
+
+# Local dev scratch
+scratch/
+*.log
+*.tmp
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Secrets — never commit
+.env
+.env.*
+*.pem
+*.key

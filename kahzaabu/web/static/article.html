@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>kahzaabu — article</title>
+<link rel="stylesheet" href="/static/css/kahzaabu.css" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<header class="site">
+    <div class="brand">kahzaabu <span class="tag">article</span></div>
+    <nav>
+        <a href="/"        data-nav="dashboard">Dashboard</a>
+        <a href="/browse"  data-nav="browse">Articles</a>
+        <a href="/lies"    data-nav="lies">Fact-checks</a>
+        <a href="/compare" data-nav="compare">Compare</a>
+        <a href="/manifesto" data-nav="manifesto">Manifesto</a>
+        <a href="/ask"     data-nav="ask">Ask</a>
+    </nav>
+</header>
+
+<main id="root">
+    <p class="muted">Loading…</p>
+</main>
+
+<footer class="site">Automated analysis of public press releases. Not legal advice. · <a href="/methodology">Methodology</a> · <a href="/corrections">Report a correction</a></footer>
+
+<script src="/static/js/api.js"></script>
+<script src="/static/js/charts.js"></script>
+<script>
+setNavActive("browse");
+
+function severityBadge(sev) {
+    if (!sev) return null;
+    const map = { clean: "good", flag: "misleading", red_flag: "lie" };
+    return el("span", { class: `badge ${map[sev] || "context"}` }, sev.replace("_", " "));
+}
+
+function renderFactCard(fc, mountAfter) {
+    if (!fc || !fc.exists) return;
+    const box = el("section", { id: "factcard", style: "margin: 24px 0;" });
+    const header = el("div", { class: "flex", style: "margin-bottom: 10px;" });
+    header.appendChild(el("h2", { style: "margin: 0;" }, "Fact card"));
+    if (fc.severity) header.appendChild(severityBadge(fc.severity));
+    box.appendChild(header);
+
+    if (fc.summary) {
+        box.appendChild(el("div", { class: "card", style: "margin-bottom: 12px;" },
+            el("h4", null, "Summary"),
+            el("p", { style: "margin: 8px 0 0;" }, fc.summary),
+        ));
+    }
+    if (fc.history_check) {
+        box.appendChild(el("div", { class: "card", style: "margin-bottom: 12px; border-left: 4px solid var(--deadline);" },
+            el("h4", null, "History check"),
+            el("p", { style: "margin: 8px 0 0;" }, fc.history_check),
+        ));
+    }
+    if (fc.key_claims && fc.key_claims.length) {
+        const c = el("div", { class: "card", style: "margin-bottom: 12px;" }, el("h4", null, "Key claims"));
+        const ul = el("ul");
+        for (const k of fc.key_claims) {
+            const li = el("li", { style: "margin-bottom: 8px;" });
+            li.appendChild(el("span", { class: `claim-pill ${k.type || ''}` }, k.type || "claim"));
+            li.appendChild(document.createTextNode(" "));
+            li.appendChild(el("strong", null, k.subject || "?"));
+            if (k.value) li.appendChild(document.createTextNode(" — " + k.value));
+            if (k.deadline) li.appendChild(el("span", { class: "dim" }, " (deadline: " + k.deadline + ")"));
+            if (k.quote) li.appendChild(el("div", { class: "quote", style: "margin-top: 4px;" }, '"' + k.quote + '"'));
+            ul.appendChild(li);
+        }
+        c.appendChild(ul);
+        box.appendChild(c);
+    }
+    if (fc.web_evidence && fc.web_evidence.length) {
+        const eb = el("div", { class: "card", style: "margin-bottom: 12px;" }, el("h4", null, "Web evidence"));
+        const ul = el("ul");
+        for (const ev of fc.web_evidence) {
+            const li = el("li", { style: "margin-bottom: 6px;" });
+            li.appendChild(el("span", { class: `rel ${(ev.relevance || "unclear").toLowerCase().replace(/[^a-z]/g, "_")}` }, ev.relevance || "unclear"));
+            li.appendChild(document.createTextNode(" "));
+            if (ev.url) li.appendChild(el("a", { href: ev.url, target: "_blank" }, ev.title || ev.url));
+            else if (ev.title) li.appendChild(document.createTextNode(ev.title));
+            if (ev.summary) li.appendChild(el("div", { class: "dim", style: "margin-left: 50px; font-size: 12px;" }, ev.summary));
+            ul.appendChild(li);
+        }
+        eb.appendChild(ul);
+        box.appendChild(eb);
+    }
+    if (fc.visualization_spec && fc.visualization_spec.kind && fc.visualization_spec.kind !== "none") {
+        const viz = fc.visualization_spec;
+        const vbox = el("div", { class: "chart-box", style: "margin-bottom: 12px;" });
+        if (viz.title) vbox.appendChild(el("h3", null, viz.title));
+        const canvas = el("canvas", { id: "factcard-chart" });
+        vbox.appendChild(canvas);
+        box.appendChild(vbox);
+        setTimeout(() => renderFactCardChart(canvas, viz), 0);
+    }
+    mountAfter.insertAdjacentElement("afterend", box);
+}
+
+function renderFactCardChart(canvas, viz) {
+    try {
+        const ctx = canvas.getContext("2d");
+        if (viz.kind === "timeline") {
+            const d = viz.data || {};
+            lineChart(ctx, {
+                labels: d.labels || [],
+                datasets: [{
+                    label: d.label || viz.title || "value",
+                    data: d.values || [],
+                    borderColor: PALETTE.context,
+                    backgroundColor: "rgba(52,152,219,0.18)",
+                    tension: 0.2, fill: true,
+                }],
+            });
+        } else if (viz.kind === "before_after") {
+            const d = viz.data || {};
+            const prior = d.prior || {};
+            const cur = d.current || {};
+            barChart(ctx, {
+                labels: [prior.date || "before", cur.date || "after"],
+                datasets: [{
+                    label: d.subject || "value",
+                    data: [parseFloat(prior.value) || 0, parseFloat(cur.value) || 0],
+                    backgroundColor: [PALETTE.dim, PALETTE.shifting],
+                }],
+            });
+        } else if (viz.kind === "stacked_bars") {
+            const d = viz.data || {};
+            const datasets = Object.entries(d.series || {}).map(([name, values], i) => ({
+                label: name, data: values,
+                backgroundColor: [PALETTE.lie, PALETTE.deadline, PALETTE.credit, PALETTE.shifting, PALETTE.context][i % 5],
+            }));
+            barChart(ctx, { labels: d.labels || [], datasets }, {
+                scales: { x: { stacked: true, ticks: { color: PALETTE.fgDim } },
+                          y: { stacked: true, ticks: { color: PALETTE.fgDim } } },
+            });
+        }
+    } catch (e) {
+        console.warn("factcard chart render failed:", e);
+    }
+}
+
+function badgeForCategory(c) {
+    return el("span", { class: `badge ${catBadgeClass(c)}` }, c);
+}
+
+function relevanceBadge(r) {
+    return el("span", { class: `rel ${(r || "unclear").toLowerCase().replace(/[^a-z]/g, "_")}` }, r || "unclear");
+}
+
+function pageId() {
+    const m = window.location.pathname.match(/\/article\/(\d+)/);
+    return m ? parseInt(m[1], 10) : null;
+}
+
+async function load() {
+    const id = pageId();
+    const root = document.getElementById("root");
+    if (!id) { root.innerHTML = "<p>invalid article id</p>"; return; }
+    let art;
+    try {
+        art = await fetchJSON(`/api/article/${id}`);
+    } catch (e) {
+        root.innerHTML = `<p>error: ${escapeHtml(e.message)}</p>`;
+        return;
+    }
+    root.innerHTML = "";
+
+    // Title
+    root.appendChild(el("h1", null, art.title || "(untitled)"));
+
+    // Meta line
+    const meta = el("div", { class: "article-meta" });
+    meta.appendChild(el("span", null, "📅 ", fmtDate(art.published_date)));
+    meta.appendChild(el("span", null, "📂 ", badgeForCategory(art.category)));
+    meta.appendChild(el("span", null, "🆔 ", String(art.id)));
+    if (art.reference) meta.appendChild(el("span", null, "Ref: ", art.reference));
+    if (art.paired) {
+        meta.appendChild(el("span", null,
+            el("a", { href: `/article/${art.paired.id}` },
+                `🇲🇻 ${art.paired.language} version`),
+        ));
+    }
+    root.appendChild(meta);
+
+    // Fact-checks referencing this article (prominent)
+    if (art.fact_checks && art.fact_checks.length) {
+        root.appendChild(el("h2", null, "Flagged claims in this article"));
+        for (const fc of art.fact_checks) {
+            const div = el("div", { class: `fc-item ${catClass(fc.category)}` });
+            const head = el("div", { class: "head" });
+            head.appendChild(badgeForCategory(fc.category));
+            head.appendChild(el("span", { class: "date" }, fmtDate(fc.claim_date)));
+            if (fc.topic) head.appendChild(el("span", { class: "topic" }, fc.topic));
+            div.appendChild(head);
+            div.appendChild(el("div", { class: "claim" }, fc.claim || ""));
+            if (fc.what_actually_happened) div.appendChild(el("div", { class: "body" }, fc.what_actually_happened));
+            if (fc.evidence_quotes && fc.evidence_quotes.length) {
+                const qbox = el("div", { class: "quotes" });
+                for (const q of fc.evidence_quotes.slice(0, 2)) qbox.appendChild(el("div", { class: "quote" }, `"${q}"`));
+                div.appendChild(qbox);
+            }
+            if (fc.web_evidence && fc.web_evidence.length) {
+                const ebox = el("div", { class: "evidence" },
+                    el("h5", null, `🌐 Web evidence (${fc.web_evidence.length})`));
+                const ul = el("ul");
+                for (const ev of fc.web_evidence) {
+                    const li = el("li", null);
+                    li.appendChild(relevanceBadge(ev.relevance));
+                    if (ev.url) {
+                        li.appendChild(el("a", { href: ev.url, target: "_blank" }, ev.title || ev.url));
+                    } else {
+                        li.appendChild(document.createTextNode(ev.title || "(no source)"));
+                    }
+                    if (ev.summary) li.appendChild(el("div", { class: "dim", style: "margin-left: 50px; margin-top: 2px;" }, ev.summary));
+                    ul.appendChild(li);
+                }
+                ebox.appendChild(ul);
+                div.appendChild(ebox);
+            }
+            root.appendChild(div);
+        }
+    }
+
+    // Extracted claims (compact)
+    if (art.claims && art.claims.length) {
+        root.appendChild(el("h2", null, `Extracted claims (${art.claims.length})`));
+        const cwrap = el("div", { class: "mt8" });
+        for (const c of art.claims) {
+            const pill = el("span", { class: `claim-pill ${c.type}`, title: c.quote || "" },
+                `${c.type}: ${c.subject || "?"}` + (c.value ? ` = ${c.value}` : "") + (c.deadline ? ` · ${c.deadline}` : ""));
+            cwrap.appendChild(pill);
+        }
+        root.appendChild(cwrap);
+    }
+
+    // Body
+    const bodyH2 = el("h2", null, "Article body");
+    root.appendChild(bodyH2);
+    root.appendChild(el("div", { class: "article-body" }, art.body_text || "(no body text)"));
+
+    // Fact card (mounted ABOVE body, after meta) — fetched lazily
+    fetchJSON(`/api/article/${art.id}/factcard?language=${art.language}`)
+        .then(fc => renderFactCard(fc, document.querySelector(".article-meta")))
+        .catch(() => {});
+}
+
+load();
+</script>
+</body>
+</html>

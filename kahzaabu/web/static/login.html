@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>kahzaabu — admin login</title>
+<link rel="stylesheet" href="/static/css/kahzaabu.css" />
+</head>
+<body>
+<header class="site">
+    <div class="brand">kahzaabu <span class="tag">admin</span></div>
+    <nav>
+        <a href="/" data-nav="dashboard">Dashboard</a>
+    </nav>
+</header>
+
+<main style="max-width: 480px;">
+    <h1>Admin login</h1>
+    <div class="card mt16">
+        <input id="username" class="ask-input" placeholder="username" autocomplete="username" />
+        <input id="password" type="password" class="ask-input mt8" placeholder="password" autocomplete="current-password" style="margin-top: 12px;" />
+        <button id="go" class="ask-button" style="margin-top: 14px; width: 100%;">Log in</button>
+        <div id="err" class="mt8" style="color: var(--lie); display: none; margin-top: 12px;"></div>
+    </div>
+</main>
+
+<footer class="site">Admin access only. All public pages require no login.</footer>
+
+<script src="/static/js/api.js"></script>
+<script>
+async function login() {
+    const u = document.getElementById("username").value.trim();
+    const p = document.getElementById("password").value;
+    const errEl = document.getElementById("err");
+    errEl.style.display = "none";
+    if (!u || !p) { errEl.textContent = "username + password required"; errEl.style.display = "block"; return; }
+    try {
+        await fetchJSON("/api/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: u, password: p }),
+        });
+        window.location.href = qs("next") || "/admin/queue";
+    } catch (e) {
+        errEl.textContent = "login failed: " + e.message;
+        errEl.style.display = "block";
+    }
+}
+document.getElementById("go").addEventListener("click", login);
+document.getElementById("password").addEventListener("keydown", e => { if (e.key === "Enter") login(); });
+</script>
+</body>
+</html>

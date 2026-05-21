@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>kahzaabu — admin / run pipeline</title>
+<link rel="stylesheet" href="/static/css/kahzaabu.css" />
+</head>
+<body>
+<header class="site">
+    <div class="brand">kahzaabu <span class="tag">admin · run pipeline</span></div>
+    <nav>
+        <a href="/"             data-nav="dashboard">Public site</a>
+        <a href="/admin/queue"  data-nav="admin-queue">Queue</a>
+        <a href="/admin/run"    data-nav="admin-run">Run pipeline</a>
+        <a href="#" id="logout">Log out</a>
+    </nav>
+</header>
+
+<main style="max-width: 720px;">
+    <h1>Run pipeline manually</h1>
+    <p class="muted">
+        Triggers a single end-to-end cycle: <code>scrape → extract → inspect → curate → verify → dv-compare</code>.
+        Stages can be disabled. Daily budget cap applies; stages that would exceed it skip themselves.
+    </p>
+
+    <section>
+        <div class="card">
+            <h4>Stages</h4>
+            <div class="mt8" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <label><input type="checkbox" id="scrape" checked /> Scrape (HTTP, free)</label>
+                <label><input type="checkbox" id="extract" checked /> Extract (LLM)</label>
+                <label><input type="checkbox" id="inspect" checked /> Inspect per-article (LLM)</label>
+                <label><input type="checkbox" id="curate" checked /> Curate fact-checks (LLM)</label>
+                <label><input type="checkbox" id="verify" checked /> Web verify high-impact (LLM+web)</label>
+                <label><input type="checkbox" id="dv_compare" checked /> EN/DV consistency (LLM)</label>
+            </div>
+
+            <h4 class="mt16">Budget</h4>
+            <input type="number" id="budget" value="1.00" step="0.50" min="0" class="ask-input" style="max-width: 200px;" />
+            <span class="dim mt8" style="margin-left: 10px;">USD cap for this session today</span>
+
+            <div class="mt16">
+                <button id="go" class="ask-button">Run now</button>
+                <span id="status" class="dim mt8" style="margin-left: 12px;"></span>
+            </div>
+        </div>
+    </section>
+
+    <section id="result" class="mt16"></section>
+</main>
+
+<footer class="site">
+    A typical cycle when caught up is under 30 seconds. Large extract/curate runs can take minutes.
+</footer>
+
+<script src="/static/js/api.js"></script>
+<script>
+async function run() {
+    const btn = document.getElementById("go");
+    const status = document.getElementById("status");
+    const result = document.getElementById("result");
+    const params = new URLSearchParams({
+        budget: document.getElementById("budget").value || "1.00",
+        no_scrape: !document.getElementById("scrape").checked,
+        no_extract: !document.getElementById("extract").checked,
+        no_inspect: !document.getElementById("inspect").checked,
+        no_curate: !document.getElementById("curate").checked,
+        no_verify: !document.getElementById("verify").checked,
+        no_dv_compare: !document.getElementById("dv_compare").checked,
+    });
+    btn.disabled = true; status.textContent = "running…";
+    result.innerHTML = '<div class="muted">Pipeline in flight — this can take 30s to several minutes.</div>';
+    try {
+        const data = await fetchJSON("/api/admin/pipeline/run?" + params.toString(), { method: "POST" });
+        result.innerHTML = "";
+        const r = data.result || {};
+        const stages = [
+            ["scrape",  r.scrape,  v => v.new_articles != null ? `${v.new_articles} new articles` : (v.error || "—")],
+            ["extract", r.extract, v => v.skipped ? `SKIPPED (${v.reason})` : `${v.articles_processed} articles · ${v.claims_extracted} claims · $${(v.cost_usd||0).toFixed(2)}`],
+            ["inspect", r.inspect, v => v.skipped ? `SKIPPED (${v.reason})` : `${v.cards_generated || 0} cards · ${v.flagged || 0} flag · ${v.red_flagged || 0} red · $${(v.cost_usd||0).toFixed(2)}`],
+            ["curate",  r.curate,  v => v.skipped ? `SKIPPED (${v.reason})` : `${v.proposed||0} proposed · ${v.inserted||0} inserted · $${(v.cost_usd||0).toFixed(2)}`],
+            ["verify",  r.verify,  v => v.skipped ? `SKIPPED (${v.reason})` : `${v.items_processed||0} items · ${v.evidence_collected||0} evidence · $${(v.cost_usd||0).toFixed(2)}`],
+            ["dv-compare", r.dv_compare, v => v.skipped ? `SKIPPED (${v.reason})` : `${v.pairs_processed||0} pairs · ${v.pairs_with_issues||0} flagged · $${(v.cost_usd||0).toFixed(2)}`],
+        ];
+        const card = el("div", { class: "card" });
+        card.appendChild(el("h4", null, `Run completed (triggered by ${data.triggered_by})`));
+        const ul = el("ul");
+        for (const [name, v, fmt] of stages) {
+            if (!v) continue;
+            const li = el("li", { style: "margin-bottom: 6px;" });
+            li.appendChild(el("strong", null, name + ": "));
+            li.appendChild(document.createTextNode(fmt(v)));
+            ul.appendChild(li);
+        }
+        card.appendChild(ul);
+        card.appendChild(el("div", { class: "dim mt8" },
+            `Today's total spend: $${(r.today_spend_usd || 0).toFixed(2)}`));
+        result.appendChild(card);
+        status.textContent = "done";
+    } catch (e) {
+        if (e.message.includes("401")) {
+            window.location.href = "/login?next=/admin/run";
+            return;
+        }
+        result.innerHTML = `<div class="card" style="border-left: 4px solid var(--lie);"><strong>Failed:</strong> ${escapeHtml(e.message)}</div>`;
+        status.textContent = "error";
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+document.getElementById("go").addEventListener("click", run);
+document.getElementById("logout").addEventListener("click", async (e) => {
+    e.preventDefault();
+    await fetchJSON("/api/logout", { method: "POST" });
+    window.location.href = "/login";
+});
+</script>
+</body>
+</html>

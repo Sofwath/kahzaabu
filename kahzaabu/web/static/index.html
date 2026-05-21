@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>kahzaabu — dashboard</title>
+<link rel="stylesheet" href="/static/css/kahzaabu.css" />
+<style>
+.card.clickable { cursor: pointer; transition: transform 0.1s, border-color 0.1s; }
+.card.clickable:hover { transform: translateY(-2px); border-color: var(--accent); }
+.chart-box.clickable canvas { cursor: pointer; }
+.chart-box .hint { font-size: 11px; color: var(--fg-muted); font-style: italic; margin-top: 4px; }
+.recent-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 900px) { .recent-grid { grid-template-columns: 1fr; } }
+.mini-item {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    padding: 10px 14px; margin-bottom: 8px; border-radius: 6px;
+    font-size: 13px; cursor: pointer; transition: background 0.1s;
+}
+.mini-item:hover { background: rgba(255,255,255,0.04); }
+.mini-item.cat-lie, .mini-item.cat-contradiction { border-left-color: var(--lie); }
+.mini-item.cat-misleading, .mini-item.cat-broken-deadline { border-left-color: var(--deadline); }
+.mini-item.cat-credit-theft { border-left-color: var(--credit); }
+.mini-item.cat-shifting-numbers { border-left-color: var(--shifting); }
+.mini-item.sev-flag { border-left-color: var(--deadline); }
+.mini-item.sev-red_flag { border-left-color: var(--lie); }
+.mini-item .meta { font-size: 11px; color: var(--fg-muted); margin-bottom: 4px; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<header class="site">
+    <div class="brand">kahzaabu <span class="tag">Maldives Presidency archive</span></div>
+    <nav>
+        <a href="/"        data-nav="dashboard">Dashboard</a>
+        <a href="/browse"  data-nav="browse">Articles</a>
+        <a href="/lies"    data-nav="lies">Fact-checks</a>
+        <a href="/compare" data-nav="compare">Compare</a>
+        <a href="/manifesto" data-nav="manifesto">Manifesto</a>
+        <a href="/ask"     data-nav="ask">Ask</a>
+    </nav>
+</header>
+
+<main>
+    <h1>Dashboard</h1>
+    <p class="muted">Live overview. Click any card, slice, or bar to drill into the underlying records.</p>
+
+    <section>
+        <div class="cards" id="stats-cards"></div>
+    </section>
+
+    <section>
+        <h2>Activity over time</h2>
+        <p class="muted" style="font-size: 13px; margin-top: -8px;">Click a point on either chart to jump to that month's articles.</p>
+        <div class="chart-grid">
+            <div class="chart-box clickable">
+                <h3>Articles published per month</h3>
+                <canvas id="chart-articles"></canvas>
+                <div class="hint">Click a point → /browse filtered to that month</div>
+            </div>
+            <div class="chart-box clickable">
+                <h3>Claims extracted per month</h3>
+                <canvas id="chart-claims"></canvas>
+                <div class="hint">Click a point → /browse filtered to that month</div>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <h2>Fact-checks</h2>
+        <p class="muted" style="font-size: 13px; margin-top: -8px;">Click a category or topic to see the matching fact-checks.</p>
+        <div class="chart-grid">
+            <div class="chart-box clickable">
+                <h3>By category</h3>
+                <canvas id="chart-fc-category"></canvas>
+                <div class="hint">Click a slice → /lies filtered by category</div>
+            </div>
+            <div class="chart-box clickable">
+                <h3>Top topics</h3>
+                <canvas id="chart-topics"></canvas>
+                <div class="hint">Click a bar → /lies filtered by topic</div>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <h2>2023 manifesto delivery</h2>
+        <p class="muted" style="font-size: 13px; margin-top: -8px;">Promises extracted from Muizzu's 2023 campaign manifesto, with delivery status assigned from the press-release archive. Click a bar to drill into the matching promises.</p>
+        <div class="chart-box clickable">
+            <canvas id="chart-manifesto-status" style="max-height: 220px;"></canvas>
+            <div class="hint">Click a bar → /manifesto filtered to that delivery status</div>
+        </div>
+    </section>
+
+    <section>
+        <h2>Categories over time</h2>
+        <p class="muted" style="font-size: 13px; margin-top: -8px;">Click a stack segment to see fact-checks of that category in that month.</p>
+        <div class="chart-box clickable">
+            <canvas id="chart-fc-month" style="max-height: 320px;"></canvas>
+            <div class="hint">Click any colored segment → /lies filtered by category + date range</div>
+        </div>
+    </section>
+
+    <section>
+        <h2>Recent</h2>
+        <div class="recent-grid">
+            <div>
+                <h3 style="font-size: 14px; color: var(--fg-dim); text-transform: uppercase; letter-spacing: 1px;">Newest fact-checks</h3>
+                <div id="recent-factchecks"></div>
+            </div>
+            <div>
+                <h3 style="font-size: 14px; color: var(--fg-dim); text-transform: uppercase; letter-spacing: 1px;">Newest article fact cards</h3>
+                <div id="recent-factcards"></div>
+            </div>
+        </div>
+    </section>
+</main>
+
+<footer class="site">
+    Automated analysis of public press releases from presidency.gov.mv. Not legal advice. ·
+    <a href="/methodology">Methodology</a> · <a href="/corrections">Report a correction</a>
+</footer>
+
+<script src="/static/js/api.js"></script>
+<script src="/static/js/charts.js"></script>
+<script>
+setNavActive("dashboard");
+
+function monthDateRange(label) {
+    // label is "YYYY-MM"; return [first, last] day-of-month ISO strings.
+    if (!label || !label.match(/^\d{4}-\d{2}$/)) return [null, null];
+    const [y, m] = label.split("-").map(Number);
+    const last = new Date(y, m, 0).getDate();
+    return [`${label}-01`, `${label}-${String(last).padStart(2, "0")}`];
+}
+
+function makeClickable(canvas, dataFn) {
+    canvas.onclick = (evt) => {
+        const chart = Chart.getChart(canvas);
+        if (!chart) return;
+        const points = chart.getElementsAtEventForMode(evt, "nearest", { intersect: true }, false);
+        if (!points.length) return;
+        const { datasetIndex, index } = points[0];
+        dataFn(datasetIndex, index);
+    };
+}
+
+async function loadDashboard() {
+    const [stats, articles, claims, fcCat, topics, fcMonth, recentFc, recentCards] = await Promise.all([
+        fetchJSON("/api/stats"),
+        fetchJSON("/api/viz/articles-per-month"),
+        fetchJSON("/api/viz/claims-per-month"),
+        fetchJSON("/api/viz/factchecks-by-category"),
+        fetchJSON("/api/viz/topics"),
+        fetchJSON("/api/viz/factchecks-by-month"),
+        fetchJSON("/api/factchecks?limit=5"),
+        fetchJSON("/api/recent-factcards?limit=5").catch(() => ({ items: [] })),
+    ]);
+
+    // ===== Stat cards (clickable) =====
+    const cards = document.getElementById("stats-cards");
+    function card(num, lbl, sub, href) {
+        const c = el("div", { class: href ? "card clickable" : "card" },
+            el("div", { class: "num" }, num.toLocaleString()),
+            el("div", { class: "lbl" }, lbl),
+        );
+        if (sub) c.appendChild(el("div", { class: "sub" }, sub));
+        if (href) c.onclick = () => window.location.href = href;
+        return c;
+    }
+    cards.appendChild(card(stats.n_articles_muizzu_total, "Articles",
+        "Muizzu era, EN, with body", "/browse"));
+    cards.appendChild(card(stats.n_claims, "Claims",
+        `from ${stats.n_articles_with_claims} articles (${stats.coverage_pct}%)`, "/browse"));
+    cards.appendChild(card(stats.n_fact_checks, "Fact-checks",
+        `${stats.n_factchecks_with_web_evidence} with web evidence`, "/lies"));
+    cards.appendChild(card(stats.n_web_evidence, "Web evidence",
+        "external citations", "/lies"));
+    if (stats.n_manifesto_promises) {
+        const mfs = stats.manifesto_by_status || {};
+        const checked = (mfs.delivered || 0) + (mfs.in_progress || 0) + (mfs.broken || 0)
+                        + (mfs.modified || 0) + (mfs.abandoned || 0);
+        cards.appendChild(card(stats.n_manifesto_promises, "Manifesto promises",
+            `${checked} cross-referenced`, "/manifesto"));
+    }
+
+    // ===== Articles per month — click point → /browse?date_from=X&date_to=Y =====
+    lineChart(
+        document.getElementById("chart-articles"),
+        {
+            labels: articles.labels,
+            datasets: [{
+                label: "articles", data: articles.values,
+                borderColor: PALETTE.context, backgroundColor: "rgba(52,152,219,0.18)",
+                tension: 0.3, fill: true, pointRadius: 4, pointHoverRadius: 6,
+            }],
+        },
+    );
+    makeClickable(document.getElementById("chart-articles"), (_, i) => {
+        const [from, to] = monthDateRange(articles.labels[i]);
+        if (from) window.location.href = `/browse?date_from=${from}&date_to=${to}`;
+    });
+
+    // ===== Claims per month =====
+    lineChart(
+        document.getElementById("chart-claims"),
+        {
+            labels: claims.labels,
+            datasets: [{
+                label: "claims", data: claims.values,
+                borderColor: PALETTE.credit, backgroundColor: "rgba(155,89,182,0.18)",
+                tension: 0.3, fill: true, pointRadius: 4, pointHoverRadius: 6,
+            }],
+        },
+    );
+    makeClickable(document.getElementById("chart-claims"), (_, i) => {
+        const [from, to] = monthDateRange(claims.labels[i]);
+        if (from) window.location.href = `/browse?date_from=${from}&date_to=${to}`;
+    });
+
+    // ===== Category doughnut — click slice → /lies?category=X =====
+    const fcColors = fcCat.labels.map(l => CATEGORY_COLORS[l] || PALETTE.dim);
+    doughnutChart(
+        document.getElementById("chart-fc-category"),
+        fcCat.labels, fcCat.values, fcColors,
+    );
+    makeClickable(document.getElementById("chart-fc-category"), (_, i) => {
+        const cat = fcCat.labels[i];
+        if (cat) window.location.href = `/lies?category=${encodeURIComponent(cat)}`;
+    });
+
+    // ===== Topics bar — click bar → /lies?topic=X =====
+    barChart(
+        document.getElementById("chart-topics"),
+        {
+            labels: topics.labels,
+            datasets: [{ label: "fact-checks", data: topics.values, backgroundColor: PALETTE.deadline }],
+        },
+        { indexAxis: "y" },
+    );
+    makeClickable(document.getElementById("chart-topics"), (_, i) => {
+        const t = topics.labels[i];
+        if (t) window.location.href = `/lies?topic=${encodeURIComponent(t)}`;
+    });
+
+    // ===== Manifesto delivery status =====
+    const mStatuses = ["delivered", "in_progress", "modified", "broken", "abandoned", "unmentioned"];
+    const mStatusColors = {
+        delivered: PALETTE.good, in_progress: PALETTE.context, modified: PALETTE.shifting,
+        broken: PALETTE.lie, abandoned: PALETTE.credit, unmentioned: PALETTE.dim,
+    };
+    const mfsBy = stats.manifesto_by_status || {};
+    const mLabels = mStatuses.filter(s => (mfsBy[s] || 0) > 0);
+    const mValues = mLabels.map(s => mfsBy[s] || 0);
+    const mColors = mLabels.map(s => mStatusColors[s]);
+    if (mLabels.length) {
+        barChart(
+            document.getElementById("chart-manifesto-status"),
+            { labels: mLabels, datasets: [{ label: "promises", data: mValues, backgroundColor: mColors }] },
+            { indexAxis: "y" },
+        );
+        makeClickable(document.getElementById("chart-manifesto-status"), (_, i) => {
+            window.location.href = `/manifesto?status=${encodeURIComponent(mLabels[i])}`;
+        });
+    } else {
+        const can = document.getElementById("chart-manifesto-status");
+        can.parentElement.innerHTML += '<div class="muted">No manifesto data yet. Run <code>kahzaabu manifesto-extract</code>.</div>';
+    }
+
+    // ===== Stacked categories over time — click segment → /lies?category=X&date=Y =====
+    const datasets = Object.entries(fcMonth.series).map(([cat, values]) => ({
+        label: cat, data: values, backgroundColor: CATEGORY_COLORS[cat] || PALETTE.dim,
+    }));
+    const cats = Object.keys(fcMonth.series);
+    barChart(
+        document.getElementById("chart-fc-month"),
+        { labels: fcMonth.labels, datasets },
+        { scales: { x: { stacked: true, ticks: { color: PALETTE.fgDim }, grid: { color: PALETTE.grid } },
+                    y: { stacked: true, ticks: { color: PALETTE.fgDim }, grid: { color: PALETTE.grid } } } },
+    );
+    makeClickable(document.getElementById("chart-fc-month"), (ds, i) => {
+        const cat = cats[ds];
+        const month = fcMonth.labels[i];
+        const [from, to] = monthDateRange(month);
+        if (cat && from) {
+            window.location.href = `/lies?category=${encodeURIComponent(cat)}&date_from=${from}&date_to=${to}`;
+        }
+    });
+
+    // ===== Recent fact-checks =====
+    const fcWrap = document.getElementById("recent-factchecks");
+    if (recentFc.items.length === 0) {
+        fcWrap.innerHTML = '<div class="dim">no fact-checks yet</div>';
+    } else {
+        for (const it of recentFc.items) {
+            const div = el("div", { class: `mini-item ${catClass(it.category)}` ,
+                                    onclick: () => window.location.href = `/lies?category=${encodeURIComponent(it.category)}` });
+            const meta = el("div", { class: "meta" });
+            meta.appendChild(el("span", { class: `badge ${catBadgeClass(it.category)}`,
+                style: "font-size: 9px; padding: 1px 6px;" }, it.category));
+            meta.appendChild(document.createTextNode(" " + fmtDate(it.claim_date)));
+            if (it.topic) meta.appendChild(document.createTextNode(" · " + it.topic));
+            div.appendChild(meta);
+            div.appendChild(el("div", null, (it.claim || "").substring(0, 140)
+                + ((it.claim || "").length > 140 ? "…" : "")));
+            fcWrap.appendChild(div);
+        }
+    }
+
+    // ===== Recent fact cards =====
+    const fcardsWrap = document.getElementById("recent-factcards");
+    if (!recentCards.items || recentCards.items.length === 0) {
+        fcardsWrap.innerHTML = '<div class="dim">no fact cards yet — run `kahzaabu inspect` to generate some</div>';
+    } else {
+        for (const c of recentCards.items) {
+            const div = el("div", { class: `mini-item sev-${c.severity || "clean"}`,
+                                    onclick: () => window.location.href = `/article/${c.article_id}` });
+            const meta = el("div", { class: "meta" });
+            meta.appendChild(el("span", { class: `badge ${c.severity === "red_flag" ? "lie" : c.severity === "flag" ? "misleading" : "good"}`,
+                style: "font-size: 9px; padding: 1px 6px;" }, c.severity || "clean"));
+            meta.appendChild(document.createTextNode(" article " + c.article_id + " · " + (c.created_at || "").substring(0, 10)));
+            div.appendChild(meta);
+            div.appendChild(el("div", null, (c.summary || "").substring(0, 140)
+                + ((c.summary || "").length > 140 ? "…" : "")));
+            fcardsWrap.appendChild(div);
+        }
+    }
+}
+
+loadDashboard().catch(err => {
+    document.querySelector("main").appendChild(
+        el("div", { class: "card", style: "border-left: 4px solid var(--lie); margin-top: 20px;" },
+            el("strong", null, "Failed to load dashboard data: "),
+            err.message,
+        )
+    );
+});
+</script>
+</body>
+</html>

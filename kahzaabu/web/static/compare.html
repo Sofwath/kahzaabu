@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>kahzaabu — EN vs DV</title>
+<link rel="stylesheet" href="/static/css/kahzaabu.css" />
+</head>
+<body>
+<header class="site">
+    <div class="brand">kahzaabu <span class="tag">EN vs DV</span></div>
+    <nav>
+        <a href="/"        data-nav="dashboard">Dashboard</a>
+        <a href="/browse"  data-nav="browse">Articles</a>
+        <a href="/lies"    data-nav="lies">Fact-checks</a>
+        <a href="/compare" data-nav="compare">Compare</a>
+        <a href="/manifesto" data-nav="manifesto">Manifesto</a>
+        <a href="/ask"     data-nav="ask">Ask</a>
+    </nav>
+</header>
+
+<main>
+    <h1>EN vs DV translation consistency</h1>
+    <p class="muted" id="result-count">Loading…</p>
+
+    <section class="filters">
+        <select id="severity">
+            <option value="">all severities</option>
+            <option value="serious">serious</option>
+            <option value="moderate">moderate</option>
+            <option value="minor">minor</option>
+        </select>
+        <button id="apply">Apply</button>
+    </section>
+
+    <section>
+        <table class="kz">
+            <thead>
+                <tr>
+                    <th style="width: 100px;">EN ID</th>
+                    <th style="width: 100px;">Date</th>
+                    <th style="width: 110px;">Max severity</th>
+                    <th style="width: 80px; text-align: right;">Issues</th>
+                    <th>Title</th>
+                </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+        </table>
+        <div class="pagination">
+            <button id="prev">‹ Prev</button>
+            <span id="pageinfo" class="muted"></span>
+            <button id="next">Next ›</button>
+        </div>
+    </section>
+</main>
+
+<footer class="site">Automated EN/DV diff. Verify any flagged item against the source text. · <a href="/methodology">Methodology</a> · <a href="/corrections">Report a correction</a></footer>
+
+<script src="/static/js/api.js"></script>
+<script>
+setNavActive("compare");
+
+const state = { limit: 50, offset: 0, total: 0 };
+
+function sevBadge(s) {
+    if (!s) return el("span", { class: "dim" }, "—");
+    const cls = { serious: "lie", moderate: "misleading", minor: "context" }[s] || "context";
+    return el("span", { class: `badge ${cls}` }, s);
+}
+
+async function load() {
+    const params = new URLSearchParams();
+    params.set("limit", state.limit);
+    params.set("offset", state.offset);
+    const sv = document.getElementById("severity").value;
+    if (sv) params.set("severity", sv);
+    const data = await fetchJSON("/api/compare?" + params.toString());
+    state.total = data.total;
+    const tbody = document.getElementById("rows");
+    tbody.innerHTML = "";
+    for (const r of data.items) {
+        const tr = el("tr", null,
+            el("td", null, el("a", { href: `/compare/${r.en_article_id}` }, String(r.en_article_id))),
+            el("td", { class: "muted" }, fmtDate(r.published_date)),
+            el("td", null, sevBadge(r.max_severity)),
+            el("td", { class: "right" }, String(r.n_inconsistencies)),
+            el("td", null, el("a", { href: `/compare/${r.en_article_id}` }, r.title || "(untitled)")),
+        );
+        tbody.appendChild(tr);
+    }
+    document.getElementById("result-count").textContent =
+        data.total === 0
+            ? "No DV/EN comparisons have been run yet. Use `kahzaabu dv-compare` to generate some."
+            : `${data.total.toLocaleString()} compared pairs — showing ${state.offset + 1}-${Math.min(state.offset + state.limit, data.total)}`;
+    document.getElementById("pageinfo").textContent = data.total
+        ? `page ${Math.floor(state.offset / state.limit) + 1} of ${Math.ceil(data.total / state.limit)}` : "";
+    document.getElementById("prev").disabled = state.offset === 0;
+    document.getElementById("next").disabled = state.offset + state.limit >= data.total;
+}
+
+document.getElementById("apply").addEventListener("click", () => { state.offset = 0; load(); });
+document.getElementById("prev").addEventListener("click", () => { state.offset = Math.max(0, state.offset - state.limit); load(); });
+document.getElementById("next").addEventListener("click", () => { state.offset += state.limit; load(); });
+
+load();
+</script>
+</body>
+</html>

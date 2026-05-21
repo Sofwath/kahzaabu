@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>kahzaabu — articles</title>
+<link rel="stylesheet" href="/static/css/kahzaabu.css" />
+</head>
+<body>
+<header class="site">
+    <div class="brand">kahzaabu <span class="tag">articles</span></div>
+    <nav>
+        <a href="/"        data-nav="dashboard">Dashboard</a>
+        <a href="/browse"  data-nav="browse">Articles</a>
+        <a href="/lies"    data-nav="lies">Fact-checks</a>
+        <a href="/compare" data-nav="compare">Compare</a>
+        <a href="/manifesto" data-nav="manifesto">Manifesto</a>
+        <a href="/ask"     data-nav="ask">Ask</a>
+    </nav>
+</header>
+
+<main>
+    <h1>Articles</h1>
+    <p class="muted" id="result-count">Loading…</p>
+
+    <section class="filters">
+        <input type="text" id="q" placeholder="search title or body…" />
+        <select id="category">
+            <option value="">all categories</option>
+            <option value="press_release">press_release</option>
+            <option value="speech">speech</option>
+            <option value="vp_speech">vp_speech</option>
+        </select>
+        <input type="date" id="date_from" />
+        <input type="date" id="date_to" />
+        <button id="apply">Apply</button>
+        <button id="clear" class="clear">Clear</button>
+    </section>
+
+    <section>
+        <table class="kz">
+            <thead>
+                <tr>
+                    <th style="width: 90px;">ID</th>
+                    <th style="width: 100px;">Date</th>
+                    <th style="width: 110px;">Category</th>
+                    <th>Title</th>
+                </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+        </table>
+        <div class="pagination">
+            <button id="prev">‹ Prev</button>
+            <span id="pageinfo" class="muted"></span>
+            <button id="next">Next ›</button>
+        </div>
+    </section>
+</main>
+
+<footer class="site">Automated analysis of public press releases. Not legal advice. · <a href="/methodology">Methodology</a> · <a href="/corrections">Report a correction</a></footer>
+
+<script src="/static/js/api.js"></script>
+<script>
+setNavActive("browse");
+
+const state = { limit: 50, offset: 0, total: 0 };
+
+function buildQuery() {
+    const p = new URLSearchParams();
+    p.set("limit", state.limit);
+    p.set("offset", state.offset);
+    const q = document.getElementById("q").value.trim();
+    const c = document.getElementById("category").value;
+    const f = document.getElementById("date_from").value;
+    const t = document.getElementById("date_to").value;
+    if (q) p.set("q", q);
+    if (c) p.set("category", c);
+    if (f) p.set("date_from", f);
+    if (t) p.set("date_to", t);
+    return p.toString();
+}
+
+async function load() {
+    const data = await fetchJSON("/api/articles?" + buildQuery());
+    state.total = data.total;
+    const tbody = document.getElementById("rows");
+    tbody.innerHTML = "";
+    for (const a of data.items) {
+        const tr = el("tr", null,
+            el("td", null, el("a", { href: `/article/${a.id}` }, String(a.id))),
+            el("td", { class: "muted" }, fmtDate(a.published_date)),
+            el("td", null, el("span", { class: "badge context" }, a.category)),
+            el("td", null,
+                el("a", { href: `/article/${a.id}` }, a.title || "(untitled)"),
+                el("div", { class: "dim", style: "font-size: 12px; margin-top: 4px;" }, (a.snippet || "").substring(0, 220) + "…"),
+            ),
+        );
+        tbody.appendChild(tr);
+    }
+    document.getElementById("result-count").textContent =
+        `${data.total.toLocaleString()} articles match — showing ${state.offset + 1}-${Math.min(state.offset + state.limit, data.total)}`;
+    document.getElementById("pageinfo").textContent =
+        `page ${Math.floor(state.offset / state.limit) + 1} of ${Math.ceil(data.total / state.limit)}`;
+    document.getElementById("prev").disabled = state.offset === 0;
+    document.getElementById("next").disabled = state.offset + state.limit >= data.total;
+}
+
+document.getElementById("apply").addEventListener("click", () => { state.offset = 0; load(); });
+document.getElementById("clear").addEventListener("click", () => {
+    document.getElementById("q").value = "";
+    document.getElementById("category").value = "";
+    document.getElementById("date_from").value = "";
+    document.getElementById("date_to").value = "";
+    state.offset = 0; load();
+});
+document.getElementById("prev").addEventListener("click", () => {
+    state.offset = Math.max(0, state.offset - state.limit); load();
+});
+document.getElementById("next").addEventListener("click", () => {
+    state.offset += state.limit; load();
+});
+document.getElementById("q").addEventListener("keydown", e => {
+    if (e.key === "Enter") { state.offset = 0; load(); }
+});
+
+// Pre-fill from URL params (so chart drill-downs land filtered)
+for (const id of ["category", "date_from", "date_to", "q"]) {
+    const v = qs(id);
+    if (v) document.getElementById(id).value = v;
+}
+
+load();
+</script>
+</body>
+</html>
