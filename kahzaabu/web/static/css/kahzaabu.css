@@ -3,6 +3,11 @@
    Class names match those used by HTML files — do not rename without
    updating the corresponding pages. */
 
+/* Web fonts: Inter (sans, UI chrome) + Newsreader (serif, long-form prose).
+   Loaded via @import at the top so a single CSS change updates every page.
+   `display=swap` shows the system fallback first, swaps in once loaded. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:ital,wght@0,400;1,400&display=swap');
+
 /* ─── tokens ────────────────────────────────────────────────────────── */
 :root {
     /* surface */
@@ -44,7 +49,7 @@
 
     /* type families */
     --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
-    --font-serif: Charter, 'Bitstream Charter', 'Sitka Text', 'Iowan Old Style', Georgia, serif;
+    --font-serif: 'Newsreader', Charter, 'Bitstream Charter', 'Sitka Text', 'Iowan Old Style', Georgia, serif;
     --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, 'Liberation Mono', monospace;
 
     /* type scale */

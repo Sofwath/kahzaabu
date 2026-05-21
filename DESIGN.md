@@ -38,11 +38,14 @@ colors:
 typography:
   sans:
     fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif"
-    fontFeature: "'cv11', 'ss01', 'ss03'"   # Inter's stylistic alternates if loaded
+    fontFeature: "'cv11', 'ss01'"
+    source: "Google Fonts (loaded by kahzaabu.css), weights 400/500/600/700"
   serif:
-    fontFamily: "Charter, 'Bitstream Charter', 'Sitka Text', 'Iowan Old Style', Georgia, serif"
+    fontFamily: "'Newsreader', Charter, 'Bitstream Charter', 'Sitka Text', 'Iowan Old Style', Georgia, serif"
+    source: "Google Fonts (loaded by kahzaabu.css), 400 + italic 400"
   mono:
     fontFamily: "'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, 'Liberation Mono', monospace"
+    source: "system fallback only — not loaded as a web font"
 
   # type scale (sans unless noted)
   display:          { fontSize: "36px", lineHeight: "1.15", fontWeight: 700, letterSpacing: "-0.02em" }
@@ -156,10 +159,10 @@ Three intents shape every choice:
 
 Two families:
 
-- **Sans (Inter / system-ui)** for chrome, navigation, dashboards, forms, tables — everything that says "interface."
-- **Serif (Charter / Georgia)** for long-form prose — agentic-ask answers, article bodies, the narrative-tricks layer, manifesto promise text. The serif slows the eye down. Use class `.prose` to opt in.
+- **Sans (Inter)** for chrome, navigation, dashboards, forms, tables — everything that says "interface."
+- **Serif (Newsreader)** for long-form prose — agentic-ask answers, article bodies, the narrative-tricks layer, manifesto promise text. The serif slows the eye down. Use class `.prose` to opt in.
 
-No web font is loaded by default — system stacks render acceptably and keep the page lean. If you later want a uniform Inter look across platforms, drop a Google Fonts `<link>` into the page head; the token already names Inter first.
+Both families are loaded via a single `@import` at the top of `kahzaabu.css` (Google Fonts, `display=swap`) — Inter at weights 400/500/600/700, Newsreader at 400 + italic 400. System fallbacks (`-apple-system`, Charter, Georgia) handle the FOUT window and offline degradation.
 
 Scale (always reference the named token, never raw px):
 
