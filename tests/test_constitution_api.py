@@ -112,39 +112,53 @@ class ConstitutionPageRouteTests(unittest.TestCase):
 
 
 class StaticPageJSShadowingTests(unittest.TestCase):
-    """Regression guard for the const-shadow-of-api-export bug.
+    """Regression guards for inline-<script> ↔ api.js name clashes.
 
-    When an inline <script> declares a top-level `const FOO = ...`
-    that matches a global function-declaration in /static/js/api.js,
-    classic-script lexical binding rules throw
-        SyntaxError: Identifier 'FOO' has already been declared
-    on parse, which silently aborts the whole inline block — every
-    `fetchJSON(...)` call inside it never runs. The page loads, but
-    no data ever appears.
+    Two distinct cases, two distinct severities:
 
-    Caught and fixed in factcheck.html + constitution.html where
-    `const el = ...` collided with api.js's `function el(){}`. This
-    test pins the invariant going forward: no static page may
-    redeclare any of the api.js exports as `const` or `let`.
+    HARD FAIL — `const`/`let NAME = …` at top level of an inline
+    <script> where `NAME` is also defined in /static/js/api.js.
+    Classic-script lexical binding throws
+        SyntaxError: Identifier 'NAME' has already been declared
+    on parse, which silently aborts the whole inline block. Every
+    fetchJSON(...) inside it never runs. The page renders the
+    static placeholder forever.
 
-    Function declarations (`function el(){...}`) are still allowed —
-    they silently override in classic scripts without throwing.
+    KNOWN-OK BUT TRACKED — `function NAME(...){...}` at top level
+    of an inline <script> where `NAME` is also defined in api.js.
+    Function declarations can re-declare in classic scripts and
+    silently override the global. Currently safe, but creates a
+    maintenance landmine: a future change to api.js's NAME has no
+    effect on pages that silently override. We enumerate these so
+    they don't grow silently — the test fails if a NEW override
+    appears beyond the documented set.
     """
 
     API_EXPORTS = ("fetchJSON", "el", "escapeHtml", "catClass",
                     "catBadgeClass", "fmtDate", "qs", "setNavActive")
 
+    # Currently-acceptable function-declaration overrides.
+    # contradictions.html declares its own `el` + `fmtDate` because
+    # the page wants slightly different behaviours for the contradiction
+    # cards. If the list needs to grow, add it here with a comment
+    # explaining why the override is intentional.
+    ALLOWED_FUNCTION_OVERRIDES = frozenset({
+        ("contradictions.html", "el"),
+        ("contradictions.html", "fmtDate"),
+    })
+
+    @staticmethod
+    def _static_dir():
+        from pathlib import Path
+        return (Path(__file__).resolve().parents[1]
+                / "kahzaabu" / "web" / "static")
+
     def test_no_static_page_const_shadows_api_export(self):
         import re
-        from pathlib import Path
-        static = (Path(__file__).resolve().parents[1]
-                  / "kahzaabu" / "web" / "static")
         offenders = []
-        for page in sorted(static.glob("*.html")):
+        for page in sorted(self._static_dir().glob("*.html")):
             text = page.read_text()
             for name in self.API_EXPORTS:
-                # Top-of-line const/let with this name. Anchored to
-                # start-of-line so nested declarations aren't flagged.
                 pat = re.compile(
                     rf"^\s*(const|let)\s+{name}\s*=", re.MULTILINE)
                 if pat.search(text):
@@ -155,6 +169,141 @@ class StaticPageJSShadowingTests(unittest.TestCase):
             "in classic scripts and aborts data loading. Use the "
             "global from api.js or rename your local. Offenders:\n  "
             + "\n  ".join(offenders))
+
+    def test_function_overrides_match_allowed_set(self):
+        """Function-declaration overrides of api.js exports are
+        tolerated (no SyntaxError) but tracked. Adding a new one
+        without updating ALLOWED_FUNCTION_OVERRIDES fails the test —
+        forces the author to think about why they're shadowing."""
+        import re
+        found = set()
+        for page in sorted(self._static_dir().glob("*.html")):
+            text = page.read_text()
+            for name in self.API_EXPORTS:
+                pat = re.compile(
+                    rf"^\s*function\s+{name}\s*\(", re.MULTILINE)
+                if pat.search(text):
+                    found.add((page.name, name))
+
+        new = found - self.ALLOWED_FUNCTION_OVERRIDES
+        removed = self.ALLOWED_FUNCTION_OVERRIDES - found
+        self.assertFalse(new,
+            "New function-declaration override of an api.js export "
+            "found. This silently overrides the global; future "
+            "changes to api.js will not propagate to this page. If "
+            "intentional, add to ALLOWED_FUNCTION_OVERRIDES. New:\n  "
+            + "\n  ".join(f"{p}: function {n}()" for p, n in new))
+        self.assertFalse(removed,
+            "ALLOWED_FUNCTION_OVERRIDES is stale — these entries no "
+            "longer appear in any page; remove them:\n  "
+            + "\n  ".join(f"{p}: function {n}()" for p, n in removed))
+
+
+class StaticPageDataLoadSmokeTests(unittest.TestCase):
+    """End-to-end "page renders data" smoke for every V2 surface.
+
+    The StaticPageJSShadowingTests guard catches the *specific*
+    parse-time bug that broke /factcheck/{id}. But pages can have
+    other data-loading bugs that don't throw SyntaxError — wrong
+    API path, response-shape mismatch, missing element selector.
+
+    This test loads each page's HTML via TestClient, scans the
+    inline <script> for `fetchJSON("/api/...")` URLs, and verifies
+    that EVERY such URL the page depends on actually returns 200
+    against the same TestClient. If a page tries to fetch an API
+    that doesn't exist (or has been renamed), this surfaces it.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.c = TestClient(app)
+        cls.tested_pages = []
+
+    @staticmethod
+    def _sub_template(url: str) -> str:
+        """Replace JS template-literal `${...}` placeholders with
+        safe test values.
+
+        Heuristics:
+          - placeholder containing 'id' or 'n'  → `1` (integer endpoints)
+          - placeholder containing 'query', 'q', 'search' → 'religion'
+            (FTS endpoints — 'religion' has hits in our corpus)
+          - encodeURIComponent(...) wrappers around `${...}` → strip
+          - anything else → `1` (safest default — numeric paths)
+        """
+        import re
+        # Strip encodeURIComponent(... ${X} ...) outer call → just ${X}
+        url = re.sub(r'encodeURIComponent\(([^)]+)\)', r'\1', url)
+        def repl(m):
+            inner = m.group(1).lower()
+            if 'query' in inner or 'search' in inner or inner.strip() in ('q',):
+                return 'religion'
+            return '1'
+        return re.sub(r'\$\{([^}]+)\}', repl, url)
+
+    def _extract_api_urls(self, html: str) -> list[str]:
+        """Pull every kahzaabu API URL referenced by `fetchJSON(...)`
+        or `fetch(...)` in the inline <script> blocks.
+
+        Skips calls that pass a `method: "POST" | "PUT" | "DELETE" |
+        "PATCH"` option — those endpoints can't be smoke-tested via
+        a default GET (would return 405)."""
+        import re
+        # Find every fetch / fetchJSON call. DOTALL so multiline
+        # template literals match.
+        call_pat = re.compile(
+            r'fetch(?:JSON)?\(\s*'                # fetch( or fetchJSON(
+            r'([`"\'])(/api/[^`"\']+?)\1'        # URL
+            r'(\s*,\s*\{[^}]*method:\s*'         # optional { method: "X" }
+            r'["\'](?:POST|PUT|DELETE|PATCH)["\'][^}]*\})?',
+            re.DOTALL,
+        )
+        out: list[str] = []
+        for m in call_pat.finditer(html):
+            if m.group(3):
+                # Has an explicit non-GET method; skip — can't smoke
+                # via TestClient.get().
+                continue
+            out.append(self._sub_template(m.group(2)))
+        return out
+
+    def _smoke_page(self, path: str, expected_min_apis: int = 1):
+        page = self.c.get(path)
+        self.assertEqual(page.status_code, 200,
+                          f"{path} → HTTP {page.status_code}")
+        urls = self._extract_api_urls(page.text)
+        self.assertGreaterEqual(
+            len(urls), expected_min_apis,
+            f"{path} declares < {expected_min_apis} fetchJSON calls "
+            f"— expected the page to be data-driven. Found: {urls}")
+        # Every API the page depends on must respond with 200.
+        for u in urls:
+            r = self.c.get(u)
+            self.assertEqual(
+                r.status_code, 200,
+                f"{path} fetches {u} but it returns {r.status_code}")
+        self.tested_pages.append((path, len(urls)))
+
+    def test_factcheck_detail_data_loads(self):
+        self._smoke_page("/factcheck/1", expected_min_apis=2)
+
+    def test_constitution_page_data_loads(self):
+        self._smoke_page("/constitution", expected_min_apis=1)
+
+    def test_lies_page_data_loads(self):
+        self._smoke_page("/lies", expected_min_apis=1)
+
+    def test_contradictions_page_data_loads(self):
+        self._smoke_page("/contradictions", expected_min_apis=1)
+
+    def test_dashboard_data_loads(self):
+        self._smoke_page("/", expected_min_apis=3)
+
+    def test_manifesto_page_data_loads(self):
+        self._smoke_page("/manifesto", expected_min_apis=1)
+
+    def test_browse_page_data_loads(self):
+        self._smoke_page("/browse", expected_min_apis=1)
 
 
 class LawsPageTests(unittest.TestCase):
