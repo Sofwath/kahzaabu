@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Agentic Q&A — Claude with tool-use loop over the kahzaabu archive.
 
 Differences from qna.ask():

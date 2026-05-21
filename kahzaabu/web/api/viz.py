@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Pre-computed series for Chart.js front-end.
 
 In public mode, fact-check viz endpoints only count published items for

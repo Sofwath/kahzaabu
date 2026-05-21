@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """V2 Slice 7 — /api/contradictions endpoints (ADR 0004).
 
 Two routes:

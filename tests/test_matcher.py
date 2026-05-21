@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for V2 Slice 3 — canonical claim matching.
 
 Pins:

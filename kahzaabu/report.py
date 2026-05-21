@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Export fact_checks from DB back to JSON files for sharing / archival."""
 from __future__ import annotations
 

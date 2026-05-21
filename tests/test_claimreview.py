@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for V2 Slice 6 — ClaimReview JSON-LD export (ADR 0006).
 
 Pins:

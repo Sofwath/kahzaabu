@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """V2 Slice 10 — quality evaluation framework (ADR 0008).
 
 Golden-set based evaluation for each LLM-call stage of the pipeline.

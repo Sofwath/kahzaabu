@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """V2 Slice 5 — enrich fact_checks with verdict_label / truth_score /
 truth_score_label / reasoning_chain / contradiction_pair_id / speaker /
 canonical_url (ADR 0005, 0006).

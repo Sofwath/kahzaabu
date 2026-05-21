@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit test for the narrative-tricks ctx.llm branch in qna_agentic.
 
 The main agentic loop almost always produces the 🎭 Narrative tricks section

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """POST /api/ask — agentic natural-language Q&A.
 
 Wraps qna_agentic.ask_agentic() (multi-tool agent with web_search + session memory).

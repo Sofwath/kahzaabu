@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Manifesto-promises API endpoints (public)."""
 from __future__ import annotations
 

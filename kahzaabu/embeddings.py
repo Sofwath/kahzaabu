@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """V2 — Embedding provider abstraction (ADR 0007).
 
 Kahzaabu is an open-source project. Foundational features like claim

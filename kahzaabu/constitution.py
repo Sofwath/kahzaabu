@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Constitution of the Republic of Maldives — parser + DB import.
 
 Source: data/constitution/ConstitutionOfMaldives.pdf (English functional

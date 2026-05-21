@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """V2 Slice 6 — ClaimReview JSON-LD API endpoints (ADR 0006).
 
 Two public endpoints:

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """EN vs Dhivehi (DV) translation-consistency checker.
 
 For paired articles where both EN and DV body text exist, send both to an LLM

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Interactive TUI for kahzaabu with slash commands.
 
 Usage: kahzaabu tui

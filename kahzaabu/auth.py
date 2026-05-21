@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Password hashing + session-cookie auth for the web admin.
 
 Session strategy: signed HMAC cookie carrying (username, role, issued_at).

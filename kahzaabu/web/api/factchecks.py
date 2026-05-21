@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Fact-checks endpoints.
 
 In public mode (KAHZAABU_PUBLIC_MODE env var set) anonymous viewers only see

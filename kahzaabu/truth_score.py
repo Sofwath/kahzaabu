@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """V2 Slice 5 — deterministic derivation of AVeriTeC verdict_label +
 PolitiFact-style truth_score from kahzaabu's analytical category and
 the confidence column already on fact_checks (ADR 0005).

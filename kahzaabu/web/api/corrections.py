@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Public POST /api/corrections — rate-limited submission form backend."""
 from __future__ import annotations
 

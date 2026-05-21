@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """End-to-end pipeline orchestrator: scrape → extract → curate."""
 from __future__ import annotations
 

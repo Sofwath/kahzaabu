@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for V2 Slice 7 — /api/contradictions endpoint surface.
 
 Pins the list + detail shape so a future refactor of the API doesn't

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """V2 Slice 6 — schema.org ClaimReview JSON-LD export (ADR 0006).
 
 Generates a discovery-ready JSON-LD blob per published fact-check.

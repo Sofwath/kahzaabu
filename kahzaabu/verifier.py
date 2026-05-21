@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Web-search-backed fact-check verification.
 
 For each fact-check item, ask Claude to search the web for related news/sources,

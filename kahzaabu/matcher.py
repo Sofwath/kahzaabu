@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """V2 Slice 3 — canonical claim matching (ADR 0003).
 
 Two-phase pipeline:

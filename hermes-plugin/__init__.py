@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """kahzaabu plugin — Maldives Presidency press-release fact-checking archive.
 
 Replaces the legacy stdio MCP server in ~/.hermes/config.yaml.mcp_servers.kahzaabu

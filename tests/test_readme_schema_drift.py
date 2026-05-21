@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Catch drift between README's data-model documentation and the real DB schema.
 
 The previous bug — README claiming `fact_checks.title` exists when the column

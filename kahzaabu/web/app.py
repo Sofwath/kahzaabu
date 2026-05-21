@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """FastAPI app for kahzaabu web UI.
 
 Routes:

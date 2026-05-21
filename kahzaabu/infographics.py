@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Generate social media infographics from Kahzaabu analysis data."""
 from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """V2 Slice 2 — Q&A decomposition (ADR 0001, AVeriTeC-shaped).
 
 For each checkable claim, ask an LLM: "what 2-5 questions would a

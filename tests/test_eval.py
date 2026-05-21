@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for V2 Slice 10 — quality evaluation framework (ADR 0008).
 
 Pins:

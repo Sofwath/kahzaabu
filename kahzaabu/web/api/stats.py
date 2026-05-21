@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """GET /api/stats — dashboard counters.
 
 In public mode (KAHZAABU_PUBLIC_MODE=1) the fact-check counts reflect ONLY

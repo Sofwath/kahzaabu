@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """V2 Slice 4 prep — backfill polarity / subject_normalized / is_checkable
 for existing claims that pre-date Slice 1's extractor enrichment.
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for kahzaabu.constitution — parser + lookup.
 
 Pins the contract: the 2008 PDF must parse into exactly 301 main articles

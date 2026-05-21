@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Per-article fact-card generator.
 
 For each article without a fact card, generate:

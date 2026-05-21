@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for the JSON1 fallback path in handle_get_article.
 
 handle_get_article queries fact_checks via `json_each(source_article_ids)`

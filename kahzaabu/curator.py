@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Incremental fact-check curation — looks at newly-added claims, finds new findings."""
 from __future__ import annotations
 

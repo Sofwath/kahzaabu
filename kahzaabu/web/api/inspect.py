@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """GET /api/article/{id}/factcard and /api/compare endpoints.
 
 Public-mode aware: anonymous viewers only see items with published=1.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Shared DB connection dependency for FastAPI routes.
 
 Each request gets its own SQLite connection so cross-thread issues with

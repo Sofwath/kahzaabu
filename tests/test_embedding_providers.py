@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for V2 — Embedding provider abstraction (ADR 0007).
 
 Pins:

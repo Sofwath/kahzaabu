@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for V2 Slice 5 — truth_score derivation (ADR 0005).
 
 Pins the deterministic mapping function. Pure unit tests, no DB.

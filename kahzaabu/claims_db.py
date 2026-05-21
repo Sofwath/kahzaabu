@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Claim and fact-check persistence — schema + CRUD on the same SQLite DB."""
 from __future__ import annotations
 

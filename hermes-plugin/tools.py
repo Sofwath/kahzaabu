@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Agent-facing tools for the kahzaabu plugin.
 
 Thin handlers — all heavy lifting lives in the canonical `kahzaabu` package

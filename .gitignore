@@ -48,3 +48,4 @@ scratch/
 *.pem
 *.key
 data/eval_history.jsonl
+data/backups/

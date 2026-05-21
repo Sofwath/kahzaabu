@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Kahzaabu MCP server — exposes the corpus as tools for any MCP-compatible agent.
 
 Run standalone:

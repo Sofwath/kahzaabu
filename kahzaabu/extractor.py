@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Incremental claim extraction — pulls articles without claims and extracts."""
 from __future__ import annotations
 

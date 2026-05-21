@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Natural-language Q&A over the kahzaabu DB.
 
 Pipeline:

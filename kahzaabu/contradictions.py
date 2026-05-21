@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """V2 Slice 4 — contradiction finder (ADR 0004).
 
 The headline V2 feature: machine-checkable contradiction records.

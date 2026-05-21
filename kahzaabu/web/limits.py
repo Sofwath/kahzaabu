@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Shared rate-limiter + simple LRU cache for the public Q&A endpoint."""
 from __future__ import annotations
 

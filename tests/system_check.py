@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """End-to-end integration check for the kahzaabu web stack.
 
 NOT a pytest suite — runs as a standalone script with its own pass/fail

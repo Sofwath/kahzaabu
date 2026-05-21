@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for V2 Slice 5 — fact_check enrichment (ADR 0005).
 
 Pins:
