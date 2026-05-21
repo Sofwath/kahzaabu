@@ -36,6 +36,19 @@ test suite (`./scripts/test.sh`). The `NoExternalCDNScriptsTests`
 regression guard asserts no `<script src="https://...">` references
 remain in any static HTML page.
 
+## Checking for newer versions
+
+Vendored libraries aren't picked up by Dependabot (the project has no
+`package.json`). To check whether either library has a newer release:
+
+```bash
+./scripts/check-vendor-updates.sh
+```
+
+The script reads the pins from this NOTICE.md, queries the npm registry,
+and reports drift. Exit 0 = all up-to-date, exit 1 = update available.
+Run monthly, or whenever a CVE is announced for either library.
+
 ## License compliance
 
 Both libraries are MIT-licensed, which permits redistribution under
