@@ -18,7 +18,7 @@ Each slice is complete + tested before the next starts. Discipline:
 |---|---|---|---|---|
 | 0 | Bootstrap: ADRs + build plan + ARCHITECTURE skeleton | ✅ done (95fd8c3) | 0001-0006 | docs-only |
 | 1 | Claims enrichment (polarity / subject / is_checkable) | ✅ done (2e8c81d) | 0002 | DB + extractor + tests |
-| 2 | Q&A decomposition + backfill | 🟢 code+tests in; backfill paused for approval | 0001 | claim_questions + decomposition_runs tables; dry-run: 20 claims → 76 questions @ $0.04 (extrapolates to ≈$18 for 9,000 — Haiku 4.5, not Sonnet) |
+| 2 | Q&A decomposition + backfill | ✅ done (749fa6a + backfill) | 0001 | 8,954 / 8,954 claims; 35,648 questions; avg 3.98/claim; $12.51 total spend (vs $200 ADR projection — Haiku 4.5 outperformed expectations) |
 | 3 | Claim matching (canonical_claim_id, embeddings + entity) | ⚪ pending | 0003 | new claim_embeddings table |
 | 4 | Contradiction finder (the headline feature) | ⚪ pending | 0004 | new contradiction_pairs table + pipeline stage |
 | 5 | AVeriTeC verdict + Truth-O-Meter + RAGAR reasoning_chain | ⚪ pending | 0005 | enrich fact_checks; derivation function |
@@ -45,7 +45,7 @@ When Slice 9 lands, the project is V2 if:
 
 | Item | Spend | Recoverable? |
 |---|---|---|
-| Q&A decomposition backfill (Slice 2) | ~$200 (9,000 claims × ~$0.02) | One-shot, irreversible |
+| Q&A decomposition backfill (Slice 2) | **actual: $12.51** for 8,954 claims (Haiku 4.5, vs $200 Sonnet projection) | One-shot, irreversible |
 | Embedding generation (Slice 3) | ~$1 (9,000 claims via text-embedding-3-small) | One-shot |
 | Contradiction-finder LLM calls (Slice 4) | ~$5 (estimate ~100 pairs × $0.05) | Ongoing ~$1.50/month |
 | Verdict + Truth-O-Meter derivation (Slice 5) | $0 (deterministic from existing data) | — |
