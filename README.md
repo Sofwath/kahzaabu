@@ -62,7 +62,9 @@ A separate layer — the [narrative-tricks analysis](#the-narrative-tricks-layer
 
 ```bash
 git clone <this repo> kahzaabu && cd kahzaabu
-python3 -m venv .venv && .venv/bin/pip install -e .
+python3 -m venv .venv
+.venv/bin/pip install -e ".[all]"       # core + web + TUI + MCP server
+# or pick extras: .[web]  .[tui]  .[mcp]  — bare `-e .` gets pipeline only
 export ANTHROPIC_API_KEY=sk-ant-...
 
 .venv/bin/kahzaabu pipeline --budget 1.00   # one full cycle

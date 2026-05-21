@@ -16,6 +16,20 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKTREE="$(mktemp -d -t kahzaabu-ci-dryrun-XXXXXX)"
 trap 'echo; echo "Worktree preserved at: $WORKTREE  (delete with: git -C $REPO_ROOT worktree remove --force $WORKTREE)"' ERR
 
+# Validates the CURRENT HEAD COMMIT, NOT your working tree. The whole
+# point is to mirror CI, which runs against the committed code that
+# would actually land on the remote. If you're iterating on the
+# workflow file itself, commit your changes first (git commit --amend
+# is fine) then re-run.
+echo "──────────────────────────────────────────────────────────────"
+echo " ci-dry-run.sh — validating HEAD ($(git -C "${REPO_ROOT}" rev-parse --short HEAD))"
+if [[ -n "$(git -C "${REPO_ROOT}" status --porcelain 2>/dev/null)" ]]; then
+    echo " ⚠ working tree has uncommitted changes — they will be IGNORED"
+    echo "   Commit first if you want to test them. Continuing in 3s..."
+    sleep 3
+fi
+echo "──────────────────────────────────────────────────────────────"
+
 echo "→ Setting up worktree at $WORKTREE"
 git -C "${REPO_ROOT}" worktree add "$WORKTREE" HEAD >/dev/null
 cd "$WORKTREE"

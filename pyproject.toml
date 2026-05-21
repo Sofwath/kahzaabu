@@ -1,13 +1,40 @@
 [project]
 name = "kahzaabu"
 version = "0.1.0"
-description = "Maldives Presidency content archiver"
+description = "Maldives Presidency content archiver + fact-checking pipeline"
 requires-python = ">=3.8"
+# Core: scraping + claims/curation/verification pipeline + infographics.
+# Anyone running `kahzaabu pipeline`, `kahzaabu extract`, `kahzaabu ask`
+# needs every entry here. Web UI / TUI / standalone MCP server are extras
+# below — `pip install -e ".[web,tui]"` to add them.
 dependencies = [
     "requests>=2.31",
     "beautifulsoup4>=4.12",
     "click>=8.1",
     "lxml>=5.0",
+    "anthropic>=0.40",      # extractor / curator / verifier / inspector / dv_compare / qna*
+    "Pillow>=10.0",         # infographics renderer
+]
+
+[project.optional-dependencies]
+web = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "slowapi>=0.1.9",         # rate limiting on /api/ask
+    "passlib[bcrypt]>=1.7",   # admin auth (bcrypt backend)
+    "itsdangerous>=2.0",      # session-cookie signing
+    "python-multipart>=0.0.9",  # FastAPI form-data support
+    "pydantic>=2.0",
+]
+tui = [
+    "rich>=13.0",
+    "prompt_toolkit>=3.0",
+]
+mcp = [
+    "mcp>=0.9",               # only needed for the legacy standalone MCP server (kahzaabu.mcp_server). The native hermes plugin uses no MCP SDK.
+]
+all = [
+    "kahzaabu[web,tui,mcp]",
 ]
 
 [project.scripts]
