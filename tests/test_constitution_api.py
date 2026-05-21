@@ -124,33 +124,88 @@ class LawsPageTests(unittest.TestCase):
         r = self.c.get("/laws")
         self.assertEqual(r.status_code, 200)
 
-    def test_laws_page_links_to_all_five_canonical_sections(self):
+    def test_laws_page_lists_all_five_canonical_sections(self):
+        """The 5 canonical mvlaw.gov.mv sections must be enumerated
+        in the SECTIONS JS const so the renderer can pick them up."""
         r = self.c.get("/laws")
         body = r.text
-        for url in (
-            "old.mvlaw.gov.mv/constitution.php",
-            "old.mvlaw.gov.mv/ganoon_main.php",
-            "old.mvlaw.gov.mv/cancelganoon.php",
-            "old.mvlaw.gov.mv/gavaid_main.php",
-            "old.mvlaw.gov.mv/publications.php",
-        ):
-            self.assertIn(url, body, f"missing deep-link: {url}")
+        for path in ("/constitution.php", "/ganoon_main.php",
+                      "/cancelganoon.php", "/gavaid_main.php",
+                      "/publications.php"):
+            self.assertIn(path, body,
+                           f"section path missing from SECTIONS: {path}")
+        # And the canonical host constant must be present so the
+        # paths actually resolve to URLs at render time.
+        self.assertIn('CANONICAL_HOST = "old.mvlaw.gov.mv"', body)
 
     def test_laws_page_links_open_new_tab_with_safe_rel(self):
         """target=_blank links must carry rel='noopener noreferrer'
-        — otherwise the new tab can hijack the opener (CWE-1022)."""
+        — otherwise the new tab can hijack the opener (CWE-1022).
+        Tiles are rendered client-side from SECTIONS, but the tile
+        renderer hard-codes rel='noopener noreferrer' and the static
+        anchors on the page (intro + footer attribution) must do the
+        same."""
         r = self.c.get("/laws")
-        # Count <a target="_blank" tags and verify each has the safe rel.
         import re
+        # Static target=_blank anchors in the HTML source.
         opens = re.findall(
             r'<a [^>]*target="_blank"[^>]*>', r.text)
-        self.assertGreater(len(opens), 4,
-                            "expected multiple mvlaw deep-links")
+        self.assertGreaterEqual(len(opens), 2,
+            "expected at least the intro + robots.txt static links")
         for tag in opens:
             self.assertIn("noopener", tag,
                            f"missing noopener: {tag[:120]}")
             self.assertIn("noreferrer", tag,
                            f"missing noreferrer: {tag[:120]}")
+        # The tile renderer must assign rel='noopener noreferrer'.
+        self.assertIn('tile.rel = "noopener noreferrer"', r.text)
+
+    def test_search_engines_default_to_duckduckgo_with_google_opt_in(self):
+        """Concern: Google logs the search query. Default the
+        search-engine selector to DuckDuckGo and require the user
+        to opt in to Google explicitly."""
+        r = self.c.get("/laws")
+        body = r.text
+        # SEARCH_ENGINES has both options + DDG is the radio default.
+        self.assertIn("SEARCH_ENGINES", body)
+        self.assertIn("duckduckgo.com", body)
+        self.assertIn("www.google.com/search", body)
+        # The DDG radio must be `checked` and Google must NOT be.
+        import re
+        ddg_radio = re.search(
+            r'<input[^>]*name="engine"[^>]*value="ddg"[^>]*>', body)
+        self.assertIsNotNone(ddg_radio, "ddg radio missing")
+        self.assertIn("checked", ddg_radio.group(0),
+                       "ddg radio is not the default")
+        google_radio = re.search(
+            r'<input[^>]*name="engine"[^>]*value="google"[^>]*>', body)
+        self.assertIsNotNone(google_radio, "google radio missing")
+        self.assertNotIn("checked", google_radio.group(0),
+                          "google radio must NOT be the default")
+
+    def test_url_registry_centralised(self):
+        """Concern: URL drift across the page. SECTIONS is the single
+        source of truth; hard-coded https://old.mvlaw.gov.mv paths
+        elsewhere in the file would re-introduce drift."""
+        from pathlib import Path
+        page = (Path(__file__).resolve().parents[1]
+                / "kahzaabu" / "web" / "static" / "laws.html").read_text()
+        import re
+        # Allowed hardcoded mvlaw URLs (outside SECTIONS):
+        #   - the homepage in the intro paragraph (https://old.mvlaw.gov.mv/)
+        #   - the robots.txt link in the explainer
+        #   - SECTIONS array entries themselves
+        # We assert that section-specific .php paths only appear inside
+        # the SECTIONS array, not scattered across the HTML.
+        section_paths = ("/constitution.php", "/ganoon_main.php",
+                          "/cancelganoon.php", "/gavaid_main.php",
+                          "/publications.php")
+        for path in section_paths:
+            # `path` should appear ONCE — inside the SECTIONS data.
+            count = page.count(path)
+            self.assertEqual(
+                count, 1,
+                f"path {path} appears {count}× — should be in SECTIONS only")
 
     def test_laws_page_carries_adr_attribution(self):
         """The link-out rationale must be visible to users —

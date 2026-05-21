@@ -152,55 +152,27 @@
 
     <form class="laws-search" onsubmit="return runSearch(event)">
         <input type="search" id="q" autocomplete="off"
-               placeholder="Search Maldivian laws — opens Google site-search on a new tab"
+               placeholder="Search Maldivian laws — opens search results in a new tab"
                aria-label="Search Maldivian laws" />
         <button type="submit">Search</button>
+        <fieldset class="search-engine" style="border: 1px solid var(--border); border-radius: var(--r-sm); padding: 2px 12px; display: flex; gap: 12px; align-items: center; font: var(--type-tiny); color: var(--fg-muted);">
+            <label style="display: flex; gap: 4px; align-items: center; cursor: pointer;">
+                <input type="radio" name="engine" value="ddg" checked />
+                DuckDuckGo
+            </label>
+            <label style="display: flex; gap: 4px; align-items: center; cursor: pointer;"
+                   title="Google has a broader index but logs your query.">
+                <input type="radio" name="engine" value="google" />
+                Google
+            </label>
+        </fieldset>
     </form>
+    <p class="muted" style="font: var(--type-tiny); margin: -8px 0 var(--sp-lg) 0;">
+        Default is DuckDuckGo — no tracking. Switch to Google if you want
+        broader coverage of mvlaw.gov.mv's older / .pdf content.
+    </p>
 
-    <div class="laws-grid">
-        <a class="laws-section" target="_blank" rel="noopener noreferrer"
-           href="https://old.mvlaw.gov.mv/constitution.php">
-            <div class="dv">ޤާނޫނު އަސާސީ</div>
-            <div class="en">Constitution</div>
-            <div class="desc">Constitution of the Republic of Maldives — the supreme law. Also available inline at <a href="/constitution" style="color: var(--accent);">/constitution</a>.</div>
-            <div class="external">old.mvlaw.gov.mv/constitution.php</div>
-        </a>
-        <a class="laws-section" target="_blank" rel="noopener noreferrer"
-           href="https://old.mvlaw.gov.mv/ganoon_main.php">
-            <div class="dv">ޤާނޫނު</div>
-            <div class="en">Laws (Acts)</div>
-            <div class="desc">Acts ratified by the President. Includes commercial, criminal, family, employment, and sector-specific statutes.</div>
-            <div class="external">old.mvlaw.gov.mv/ganoon_main.php</div>
-        </a>
-        <a class="laws-section" target="_blank" rel="noopener noreferrer"
-           href="https://old.mvlaw.gov.mv/cancelganoon.php">
-            <div class="dv">އުވާލާފައިވާ ޤާނޫނު</div>
-            <div class="en">Repealed laws</div>
-            <div class="desc">Acts that have been formally repealed by subsequent legislation. Useful for tracking historical statutory context.</div>
-            <div class="external">old.mvlaw.gov.mv/cancelganoon.php</div>
-        </a>
-        <a class="laws-section" target="_blank" rel="noopener noreferrer"
-           href="https://old.mvlaw.gov.mv/gavaid_main.php">
-            <div class="dv">ގަވާއިދު</div>
-            <div class="en">Regulations</div>
-            <div class="desc">Subordinate regulations issued by ministries and independent commissions under enabling Acts.</div>
-            <div class="external">old.mvlaw.gov.mv/gavaid_main.php</div>
-        </a>
-        <a class="laws-section" target="_blank" rel="noopener noreferrer"
-           href="https://old.mvlaw.gov.mv/publications.php">
-            <div class="dv">ޕަބްލިކޭޝަން</div>
-            <div class="en">Publications</div>
-            <div class="desc">Official AGO publications — gazettes, indices, and other reference material.</div>
-            <div class="external">old.mvlaw.gov.mv/publications.php</div>
-        </a>
-        <a class="laws-section" target="_blank" rel="noopener noreferrer"
-           href="https://old.mvlaw.gov.mv/">
-            <div class="dv">ފުރަތަމަ ސަފްޙާ</div>
-            <div class="en">Home</div>
-            <div class="desc">Browse the AGO law archive from the top — useful if you don't yet know which section to look in.</div>
-            <div class="external">old.mvlaw.gov.mv</div>
-        </a>
-    </div>
+    <div class="laws-grid" id="laws-grid"></div>
 
     <section class="laws-note">
         <h3>Why kahzaabu links out instead of importing</h3>
@@ -235,13 +207,73 @@
 </main>
 
 <script>
+/**
+ * ADR 0012 — link-out registry for old.mvlaw.gov.mv.
+ *
+ * ALL mvlaw URLs live here. If the site migrates (e.g. old.mvlaw.gov.mv →
+ * mvlaw.gov.mv), update CANONICAL_HOST and any path that changed. The
+ * tile grid below renders from SECTIONS so there's no second place to
+ * keep in sync.
+ *
+ * No backend fetches. Tiles are <a target="_blank" rel="noopener
+ * noreferrer">. Search opens a third-party site-search (DuckDuckGo
+ * default, Google opt-in) in a new tab.
+ */
+const CANONICAL_HOST = "old.mvlaw.gov.mv";
+const CANONICAL_BASE = `https://${CANONICAL_HOST}`;
+
+const SECTIONS = [
+    { dv: "ޤާނޫނު އަސާސީ",         en: "Constitution",     path: "/constitution.php",
+      desc: `Constitution of the Republic of Maldives — the supreme law. Also available inline at <a href="/constitution" style="color: var(--accent);">/constitution</a>.` },
+    { dv: "ޤާނޫނު",               en: "Laws (Acts)",      path: "/ganoon_main.php",
+      desc: "Acts ratified by the President. Includes commercial, criminal, family, employment, and sector-specific statutes." },
+    { dv: "އުވާލާފައިވާ ޤާނޫނު",      en: "Repealed laws",    path: "/cancelganoon.php",
+      desc: "Acts that have been formally repealed by subsequent legislation. Useful for tracking historical statutory context." },
+    { dv: "ގަވާއިދު",              en: "Regulations",      path: "/gavaid_main.php",
+      desc: "Subordinate regulations issued by ministries and independent commissions under enabling Acts." },
+    { dv: "ޕަބްލިކޭޝަން",          en: "Publications",     path: "/publications.php",
+      desc: "Official AGO publications — gazettes, indices, and other reference material." },
+    { dv: "ފުރަތަމަ ސަފްޙާ",        en: "Home",             path: "/",
+      desc: "Browse the AGO law archive from the top — useful if you don't yet know which section to look in." },
+];
+
+// Site-search engines. Both build a `site:` qualifier so results stay
+// on the AGO domain. DuckDuckGo's `kp=-2` disables safe-search
+// inheritance from the user's settings (statutory text can mention
+// terms a strict filter would block). Google ignores the same param.
+const SEARCH_ENGINES = {
+    ddg:    q => `https://duckduckgo.com/?q=${encodeURIComponent(`site:${CANONICAL_HOST} ${q}`)}&kp=-2`,
+    google: q => `https://www.google.com/search?q=${encodeURIComponent(`site:${CANONICAL_HOST} ${q}`)}`,
+};
+
+// --- Render the tile grid from SECTIONS ---
+(function renderGrid() {
+    const grid = document.getElementById("laws-grid");
+    for (const s of SECTIONS) {
+        const href = CANONICAL_BASE + s.path;
+        const display = (CANONICAL_HOST + s.path).replace(/\/$/, "");
+        const tile = document.createElement("a");
+        tile.className = "laws-section";
+        tile.href = href;
+        tile.target = "_blank";
+        tile.rel = "noopener noreferrer";
+        tile.innerHTML =
+            `<div class="dv">${s.dv}</div>` +
+            `<div class="en">${s.en}</div>` +
+            `<div class="desc">${s.desc}</div>` +
+            `<div class="external">${display}</div>`;
+        grid.appendChild(tile);
+    }
+})();
+
 function runSearch(event) {
     event.preventDefault();
     const q = (document.getElementById("q").value || "").trim();
     if (!q) return false;
-    const url = "https://www.google.com/search?q=" +
-        encodeURIComponent("site:old.mvlaw.gov.mv " + q);
-    window.open(url, "_blank", "noopener");
+    const engine = (document.querySelector(
+        'input[name="engine"]:checked') || {}).value || "ddg";
+    const builder = SEARCH_ENGINES[engine] || SEARCH_ENGINES.ddg;
+    window.open(builder(q), "_blank", "noopener");
     return false;
 }
 </script>
