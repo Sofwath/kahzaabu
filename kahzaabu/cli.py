@@ -693,41 +693,11 @@ def manifesto_crossref(ctx, budget, limit, redo_all, concurrency):
                    f"statuses={res['status_counts']}, ${res['cost_usd']:.2f}")
 
 
-@main.command(name="create-user")
-@click.argument("username")
-@click.option("--role", default="admin", type=click.Choice(["admin", "editor"]))
-@click.option("--password", default=None, help="If omitted, you'll be prompted")
-@click.pass_context
-def create_user(ctx, username, role, password):
-    """Create an admin/editor user for the web admin."""
-    from . import auth as kauth, claims_db
-    conn = ctx.obj["conn"]
-    claims_db.init_claims_schema(conn)
-    if claims_db.get_user(conn, username):
-        click.echo(f"user '{username}' already exists. Use set-password to change.", err=True)
-        ctx.exit(1)
-    if not password:
-        password = click.prompt("password", hide_input=True, confirmation_prompt=True)
-    claims_db.create_user(conn, username, kauth.hash_password(password), role=role)
-    click.echo(f"created user '{username}' with role={role}")
-
-
-@main.command(name="set-password")
-@click.argument("username")
-@click.option("--password", default=None)
-@click.pass_context
-def set_password(ctx, username, password):
-    """Set/reset a web user's password."""
-    from . import auth as kauth, claims_db
-    conn = ctx.obj["conn"]
-    claims_db.init_claims_schema(conn)
-    if not claims_db.get_user(conn, username):
-        click.echo(f"user '{username}' not found", err=True)
-        ctx.exit(1)
-    if not password:
-        password = click.prompt("new password", hide_input=True, confirmation_prompt=True)
-    n = claims_db.update_user_password(conn, username, kauth.hash_password(password))
-    click.echo(f"updated password for '{username}' ({n} row)")
+# `create-user` and `set-password` commands intentionally removed.
+# The system has no passwords: the web UI is read-only public, and
+# operator actions (publish, pipeline runs, etc.) run via this CLI
+# on the operator's own filesystem — they inherit the OS user's
+# privileges rather than gating behind an in-app credential.
 
 
 @main.command()

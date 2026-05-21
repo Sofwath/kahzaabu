@@ -9,11 +9,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..db_dep import get_db
-from ..limits import PUBLIC_MODE
-from .auth import current_user
 
 router = APIRouter()
-
 
 @router.get("/articles")
 def list_articles(
@@ -24,7 +21,7 @@ def list_articles(
     category: Optional[str] = None,
     q: Optional[str] = None,
     language: str = "EN",
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: sqlite3.Connection = Depends(get_db)
 ) -> dict:
     sql = """SELECT id, language, category, title, published_date,
                     SUBSTR(body_text, 1, 240) AS snippet
@@ -58,19 +55,17 @@ def list_articles(
         "items": [dict(r) for r in rows],
     }
 
-
 @router.get("/article/{article_id}")
 def get_article(
     article_id: int,
     language: str = "EN",
-    user: Optional[dict] = Depends(current_user),
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: sqlite3.Connection = Depends(get_db)
 ) -> dict:
     art = conn.execute(
         """SELECT id, language, paired_id, category, title, body_text,
                   body_html, reference, published_date, image_urls, scraped_at
            FROM articles WHERE id = ? AND language = ?""",
-        (article_id, language),
+        (article_id, language)
     ).fetchone()
     if not art:
         raise HTTPException(404, f"article {article_id} ({language}) not found")
@@ -86,18 +81,16 @@ def get_article(
            FROM claims
            WHERE article_id = ? AND language = ? AND type != 'no_specific_claims'
            ORDER BY id""",
-        (article_id, language),
+        (article_id, language)
     ).fetchall()
     art["claims"] = [dict(c) for c in claims]
-    # fact_checks that reference this article (filter unpublished for anonymous in public mode)
+    # fact_checks referencing this article — always published-only
+    # (the web UI is read-only public; there's no admin/editor anymore).
     fc_sql = """SELECT id, category, claim_date, claim, what_actually_happened, type,
                        topic, source, source_article_ids, evidence_quotes, published
                 FROM fact_checks
-                WHERE source_article_ids LIKE ?"""
-    fc_params = [f"%{article_id}%"]
-    if PUBLIC_MODE and not user:
-        fc_sql += " AND published = 1"
-    rows = conn.execute(fc_sql, fc_params).fetchall()
+                WHERE source_article_ids LIKE ? AND published = 1"""
+    rows = conn.execute(fc_sql, [f"%{article_id}%"]).fetchall()
     fcs = []
     for r in rows:
         d = dict(r)
@@ -115,7 +108,7 @@ def get_article(
             ev = conn.execute(
                 """SELECT url, title, snippet, relevance, summary, retrieved_at
                    FROM fact_check_evidence WHERE fact_check_id = ? ORDER BY id""",
-                (d["id"],),
+                (d["id"],)
             ).fetchall()
             d["web_evidence"] = [dict(e) for e in ev]
             fcs.append(d)
@@ -124,7 +117,7 @@ def get_article(
     if art.get("paired_id"):
         paired = conn.execute(
             "SELECT id, language, title, published_date FROM articles WHERE id = ?",
-            (art["paired_id"],),
+            (art["paired_id"],)
         ).fetchone()
         art["paired"] = dict(paired) if paired else None
     return art

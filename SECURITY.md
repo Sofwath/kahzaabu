@@ -17,9 +17,15 @@ Please **do not** open public GitHub issues for security reports. We follow a
 
 Kahzaabu is a fact-checking pipeline. The security-sensitive surfaces are:
 
+**Posture note**: kahzaabu has no in-app authentication. The web UI is
+read-only public; operator actions (publish, pipeline runs, backups,
+restores) happen via the `kahzaabu` CLI on the operator's filesystem
+and inherit OS-level permissions. There are no passwords, sessions,
+or admin users anywhere in the codebase.
+
 | Surface | Concern |
 |---|---|
-| `kahzaabu/web/*` — FastAPI app | XSS, CSRF, auth bypass, SQL injection, rate-limit bypass on `/api/ask` |
+| `kahzaabu/web/*` — FastAPI app | XSS, SQL injection, rate-limit bypass on `/api/ask`. (No auth surface to bypass — none exists.) |
 | `kahzaabu/extractor.py`, `curator.py`, `decomposer.py`, `verifier.py`, `qna*.py` | Prompt injection that exfiltrates corpus data, system-prompt leakage, jailbreak vectors |
 | `kahzaabu/claims_db.py` | SQL injection (we use parameterised queries everywhere — flag any deviation) |
 | `kahzaabu/scraper.py` | SSRF, request smuggling, scraper-side cache poisoning |

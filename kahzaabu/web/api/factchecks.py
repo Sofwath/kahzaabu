@@ -13,23 +13,13 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..db_dep import get_db
-from ..limits import PUBLIC_MODE
-from .auth import current_user
 
 router = APIRouter()
 
-
-def _public_filter(user: Optional[dict]) -> str:
-    """Returns extra WHERE clause for public-mode anonymous viewers."""
-    if PUBLIC_MODE and not user:
-        return " AND published = 1"
-    return ""
-
 ALLOWED_CATEGORIES = (
     "LIE", "CONTRADICTION", "MISLEADING", "SHIFTING NUMBERS",
-    "CREDIT THEFT", "BROKEN DEADLINE",
+    "CREDIT THEFT", "BROKEN DEADLINE"
 )
-
 
 @router.get("/factchecks")
 def list_factchecks(
@@ -40,15 +30,14 @@ def list_factchecks(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     q: Optional[str] = None,
-    user: Optional[dict] = Depends(current_user),
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: sqlite3.Connection = Depends(get_db)
 ) -> dict:
     sql = """SELECT id, category, claim_date, claim, what_actually_happened, type,
                     topic, source, source_article_ids, evidence_quotes, created_at,
                     published, public_summary,
                     verdict_label, truth_score, truth_score_label,
                     contradiction_pair_id, speaker
-             FROM fact_checks WHERE 1=1""" + _public_filter(user)
+             FROM fact_checks WHERE 1=1""" + " AND published = 1"
     params: list = []
     if category:
         sql += " AND category = ?"
@@ -84,24 +73,22 @@ def list_factchecks(
         # attach evidence count (cheap)
         d["n_evidence"] = conn.execute(
             "SELECT COUNT(*) FROM fact_check_evidence WHERE fact_check_id = ?",
-            (d["id"],),
+            (d["id"],)
         ).fetchone()[0]
         items.append(d)
     return {"total": total, "limit": limit, "offset": offset, "items": items}
 
-
 @router.get("/factcheck/{fc_id}")
 def get_factcheck(
     fc_id: int,
-    user: Optional[dict] = Depends(current_user),
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: sqlite3.Connection = Depends(get_db)
 ) -> dict:
     sql = """SELECT id, category, claim_date, claim, what_actually_happened, type,
                     topic, source, source_article_ids, evidence_quotes, confidence,
                     created_at, published, public_summary,
                     verdict_label, truth_score, truth_score_label, reasoning_chain,
                     contradiction_pair_id, speaker
-             FROM fact_checks WHERE id = ?""" + _public_filter(user)
+             FROM fact_checks WHERE id = ?""" + " AND published = 1"
     r = conn.execute(sql, (fc_id,)).fetchone()
     if not r:
         raise HTTPException(404, f"fact_check {fc_id} not found")
@@ -121,7 +108,7 @@ def get_factcheck(
     ev = conn.execute(
         """SELECT id, url, title, snippet, relevance, summary, retrieved_at
            FROM fact_check_evidence WHERE fact_check_id = ? ORDER BY id""",
-        (fc_id,),
+        (fc_id,)
     ).fetchall()
     d["web_evidence"] = [dict(e) for e in ev]
     # source articles
@@ -130,7 +117,7 @@ def get_factcheck(
         rows = conn.execute(
             f"SELECT id, title, published_date, category FROM articles "
             f"WHERE id IN ({placeholders}) AND language='EN'",
-            d["source_article_ids"],
+            d["source_article_ids"]
         ).fetchall()
         d["source_articles"] = [dict(x) for x in rows]
     else:

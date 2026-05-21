@@ -141,5 +141,76 @@ class DBNotCommittedTests(unittest.TestCase):
                 "Add to .gitignore.")
 
 
+class NoAuthSurfaceTests(unittest.TestCase):
+    """Kahzaabu has no in-app authentication: no passwords, no
+    sessions, no admin users, no /login or /admin routes. This test
+    pins that posture so a future PR doesn't silently re-introduce
+    any of it."""
+
+    BANNED_MODULES = [
+        Path("kahzaabu/auth.py"),
+        Path("kahzaabu/web/api/auth.py"),
+        Path("kahzaabu/web/api/admin.py"),
+    ]
+    BANNED_HTML = [
+        Path("kahzaabu/web/static/login.html"),
+        Path("kahzaabu/web/static/admin_queue.html"),
+        Path("kahzaabu/web/static/admin_run.html"),
+    ]
+    BANNED_DEPS = ("passlib", "itsdangerous", "bcrypt")
+    BANNED_IDENTIFIERS = ("hash_password", "verify_password",
+                           "sign_session", "verify_session",
+                           "current_user", "require_admin",
+                           "hash_password", "create_user")
+
+    def test_auth_modules_absent(self):
+        for mod in self.BANNED_MODULES:
+            self.assertFalse(
+                (ROOT / mod).exists(),
+                f"Banned auth module reappeared: {mod}. "
+                "Kahzaabu has no in-app auth — see SECURITY.md.")
+
+    def test_auth_html_pages_absent(self):
+        for page in self.BANNED_HTML:
+            self.assertFalse(
+                (ROOT / page).exists(),
+                f"Banned admin/login HTML page reappeared: {page}.")
+
+    def test_pyproject_does_not_declare_auth_deps(self):
+        text = (ROOT / "pyproject.toml").read_text()
+        for dep in self.BANNED_DEPS:
+            # Allow the dep name in a comment but not as a declared
+            # dependency line ("dep>=x.y").
+            for ln in text.splitlines():
+                stripped = ln.lstrip()
+                if stripped.startswith("#"): continue
+                if re.search(rf'["\']?{re.escape(dep)}[\[><=]', ln):
+                    self.fail(
+                        f"Banned auth dep `{dep}` declared in "
+                        f"pyproject.toml: {ln.strip()}")
+
+    def test_no_login_or_admin_routes_in_active_code(self):
+        """Scan active server code for the URL prefixes the removed
+        admin/login routes used. Allows references in tests + comments
+        + the explanatory docstring in app.py."""
+        offenders = []
+        for p in (ROOT / "kahzaabu" / "web").rglob("*.py"):
+            text = p.read_text()
+            for ln_no, ln in enumerate(text.splitlines(), 1):
+                stripped = ln.lstrip()
+                if stripped.startswith("#"): continue
+                # Only flag actual route declarations / handler bodies.
+                if (("/admin/queue" in ln or "/admin/run" in ln)
+                        and "@app.get" in ln):
+                    offenders.append(f"{p.name}:{ln_no}: {ln.strip()}")
+                if ('@app.get("/login' in ln
+                        or "/api/login" in ln
+                        or "/api/admin" in ln) and "@app.get" in ln:
+                    offenders.append(f"{p.name}:{ln_no}: {ln.strip()}")
+        self.assertEqual(offenders, [],
+            "Login/admin route reappeared. Posture is read-only "
+            "public; operator actions go via the CLI.")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

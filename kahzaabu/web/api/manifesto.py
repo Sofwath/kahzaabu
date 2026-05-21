@@ -9,15 +9,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..db_dep import get_db
-from ..limits import PUBLIC_MODE
-from .auth import current_user
 
 router = APIRouter()
-
-
-def _gated(user: Optional[dict]) -> bool:
-    return PUBLIC_MODE and not user
-
 
 @router.get("/manifesto")
 def list_promises(
@@ -26,16 +19,14 @@ def list_promises(
     status: Optional[str] = None,
     category: Optional[str] = None,
     q: Optional[str] = None,
-    user: Optional[dict] = Depends(current_user),
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: sqlite3.Connection = Depends(get_db)
 ) -> dict:
     sql = """SELECT id, section, promise_text_dv, promise_text_en, category, subject,
                     target_value, deadline_stated, delivery_status,
                     delivery_evidence_json, published
              FROM manifesto_promises WHERE 1=1"""
     params: list = []
-    if _gated(user):
-        sql += " AND published = 1"
+    sql += " AND published = 1"
     if status:
         sql += " AND delivery_status = ?"
         params.append(status)
@@ -70,31 +61,25 @@ def list_promises(
     # Status breakdown
     by_status = {}
     for r in conn.execute(
-        ("SELECT delivery_status, COUNT(*) FROM manifesto_promises "
-         + (" WHERE published = 1" if _gated(user) else "")
-         + " GROUP BY delivery_status")
+        "SELECT delivery_status, COUNT(*) FROM manifesto_promises "
+        "WHERE published = 1 GROUP BY delivery_status"
     ).fetchall():
         by_status[r[0]] = r[1]
     by_cat = {}
     for r in conn.execute(
-        ("SELECT category, COUNT(*) FROM manifesto_promises "
-         + (" WHERE published = 1" if _gated(user) else "")
-         + " GROUP BY category")
+        "SELECT category, COUNT(*) FROM manifesto_promises "
+        "WHERE published = 1 GROUP BY category"
     ).fetchall():
         by_cat[r[0]] = r[1]
     return {"total": total, "limit": limit, "offset": offset, "items": items,
             "by_status": by_status, "by_category": by_cat}
 
-
 @router.get("/manifesto/{promise_id}")
 def get_promise(
     promise_id: int,
-    user: Optional[dict] = Depends(current_user),
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: sqlite3.Connection = Depends(get_db)
 ) -> dict:
-    sql = "SELECT * FROM manifesto_promises WHERE id = ?"
-    if _gated(user):
-        sql += " AND published = 1"
+    sql = "SELECT * FROM manifesto_promises WHERE id = ? AND published = 1"
     r = conn.execute(sql, (promise_id,)).fetchone()
     if not r:
         raise HTTPException(404, f"promise {promise_id} not found")
@@ -112,7 +97,7 @@ def get_promise(
         rows = conn.execute(
             f"SELECT id, title, published_date, category FROM articles "
             f"WHERE id IN ({placeholders}) AND language='EN'",
-            art_ids,
+            art_ids
         ).fetchall()
         d["linked_articles"] = [dict(x) for x in rows]
     else:
@@ -122,7 +107,7 @@ def get_promise(
         rows = conn.execute(
             f"SELECT id, category, claim_date, claim FROM fact_checks "
             f"WHERE id IN ({placeholders})",
-            fc_ids,
+            fc_ids
         ).fetchall()
         d["linked_fact_checks"] = [dict(x) for x in rows]
     else:

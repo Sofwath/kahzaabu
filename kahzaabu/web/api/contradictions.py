@@ -22,21 +22,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..db_dep import get_db
-from ..limits import PUBLIC_MODE
-from .auth import current_user
 
 router = APIRouter()
 
 VALID_VERDICTS = {"CONTRADICTION", "EVOLVING_POSITION",
                   "CONTEXT_CHANGED", "NOT_CONTRADICTORY"}
-
-
-def _public_filter(user: Optional[dict]) -> str:
-    """Anonymous viewers in public mode see only published pairs."""
-    if PUBLIC_MODE and not user:
-        return " AND published = 1"
-    return ""
-
 
 @router.get("/contradictions")
 def list_contradictions(
@@ -44,15 +34,17 @@ def list_contradictions(
     subject: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
-    user: Optional[dict] = Depends(current_user),
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: sqlite3.Connection = Depends(get_db)
 ) -> dict:
     if verdict and verdict not in VALID_VERDICTS:
         raise HTTPException(400, f"invalid verdict; valid: {sorted(VALID_VERDICTS)}")
 
+    # No publish-workflow gating: pairs are operator-curated automated
+    # output. The legacy `published` column lingers in the SELECT for
+    # backwards-compat with any client still reading the field.
     sql = ("SELECT cp.id, cp.claim_a_id, cp.claim_b_id, cp.subject, "
            "       cp.verdict, cp.confidence, cp.published, cp.detected_at "
-           "FROM contradiction_pairs cp WHERE 1=1" + _public_filter(user))
+           "FROM contradiction_pairs cp WHERE 1=1")
     params: list = []
     if verdict:
         sql += " AND cp.verdict = ?"
@@ -76,13 +68,13 @@ def list_contradictions(
             """SELECT c.id, c.quote, a.published_date, a.title
                FROM claims c
                JOIN articles a ON a.id = c.article_id AND a.language = c.language
-               WHERE c.id = ?""", (d["claim_a_id"],),
+               WHERE c.id = ?""", (d["claim_a_id"],)
         ).fetchone()
         cb = conn.execute(
             """SELECT c.id, c.quote, a.published_date, a.title
                FROM claims c
                JOIN articles a ON a.id = c.article_id AND a.language = c.language
-               WHERE c.id = ?""", (d["claim_b_id"],),
+               WHERE c.id = ?""", (d["claim_b_id"],)
         ).fetchone()
         if ca:
             d["claim_a"] = dict(ca)
@@ -99,15 +91,16 @@ def list_contradictions(
         "items": items,
     }
 
-
 @router.get("/contradictions/{contradiction_id}")
 def get_contradiction(
     contradiction_id: int,
-    user: Optional[dict] = Depends(current_user),
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: sqlite3.Connection = Depends(get_db)
 ) -> dict:
-    sql = ("SELECT * FROM contradiction_pairs WHERE id = ?"
-           + _public_filter(user))
+    # Contradiction pairs are operator-output from the contradictions
+    # stage; they don't go through a publish workflow. The legacy
+    # `published` column from the removed admin UI is no longer
+    # consulted here.
+    sql = "SELECT * FROM contradiction_pairs WHERE id = ?"
     r = conn.execute(sql, (contradiction_id,)).fetchone()
     if r is None:
         raise HTTPException(404, f"contradiction {contradiction_id} not found")
@@ -126,7 +119,7 @@ def get_contradiction(
                       a.reference AS article_url
                FROM claims c
                JOIN articles a ON a.id = c.article_id AND a.language = c.language
-               WHERE c.id = ?""", (cid,),
+               WHERE c.id = ?""", (cid,)
         ).fetchone()
         if row:
             d[side] = dict(row)

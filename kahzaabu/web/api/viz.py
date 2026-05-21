@@ -7,20 +7,12 @@ anonymous viewers (admins/editors see everything).
 from __future__ import annotations
 
 import sqlite3
-from typing import Optional
 
 from fastapi import APIRouter, Depends
 
 from ..db_dep import get_db
-from ..limits import PUBLIC_MODE
-from .auth import current_user
 
 router = APIRouter()
-
-
-def _gated(user: Optional[dict]) -> bool:
-    return PUBLIC_MODE and not user
-
 
 @router.get("/claims-per-month")
 def claims_per_month(conn: sqlite3.Connection = Depends(get_db)) -> dict:
@@ -36,27 +28,25 @@ def claims_per_month(conn: sqlite3.Connection = Depends(get_db)) -> dict:
         "values": [r["n"] for r in rows],
     }
 
-
 @router.get("/factchecks-by-category")
-def fc_by_category(user: Optional[dict] = Depends(current_user),
+def fc_by_category(
                    conn: sqlite3.Connection = Depends(get_db)) -> dict:
-    where = " WHERE published = 1" if _gated(user) else ""
+    where = " WHERE published = 1"
     rows = conn.execute(
         f"SELECT category, COUNT(*) AS n FROM fact_checks{where} "
         "GROUP BY category ORDER BY n DESC"
     ).fetchall()
     return {"labels": [r["category"] for r in rows], "values": [r["n"] for r in rows]}
 
-
 # ADR 0005 — Truth-O-Meter ladder distribution.
 # Returns the PolitiFact 6-rung ladder in its canonical order, even
 # for rungs with zero counts. The dashboard renders this as a stack.
 @router.get("/truth-score-ladder")
-def truth_score_ladder(user: Optional[dict] = Depends(current_user),
+def truth_score_ladder(
                         conn: sqlite3.Connection = Depends(get_db)) -> dict:
     LADDER = ["TRUE", "MOSTLY_TRUE", "HALF_TRUE",
               "MOSTLY_FALSE", "FALSE", "PANTS_ON_FIRE"]
-    where = " WHERE published = 1" if _gated(user) else ""
+    where = " WHERE published = 1"
     rows = dict(conn.execute(
         f"SELECT truth_score_label, COUNT(*) FROM fact_checks{where} "
         "GROUP BY truth_score_label"
@@ -67,11 +57,10 @@ def truth_score_ladder(user: Optional[dict] = Depends(current_user),
         "_NULL":  int(rows.get(None, 0) or 0),
     }
 
-
 @router.get("/factchecks-by-month")
-def fc_by_month(user: Optional[dict] = Depends(current_user),
+def fc_by_month(
                 conn: sqlite3.Connection = Depends(get_db)) -> dict:
-    pub = " AND published = 1" if _gated(user) else ""
+    pub = " AND published = 1"
     rows = conn.execute(
         f"""SELECT SUBSTR(claim_date,1,7) AS month,
                    SUM(CASE WHEN category='LIE' THEN 1 ELSE 0 END) AS lie,
@@ -96,18 +85,16 @@ def fc_by_month(user: Optional[dict] = Depends(current_user),
         },
     }
 
-
 @router.get("/topics")
-def topics(user: Optional[dict] = Depends(current_user),
+def topics(
            conn: sqlite3.Connection = Depends(get_db)) -> dict:
-    pub = "published = 1 AND " if _gated(user) else ""
+    pub = "published = 1 AND "
     rows = conn.execute(
         f"""SELECT topic, COUNT(*) AS n FROM fact_checks
             WHERE {pub}topic IS NOT NULL AND topic != ''
             GROUP BY topic ORDER BY n DESC LIMIT 15"""
     ).fetchall()
     return {"labels": [r["topic"] for r in rows], "values": [r["n"] for r in rows]}
-
 
 @router.get("/articles-per-month")
 def articles_per_month(conn: sqlite3.Connection = Depends(get_db)) -> dict:

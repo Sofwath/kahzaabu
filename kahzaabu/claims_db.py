@@ -1232,30 +1232,15 @@ def record_dv_pair(conn: sqlite3.Connection, *, en_article_id: int, dv_article_i
     conn.commit()
 
 
-# ---------- Phase 3: web_users + publish workflow ----------
-
-def create_user(conn: sqlite3.Connection, username: str, password_hash: str,
-                role: str = "admin") -> None:
-    conn.execute(
-        "INSERT INTO web_users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
-        (username, password_hash, role, now_iso()),
-    )
-    conn.commit()
-
-
-def get_user(conn: sqlite3.Connection, username: str) -> Optional[sqlite3.Row]:
-    return conn.execute(
-        "SELECT * FROM web_users WHERE username = ?", (username,),
-    ).fetchone()
-
-
-def update_user_password(conn: sqlite3.Connection, username: str, password_hash: str) -> int:
-    cur = conn.execute(
-        "UPDATE web_users SET password_hash = ? WHERE username = ?",
-        (password_hash, username),
-    )
-    conn.commit()
-    return cur.rowcount
+# ---------- Publish workflow (CLI-only; no web admin) ----------
+#
+# The legacy web_users table CREATE remains in CLAIMS_SCHEMA for
+# backwards-compat with existing DBs that already have it. No code
+# reads or writes the table anymore. `create_user` / `get_user` /
+# `update_user_password` were removed when the password-based admin
+# auth was deleted; operator actions now happen via this CLI on the
+# operator's filesystem, gated by OS permissions rather than an
+# in-app credential.
 
 
 def set_fact_check_published(conn: sqlite3.Connection, fc_id: int, *,

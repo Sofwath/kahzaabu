@@ -30,7 +30,7 @@ from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from .api import (admin, articles, ask, auth, claimreview, constitution,
+from .api import (articles, ask, claimreview, constitution,
                   contradictions, corrections, factchecks, freshness, inspect,
                   manifesto, reproducibility, stats, viz)
 from .limits import limiter
@@ -76,8 +76,10 @@ app.include_router(factchecks.router, prefix="/api", tags=["factchecks"])
 app.include_router(viz.router, prefix="/api/viz", tags=["viz"])
 app.include_router(ask.router, prefix="/api", tags=["ask"])
 app.include_router(inspect.router, prefix="/api", tags=["inspect"])
-app.include_router(auth.router, prefix="/api", tags=["auth"])
-app.include_router(admin.router, prefix="/api", tags=["admin"])
+# Authentication / admin routers removed by design — the web UI is
+# read-only public. Publishing, user creation, and pipeline triggers
+# happen via the `kahzaabu` CLI, which inherits the operator's filesystem
+# permissions. No web-side credentials exist anywhere in the system.
 app.include_router(corrections.router, prefix="/api", tags=["corrections"])
 app.include_router(manifesto.router, prefix="/api", tags=["manifesto"])
 app.include_router(freshness.router, prefix="/api", tags=["freshness"])
@@ -122,8 +124,6 @@ def robots():
     return PlainTextResponse(
         "User-agent: *\n"
         "Allow: /\n"
-        "Disallow: /admin\n"
-        "Disallow: /api/admin\n"
     )
 
 
@@ -198,22 +198,6 @@ def page_methodology():
 @app.get("/corrections", include_in_schema=False)
 def page_corrections():
     return FileResponse(STATIC_DIR / "corrections.html")
-
-
-@app.get("/login", include_in_schema=False)
-def page_login():
-    return FileResponse(STATIC_DIR / "login.html")
-
-
-@app.get("/admin", include_in_schema=False)
-@app.get("/admin/queue", include_in_schema=False)
-def page_admin_queue():
-    return FileResponse(STATIC_DIR / "admin_queue.html")
-
-
-@app.get("/admin/run", include_in_schema=False)
-def page_admin_run():
-    return FileResponse(STATIC_DIR / "admin_run.html")
 
 
 @app.get("/manifesto", include_in_schema=False)

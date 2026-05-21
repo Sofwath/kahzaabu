@@ -23,10 +23,8 @@ from pydantic import BaseModel, Field
 from ... import claims_db
 from ..db_dep import get_db
 from ..limits import ASK_DAILY_CAP_USD, ask_cache, limiter
-from .auth import current_user
 
 router = APIRouter()
-
 
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=500)
@@ -34,11 +32,9 @@ class AskRequest(BaseModel):
     enable_web: bool = True
     max_iterations: int = Field(default=5, ge=1, le=8)
 
-
 @router.post("/ask")
 @limiter.limit("10/minute")
 def ask(request: Request, req: AskRequest,
-        user: Optional[dict] = Depends(current_user),
         conn: sqlite3.Connection = Depends(get_db)) -> dict:
     if "ANTHROPIC_API_KEY" not in os.environ:
         raise HTTPException(503, "ANTHROPIC_API_KEY not configured on server")
@@ -50,7 +46,7 @@ def ask(request: Request, req: AskRequest,
             raise HTTPException(
                 503,
                 f"daily question budget exhausted (${daily:.2f} / ${ASK_DAILY_CAP_USD:.2f}). "
-                "Try again tomorrow, or log in as admin to bypass.",
+                "Try again tomorrow, or log in as admin to bypass."
             )
 
     # Cache only for first-turn questions (no session_id). Following turns vary.
@@ -74,7 +70,7 @@ def ask(request: Request, req: AskRequest,
             session_id=req.session_id,
             max_iterations=req.max_iterations,
             enable_web=req.enable_web,
-            daily_budget_usd=ASK_DAILY_CAP_USD if not user else 50.0,
+            daily_budget_usd=ASK_DAILY_CAP_USD if not user else 50.0
         )
     except Exception as e:
         raise HTTPException(500, f"ask failed: {e}")

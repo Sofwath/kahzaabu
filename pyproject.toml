@@ -20,12 +20,12 @@ dependencies = [
 web = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.27",
-    "slowapi>=0.1.9",         # rate limiting on /api/ask
-    "passlib[bcrypt]>=1.7",   # admin auth (bcrypt backend)
-    "itsdangerous>=2.0",      # session-cookie signing
+    "slowapi>=0.1.9",           # rate limiting on /api/ask
     "python-multipart>=0.0.9",  # FastAPI form-data support
     "pydantic>=2.0",
     "prometheus-client>=0.20",  # /metrics endpoint (ADR 0010)
+    # passlib + itsdangerous removed — no password-based admin auth.
+    # Web UI is read-only public; operator actions run via the CLI.
 ]
 tui = [
     "rich>=13.0",
