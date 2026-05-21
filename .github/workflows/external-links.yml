@@ -1,0 +1,65 @@
+name: external-links
+# Probes the /laws page's deep-link tiles against the live AGO host
+# (old.mvlaw.gov.mv) and opens an issue if any tile 404s.
+#
+# Why a separate workflow (not part of test.yml):
+#   The main test workflow runs on every push/PR and must be flake-
+#   free. This one talks to a third-party host that can be transiently
+#   down; flake-tolerant ground truth belongs here.
+#
+# Schedule: weekly (Mondays 02:00 UTC). Manual run via workflow_dispatch.
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run link-rot probe
+        id: probe
+        run: |
+          # Don't `set -e` here — we want to capture the exit code
+          # ourselves and decide whether to file an issue.
+          ./scripts/check-external-links.sh > probe.log 2>&1 \
+              && echo "status=ok"    >> "$GITHUB_OUTPUT" \
+              || echo "status=broken" >> "$GITHUB_OUTPUT"
+          cat probe.log
+
+      - name: File issue on broken tiles
+        if: steps.probe.outputs.status == 'broken'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('probe.log', 'utf8');
+            const today = new Date().toISOString().slice(0, 10);
+            // De-dup: don't open a new issue if one is already open with
+            // the same prefix.
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'link-rot',
+            });
+            const title = `link-rot: /laws tile(s) returning non-OK`;
+            if (existing.data.some(i => i.title === title)) {
+              console.log("issue already open; skipping");
+              return;
+            }
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body: "Detected " + today + ".\n\n" +
+                    "Update SECTIONS in `kahzaabu/web/static/laws.html` " +
+                    "(see `CANONICAL_HOST` registry block).\n\n" +
+                    "Full probe output:\n\n```\n" + body + "\n```",
+              labels: ['link-rot', 'maintenance'],
+            });
