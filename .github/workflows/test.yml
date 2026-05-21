@@ -32,29 +32,33 @@ jobs:
           ln -sf "$(pwd)/hermes-plugin" hermes-stub/plugins/kahzaabu
           touch hermes-stub/plugins/__init__.py
 
-      - name: Create empty DB fixture (the drift test needs it)
+      - name: Create empty DB fixture + import constitution
         run: |
-          # The schema-drift test reads data/kahzaabu.db. Create a minimal
-          # DB with the full schema so the test has something to inspect.
-          # claims_db.init_claims_schema() handles creation + migrations.
+          # The schema-drift test reads data/kahzaabu.db. Create a DB with
+          # the full schema (init_claims_schema() includes constitution),
+          # then import the constitution so any lookup-based tests that
+          # use the file-backed DB work too.
           . .venv/bin/activate
           mkdir -p data
           python -c "
           import sqlite3
           from kahzaabu import claims_db, db
+          from kahzaabu.constitution import import_constitution
           from pathlib import Path
           p = Path('data/kahzaabu.db')
           conn = sqlite3.connect(str(p))
           db.init_db(conn)
           claims_db.init_claims_schema(conn)
+          n = import_constitution(conn)
           conn.close()
-          print(f'Created {p} ({p.stat().st_size} bytes)')
+          print(f'Created {p} ({p.stat().st_size} bytes), imported {n} articles')
           "
 
       - name: Run unit tests
         run: |
           . .venv/bin/activate
-          export PYTHONPATH="$(pwd)/hermes-stub:$PYTHONPATH"
+          # Safe append: PYTHONPATH may be unset in CI runners
+          export PYTHONPATH="$(pwd)/hermes-stub${PYTHONPATH:+:$PYTHONPATH}"
           python -m unittest discover tests/ -v
 
       - name: Verify no stale test_system.py references

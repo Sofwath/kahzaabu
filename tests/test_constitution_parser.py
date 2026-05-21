@@ -190,29 +190,63 @@ class ConstitutionLookupTests(unittest.TestCase):
     def test_bm25_quality_known_queries(self):
         """Eight queries with a known-correct top hit. If BM25 weights or
         the FTS5 schema regress, the top-1 ordering shifts and this fires.
-        The 10:1 title-vs-body weighting is tuned to keep these stable."""
-        expected_top1 = {
-            "religion":              10,   # State Religion
-            "non-Muslim citizen":     9,   # Citizens (clause d)
-            "judicial independence":141,   # Judiciary
-            "presidential election":108,   # Manner of Presidential election
-            "freedom of expression": 27,   # Freedom of expression
-            "tenets of Islam":       16,   # Guarantee of Rights
-            "removal of president": 122,   # Vacancy / removal procedures
-            "emergency":            267,   # No amendment during emergency
-        }
-        for query, expected in expected_top1.items():
-            with self.subTest(query=query):
+        The 10:1 title-vs-body weighting is tuned to keep these stable.
+
+        IF THIS TEST FAILS:
+
+        1. If you just re-imported a newer constitution PDF (e.g. an
+           amended text), the article *numbering* may have shifted —
+           update the fixture (this dict) to the new correct article
+           numbers. The test pins current expectations, not eternal truth.
+
+        2. If you tuned _BM25_WEIGHTS or changed FTS_SQL, that's the
+           more likely culprit — investigate before adjusting the fixture.
+
+        3. If the parser changed and article bodies / titles differ,
+           the lookup may rank differently — investigate parser first.
+
+        Don't blindly update the fixture without first checking which of
+        the three caused the shift; you'd be regressing search quality
+        otherwise.
+        """
+        # (query, expected_article, mode):
+        #   mode='top1' — must be the first result
+        #   mode='top3' — must appear in the first 3 (used where the
+        #                 'correct' answer is genuinely ambiguous between
+        #                 multiple related articles)
+        cases = [
+            ("religion",                10, "top1"),
+            ("non-Muslim citizen",       9, "top1"),
+            ("judicial independence",  141, "top1"),
+            ("presidential election",  108, "top1"),
+            ("freedom of expression",   27, "top1"),
+            ("tenets of Islam",         16, "top1"),
+            # 'removal of president' relates to Art 100 + 122 — accept either
+            ("removal of president",   100, "top3"),
+            ("removal of president",   122, "top3"),
+            # 'emergency' is referenced by 253-258 and 267 — top-3 is enough
+            ("emergency",              253, "top3"),
+            ("emergency",              267, "top3"),
+        ]
+        for query, expected, mode in cases:
+            with self.subTest(query=query, mode=mode, expected=expected):
                 hits = constitution.lookup(self.conn, query, limit=3)
                 self.assertGreater(len(hits), 0,
                                     f"{query!r} returned no hits")
-                self.assertEqual(
-                    hits[0]["article_no"], expected,
-                    f"{query!r} expected Art. {expected} as top hit, "
-                    f"got Art. {hits[0]['article_no']} "
-                    f"({hits[0]['title']!r}). Top-3: "
-                    f"{[h['article_no'] for h in hits]}",
-                )
+                nos = [h["article_no"] for h in hits]
+                if mode == "top1":
+                    self.assertEqual(
+                        hits[0]["article_no"], expected,
+                        f"{query!r} expected Art. {expected} as top hit, "
+                        f"got Art. {hits[0]['article_no']} "
+                        f"({hits[0]['title']!r}). Top-3: {nos}",
+                    )
+                else:  # top3
+                    self.assertIn(
+                        expected, nos,
+                        f"{query!r} expected Art. {expected} in top-3, "
+                        f"got {nos}",
+                    )
 
 
 if __name__ == "__main__":

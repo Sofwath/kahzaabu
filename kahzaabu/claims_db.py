@@ -274,6 +274,23 @@ PUBLISH_MIGRATIONS = [
 
 
 def init_claims_schema(conn: sqlite3.Connection) -> None:
+    """Bootstrap the full kahzaabu schema on `conn`. Idempotent.
+
+    Despite the historic name, this is the canonical schema-init entrypoint
+    — it covers fact_checks, fact_check_evidence, qna_sessions,
+    manifesto_promises, manifesto_runs, scrape_runs, the *_runs audit
+    tables for each pipeline stage, web_users / corrections, plus the
+    article_fact_cards + dv_en_inconsistencies side tables. As of
+    6394848 it also calls `kahzaabu.constitution.init_constitution_schema`
+    so the `constitution_articles` table (and FTS5 index when available)
+    exists everywhere a DB is first touched.
+
+    If you want a schema-init that skips the constitution piece (e.g. a
+    minimal worker), call the smaller sub-functions directly instead.
+
+    Safe to call repeatedly: every CREATE uses IF NOT EXISTS, every ALTER
+    is wrapped in try/except OperationalError.
+    """
     conn.executescript(CLAIMS_SCHEMA)
     # Apply phase-3 ALTERs idempotently
     for sql in PUBLISH_MIGRATIONS:
@@ -282,14 +299,11 @@ def init_claims_schema(conn: sqlite3.Connection) -> None:
         except sqlite3.OperationalError:
             pass  # column/index already exists
     conn.commit()
-    # Ensure the constitution_articles table (+ FTS5 index if available)
-    # exists. Bootstrap is idempotent; empty table is fine. Lazy import to
-    # avoid a top-of-module cycle with kahzaabu.constitution.
+    # Constitution piece — lazy import to avoid a top-of-module cycle.
     try:
         from kahzaabu.constitution import init_constitution_schema
         init_constitution_schema(conn)
     except Exception as e:
-        # Constitution module is optional — log and continue.
         import logging
         logging.getLogger(__name__).debug(
             "constitution schema init skipped: %s", e)

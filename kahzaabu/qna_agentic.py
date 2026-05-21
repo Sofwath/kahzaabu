@@ -22,7 +22,10 @@ import uuid
 from datetime import date
 from typing import Any, Optional
 
-import anthropic
+# `anthropic` is imported lazily inside ask_agentic() — it's only needed
+# when actually making LLM calls, not at module import time. This lets
+# offline unit tests (signature checks, branch-condition tests) load the
+# module without the anthropic SDK being installed.
 
 from . import claims_db
 
@@ -517,6 +520,7 @@ def ask_agentic(conn: sqlite3.Connection, question: str, *,
     messages.append({"role": "user", "content": question})
     messages = _trim_messages(messages)
 
+    import anthropic  # lazy — see top-of-module comment
     client = anthropic.Anthropic()
     tools = _tool_specs(include_web=enable_web)
 
