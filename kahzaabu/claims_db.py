@@ -291,6 +291,54 @@ V2_SLICE1_MIGRATIONS = [
     "CREATE INDEX IF NOT EXISTS idx_claims_checkable  ON claims(is_checkable)",
 ]
 
+# V2 Slice 2 — Q&A decomposition (ADR 0001, AVeriTeC-shaped).
+#   Each checkable claim decomposes into 2-5 sub-questions a researcher
+#   would need answered to verify it. Answers are filled later (Slice 5).
+#   answer_type follows the AVeriTeC enum: Abstractive | Extractive |
+#   Boolean | Unanswerable. source_medium tracks where the answer came
+#   from (archive | web_search | constitution | manifesto).
+V2_SLICE2_SCHEMA = """
+CREATE TABLE IF NOT EXISTS claim_questions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id INTEGER NOT NULL,
+    question TEXT NOT NULL,
+    answer TEXT,
+    answer_type TEXT,
+    source_url TEXT,
+    source_medium TEXT,
+    confidence REAL,
+    decomposition_run_id INTEGER,
+    answered_at TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (claim_id) REFERENCES claims(id)
+);
+CREATE INDEX IF NOT EXISTS idx_cq_claim       ON claim_questions(claim_id);
+CREATE INDEX IF NOT EXISTS idx_cq_unanswered  ON claim_questions(claim_id)
+    WHERE answer IS NULL;
+
+CREATE TABLE IF NOT EXISTS decomposition_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    claims_processed INTEGER DEFAULT 0,
+    questions_generated INTEGER DEFAULT 0,
+    errors INTEGER DEFAULT 0,
+    tokens_in INTEGER DEFAULT 0,
+    tokens_out INTEGER DEFAULT 0,
+    cost_usd REAL DEFAULT 0,
+    model TEXT,
+    status TEXT DEFAULT 'running',
+    error_message TEXT
+);
+"""
+
+VALID_ANSWER_TYPES = frozenset({
+    "Abstractive", "Extractive", "Boolean", "Unanswerable",
+})
+VALID_SOURCE_MEDIUMS = frozenset({
+    "archive", "web_search", "constitution", "manifesto",
+})
+
 
 def init_claims_schema(conn: sqlite3.Connection) -> None:
     """Bootstrap the full kahzaabu schema on `conn`. Idempotent.
@@ -311,6 +359,7 @@ def init_claims_schema(conn: sqlite3.Connection) -> None:
     is wrapped in try/except OperationalError.
     """
     conn.executescript(CLAIMS_SCHEMA)
+    conn.executescript(V2_SLICE2_SCHEMA)
     # Apply phase-3 ALTERs idempotently
     for sql in PUBLISH_MIGRATIONS + V2_SLICE1_MIGRATIONS:
         try:
@@ -422,6 +471,102 @@ def article_has_claims(conn: sqlite3.Connection, article_id: int, language: str)
         (article_id, language),
     ).fetchone()
     return r is not None
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# V2 Slice 2 — Q&A decomposition CRUD
+# ──────────────────────────────────────────────────────────────────────────
+
+def start_decomposition_run(conn: sqlite3.Connection, model: str) -> int:
+    cur = conn.execute(
+        "INSERT INTO decomposition_runs (started_at, model) VALUES (?, ?)",
+        (now_iso(), model),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def finish_decomposition_run(conn: sqlite3.Connection, run_id: int, *,
+                              claims_processed: int, questions_generated: int,
+                              errors: int, tokens_in: int, tokens_out: int,
+                              cost_usd: float,
+                              status: str = "completed",
+                              error_message: Optional[str] = None) -> None:
+    conn.execute(
+        """UPDATE decomposition_runs SET finished_at=?, claims_processed=?,
+           questions_generated=?, errors=?, tokens_in=?, tokens_out=?,
+           cost_usd=?, status=?, error_message=? WHERE id=?""",
+        (now_iso(), claims_processed, questions_generated, errors,
+         tokens_in, tokens_out, cost_usd, status, error_message, run_id),
+    )
+    conn.commit()
+
+
+def insert_claim_questions(conn: sqlite3.Connection, run_id: int,
+                            claim_id: int, questions: list[dict]) -> int:
+    """Persist decomposed sub-questions for a claim. Each `questions`
+    item must have at minimum `question` (string). All other fields are
+    optional and will be NULL until verification fills them."""
+    now = now_iso()
+    rows = []
+    for q in questions:
+        if not q.get("question"):
+            continue
+        at = q.get("answer_type")
+        if at is not None and at not in VALID_ANSWER_TYPES:
+            at = None
+        sm = q.get("source_medium")
+        if sm is not None and sm not in VALID_SOURCE_MEDIUMS:
+            sm = None
+        rows.append((
+            claim_id, q["question"], q.get("answer"), at,
+            q.get("source_url"), sm, q.get("confidence"),
+            run_id, q.get("answered_at"), now,
+        ))
+    if not rows:
+        return 0
+    conn.executemany(
+        """INSERT INTO claim_questions
+           (claim_id, question, answer, answer_type, source_url,
+            source_medium, confidence, decomposition_run_id,
+            answered_at, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        rows,
+    )
+    conn.commit()
+    return len(rows)
+
+
+def claims_missing_decomposition(conn: sqlite3.Connection, *,
+                                  language: str = "EN",
+                                  is_checkable: Optional[int] = None,
+                                  limit: Optional[int] = None
+                                  ) -> list[sqlite3.Row]:
+    """Claims that have no claim_questions row yet. Filter to checkable
+    only when desired (NULL is_checkable means 'not yet enriched' — we
+    still decompose them since legacy claims pre-date the enrichment
+    pass)."""
+    sql = """
+        SELECT c.id, c.article_id, c.language, c.type, c.subject,
+               c.value, c.deadline, c.quote, c.polarity,
+               c.subject_normalized, c.is_checkable,
+               a.title, a.published_date, a.category
+        FROM claims c
+        JOIN articles a ON a.id = c.article_id AND a.language = c.language
+        LEFT JOIN claim_questions cq ON cq.claim_id = c.id
+        WHERE c.language = ?
+          AND cq.id IS NULL
+          AND c.type IS NOT NULL
+          AND c.type != 'no_specific_claims'
+    """
+    params: list = [language]
+    if is_checkable is not None:
+        sql += " AND (c.is_checkable IS NULL OR c.is_checkable = ?)"
+        params.append(is_checkable)
+    sql += " GROUP BY c.id ORDER BY c.id"
+    if limit:
+        sql += f" LIMIT {int(limit)}"
+    return list(conn.execute(sql, params))
 
 
 def articles_missing_claims(conn: sqlite3.Connection, *, category_in: tuple[str, ...] = ("press_release", "speech", "vp_speech"),

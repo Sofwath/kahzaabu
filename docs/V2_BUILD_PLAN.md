@@ -17,8 +17,8 @@ Each slice is complete + tested before the next starts. Discipline:
 | Slice | Title | Status | ADR(s) | Notes |
 |---|---|---|---|---|
 | 0 | Bootstrap: ADRs + build plan + ARCHITECTURE skeleton | ✅ done (95fd8c3) | 0001-0006 | docs-only |
-| 1 | Claims enrichment (polarity / subject / is_checkable) | 🟢 in progress | 0002 | DB + extractor + tests |
-| 2 | Q&A decomposition + backfill | ⚪ pending | 0001 | new claim_questions table; ~$200 backfill |
+| 1 | Claims enrichment (polarity / subject / is_checkable) | ✅ done (2e8c81d) | 0002 | DB + extractor + tests |
+| 2 | Q&A decomposition + backfill | 🟢 code+tests in; backfill paused for approval | 0001 | claim_questions + decomposition_runs tables; dry-run: 20 claims → 76 questions @ $0.04 (extrapolates to ≈$18 for 9,000 — Haiku 4.5, not Sonnet) |
 | 3 | Claim matching (canonical_claim_id, embeddings + entity) | ⚪ pending | 0003 | new claim_embeddings table |
 | 4 | Contradiction finder (the headline feature) | ⚪ pending | 0004 | new contradiction_pairs table + pipeline stage |
 | 5 | AVeriTeC verdict + Truth-O-Meter + RAGAR reasoning_chain | ⚪ pending | 0005 | enrich fact_checks; derivation function |

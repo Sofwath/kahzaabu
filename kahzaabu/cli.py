@@ -144,6 +144,44 @@ def extract(ctx, budget, concurrency, limit):
 
 
 @main.command()
+@click.option("--budget", default=1.0, type=float,
+               help="LLM budget cap in USD for this run")
+@click.option("--limit", default=0, type=int,
+               help="Cap to N claims (use for dry-runs before full backfill)")
+@click.option("--concurrency", default=6, type=int)
+@click.pass_context
+def decompose(ctx, budget, limit, concurrency):
+    """V2 — decompose each claim into AVeriTeC-style sub-questions.
+
+    Reads claims that don't yet have claim_questions rows and generates
+    2-5 verification questions per claim. Answers are filled later by
+    the verify stage. Idempotent: re-running picks up only unprocessed
+    claims.
+
+    Dry-run a small sample first:  kahzaabu decompose --limit 20 --budget 0.50
+    Full backfill (~9,000 claims):   kahzaabu decompose --budget 250
+    """
+    from .decomposer import run_decomposition
+    from . import claims_db
+
+    conn = ctx.obj["conn"]
+    claims_db.init_claims_schema(conn)
+
+    def _progress(done, total, t_in, t_out, cost, n_q):
+        if done % 5 == 0 or done == total:
+            click.echo(f"  {done}/{total}  claims; {n_q} questions; "
+                        f"cost=${cost:.3f}")
+
+    res = run_decomposition(
+        conn, limit=(limit or None), budget_usd=budget,
+        concurrency=concurrency, progress_cb=_progress,
+    )
+    click.echo(f"\nDecomposed: {res.get('claims_processed', 0)} claims, "
+                f"{res.get('questions_generated', 0)} questions, "
+                f"{res.get('errors', 0)} errors, ${res.get('cost_usd', 0):.3f}")
+
+
+@main.command()
 @click.option("--budget", default=1.0, type=float, help="Daily LLM budget cap in USD")
 @click.option("--days-back", default=7, type=int)
 @click.option("--full", is_flag=True, help="Curate over ALL claims, not just recent")
