@@ -53,6 +53,22 @@ def _rate_limit_handler(request, exc):
     return PlainTextResponse("rate limit exceeded — try again shortly", status_code=429)
 
 
+# Cache-busting for HTML pages.
+# HTML pages contain inline <script> blocks; when we ship a JS fix
+# (e.g. fc311be unbroke /factcheck/{id}), users with the old HTML
+# still cached in their browser see the broken version. Force the
+# browser to always revalidate HTML; static JS/CSS may still be
+# cached (their URLs don't change between deploys).
+@app.middleware("http")
+async def _no_cache_html(request, call_next):
+    response = await call_next(request)
+    ctype = response.headers.get("content-type", "")
+    if ctype.startswith("text/html"):
+        response.headers["Cache-Control"] = "no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
+
 # Mount API routers
 app.include_router(stats.router, prefix="/api", tags=["stats"])
 app.include_router(articles.router, prefix="/api", tags=["articles"])

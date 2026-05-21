@@ -111,6 +111,48 @@ class ConstitutionPageRouteTests(unittest.TestCase):
         self.assertIn("/api/reproducibility/", r.text)
 
 
+class HTMLCacheHeaderTests(unittest.TestCase):
+    """HTML pages contain inline <script> blocks. When we ship a JS
+    fix, users with the old HTML cached in their browser still see
+    the broken version. Force the browser to always revalidate HTML.
+    Static JS/CSS remains cacheable (URLs don't change between
+    deploys). API responses are caching-policy-neutral (endpoint-
+    specific).
+    """
+    @classmethod
+    def setUpClass(cls):
+        cls.c = TestClient(app)
+
+    def test_html_pages_have_no_store(self):
+        for path in ("/", "/lies", "/factcheck/1", "/constitution",
+                      "/laws", "/contradictions", "/manifesto",
+                      "/browse"):
+            r = self.c.get(path)
+            self.assertEqual(r.status_code, 200, path)
+            cc = r.headers.get("cache-control", "")
+            self.assertIn("no-store", cc,
+                f"{path} returns cache-control={cc!r} — must be "
+                "no-store so HTML+inline JS fix-shipping works.")
+
+    def test_static_js_remains_cacheable(self):
+        """We do NOT want to bust the cache on stable static assets —
+        only the HTML pages."""
+        r = self.c.get("/static/js/api.js")
+        self.assertEqual(r.status_code, 200)
+        cc = r.headers.get("cache-control", "")
+        self.assertNotIn("no-store", cc,
+            "Static JS should not carry no-store; the cache is fine.")
+
+    def test_api_responses_not_no_store(self):
+        """API endpoints set their own caching policy (or none).
+        The HTML middleware must not bleed into JSON responses."""
+        r = self.c.get("/api/stats")
+        self.assertEqual(r.status_code, 200)
+        cc = r.headers.get("cache-control", "")
+        self.assertNotIn("no-store", cc,
+            "/api/stats should not carry no-store — that's HTML-only.")
+
+
 class StaticPageJSShadowingTests(unittest.TestCase):
     """Regression guards for inline-<script> ↔ api.js name clashes.
 
