@@ -27,7 +27,16 @@ from typing import Any, Dict, Optional
 
 # Set by __init__.py:register() to ctx.llm. Tool handlers read this to route
 # the narrative-tricks guarantee-pass through hermes' provider config.
-# None when running outside a hermes context (e.g. direct unit test).
+# None when running outside a hermes context (e.g. direct unit test, CLI/TUI/web).
+#
+# CONSTRAINT: module-level state, not per-call. Safe under hermes' current
+# model (one plugin instance per process; register() runs once at startup).
+# If hermes ever supports multiple PluginContexts in the same process
+# (multi-tenant gateway?), this would race — the fix is to attach the llm
+# to a contextvars.ContextVar keyed by request, or pass ctx through the
+# handler signature. The hermes API currently calls handlers with
+# (args, **_kw) and the kwargs do not include ctx, so until that changes,
+# module-level is the pragmatic choice.
 HOST_LLM = None
 
 
@@ -117,18 +126,22 @@ ASK_SCHEMA: Dict[str, Any] = {
 LIST_LIES_SCHEMA: Dict[str, Any] = {
     "name": "kahzaabu_list_lies",
     "description": (
-        "List curated fact-checks with optional filters. Categories include "
-        "LIE, MISLEADING, BROKEN DEADLINE, CREDIT THEFT, SHIFTING NUMBERS, "
-        "CONTRADICTION. Returns id + title + category + severity + topic + "
-        "summary; fetch full details with kahzaabu_get_factcheck."
+        "List curated fact-checks with optional filters. Valid category "
+        "values (case-sensitive, exact match): 'LIE', 'MISLEADING', "
+        "'BROKEN DEADLINE', 'CREDIT THEFT', 'SHIFTING NUMBERS', "
+        "'CONTRADICTION', and a few compound values like "
+        "'LIE / MISLEADING'. Date filters apply to claim_date "
+        "(when the claim was made). Returns id, category, claim, "
+        "what_actually_happened, topic, claim_date — fetch full details "
+        "with kahzaabu_get_factcheck."
     ),
     "parameters": {
         "type": "object",
         "properties": {
-            "category": {"type": "string", "description": "filter by category name"},
-            "topic": {"type": "string", "description": "filter by topic (substring match)"},
-            "date_from": {"type": "string", "description": "YYYY-MM-DD"},
-            "date_to": {"type": "string", "description": "YYYY-MM-DD"},
+            "category": {"type": "string", "description": "filter by category (see description for valid values)"},
+            "topic": {"type": "string", "description": "filter by topic substring (LIKE %x%)"},
+            "date_from": {"type": "string", "description": "claim_date YYYY-MM-DD inclusive"},
+            "date_to": {"type": "string", "description": "claim_date YYYY-MM-DD inclusive"},
             "limit": {"type": "integer", "description": "default 50, max 200"},
         },
         "required": [],
@@ -295,7 +308,8 @@ def handle_ask(args: Dict[str, Any], **_kw) -> str:
 def handle_list_lies(args: Dict[str, Any], **_kw) -> str:
     conn = _conn()
     try:
-        sql = ("SELECT id, title, category, severity, topic, summary "
+        sql = ("SELECT id, category, claim, what_actually_happened, topic, "
+               "claim_date, public_summary, confidence "
                "FROM fact_checks WHERE published=1")
         params: list = []
         if args.get("category"):
@@ -303,11 +317,11 @@ def handle_list_lies(args: Dict[str, Any], **_kw) -> str:
         if args.get("topic"):
             sql += " AND topic LIKE ?"; params.append(f"%{args['topic']}%")
         if args.get("date_from"):
-            sql += " AND created_at >= ?"; params.append(args["date_from"])
+            sql += " AND claim_date >= ?"; params.append(args["date_from"])
         if args.get("date_to"):
-            sql += " AND created_at <= ?"; params.append(args["date_to"])
+            sql += " AND claim_date <= ?"; params.append(args["date_to"])
         limit = max(1, min(int(args.get("limit", 50)), 200))
-        sql += " ORDER BY id DESC LIMIT ?"
+        sql += " ORDER BY claim_date DESC, id DESC LIMIT ?"
         params.append(limit)
         rows = conn.execute(sql, params).fetchall()
         return _result({"count": len(rows), "items": [dict(r) for r in rows]})
@@ -323,22 +337,38 @@ def handle_get_factcheck(args: Dict[str, Any], **_kw) -> str:
             "SELECT * FROM fact_checks WHERE id = ? AND published = 1", (fid,)
         ).fetchone()
         if not fc:
-            return _result({"error": f"fact_check {fid} not found"})
+            return _result({"error": f"fact_check {fid} not found or not published"})
+        fc_d = dict(fc)
+        try:
+            fc_d["source_article_ids"] = json.loads(fc_d.get("source_article_ids") or "[]")
+        except Exception:
+            fc_d["source_article_ids"] = []
+        try:
+            fc_d["evidence_quotes"] = json.loads(fc_d.get("evidence_quotes") or "[]")
+        except Exception:
+            fc_d["evidence_quotes"] = []
+
         evidence = conn.execute(
-            "SELECT url, title, snippet, agrees, source_domain FROM "
-            "fact_check_evidence WHERE fact_check_id = ?", (fid,)
+            """SELECT url, title, snippet, relevance, summary, retrieved_at
+               FROM fact_check_evidence WHERE fact_check_id = ? ORDER BY id""",
+            (fid,)
         ).fetchall()
-        claims = conn.execute(
-            """SELECT c.id, c.text, c.article_id, a.title, a.published_date
-               FROM fact_check_claims fcc
-               JOIN claims c ON c.id = fcc.claim_id
-               JOIN articles a ON a.id = c.article_id AND a.language = 'EN'
-               WHERE fcc.fact_check_id = ?""", (fid,)
-        ).fetchall()
+
+        # Source articles are referenced by id in fact_checks.source_article_ids (JSON).
+        # No fact_check_claims join table exists — that was a port-from-memory bug.
+        source_articles: list = []
+        if fc_d["source_article_ids"]:
+            placeholders = ",".join("?" * len(fc_d["source_article_ids"]))
+            source_articles = [dict(r) for r in conn.execute(
+                f"SELECT id, title, published_date FROM articles "
+                f"WHERE id IN ({placeholders}) AND language='EN'",
+                fc_d["source_article_ids"],
+            ).fetchall()]
+
         return _result({
-            "fact_check": dict(fc),
-            "evidence": [dict(r) for r in evidence],
-            "claims": [dict(r) for r in claims],
+            "fact_check": fc_d,
+            "web_evidence": [dict(r) for r in evidence],
+            "source_articles": source_articles,
         })
     finally:
         conn.close()
@@ -370,20 +400,26 @@ def handle_get_article(args: Dict[str, Any], **_kw) -> str:
     try:
         aid = int(args["article_id"])
         art = conn.execute(
-            "SELECT id, title, category, published_date, body_text, source_url "
+            "SELECT id, title, category, published_date, body_text, reference "
             "FROM articles WHERE id = ? AND language = 'EN'", (aid,)
         ).fetchone()
         if not art:
             return _result({"error": f"article {aid} not found"})
         claims = conn.execute(
-            "SELECT id, text, type FROM claims WHERE article_id = ?", (aid,)
+            "SELECT id, type, subject, value, deadline, actor_credited, quote "
+            "FROM claims WHERE article_id = ? AND language = 'EN'", (aid,)
         ).fetchall()
+        # fact-checks are linked via fact_checks.source_article_ids (JSON array).
+        # SQLite has no JSON1 guarantee here — use a LIKE on the serialized id.
         factchecks = conn.execute(
-            """SELECT DISTINCT fc.id, fc.title, fc.category, fc.severity
-               FROM fact_check_claims fcc
-               JOIN claims c ON c.id = fcc.claim_id
-               JOIN fact_checks fc ON fc.id = fcc.fact_check_id
-               WHERE c.article_id = ? AND fc.published = 1""", (aid,)
+            """SELECT id, category, claim, topic, claim_date, confidence
+               FROM fact_checks
+               WHERE published = 1
+                 AND ( source_article_ids = ?
+                       OR source_article_ids LIKE ?
+                       OR source_article_ids LIKE ?
+                       OR source_article_ids LIKE ? )""",
+            (f"[{aid}]", f"[{aid},%", f"%, {aid},%", f"%, {aid}]"),
         ).fetchall()
         out: Dict[str, Any] = {
             "article": dict(art),
