@@ -795,6 +795,25 @@ def get_qna_session(conn: sqlite3.Connection, session_id: str) -> Optional[dict]
     return d
 
 
+def most_recent_session_id(conn: sqlite3.Connection,
+                            max_age_hours: float = 24.0) -> Optional[str]:
+    """Return the id of the qna_session most recently updated within
+    max_age_hours (default 24h). Used by `--continue` style affordances —
+    CLI and the /kahzaabu slash command — to pick up the last conversation
+    automatically. Returns None if no recent session exists.
+    """
+    try:
+        row = conn.execute(
+            "SELECT id FROM qna_sessions "
+            "WHERE last_used_at >= datetime('now', ?) "
+            "ORDER BY last_used_at DESC LIMIT 1",
+            (f"-{max_age_hours} hours",),
+        ).fetchone()
+        return row["id"] if row else None
+    except sqlite3.OperationalError:
+        return None
+
+
 def save_qna_session(conn: sqlite3.Connection, session_id: str, messages: list,
                       cost_usd: float, n_turns: Optional[int] = None) -> None:
     now = now_iso()

@@ -64,6 +64,8 @@ def register_cli(subp: argparse.ArgumentParser) -> None:
     ask.add_argument("question", nargs="+")
     ask.add_argument("--no-web", action="store_true", help="disable web_search")
     ask.add_argument("--session", help="continue a session by id")
+    ask.add_argument("--continue", dest="continue_last", action="store_true",
+                      help="continue the most recent session (within 24h)")
 
     web = sub.add_parser("web", help="Start the FastAPI web UI")
     web.add_argument("--port", type=int, default=8765)
@@ -198,7 +200,7 @@ def _cmd_update(args) -> int:
 
 
 def _cmd_ask(args) -> int:
-    from plugins.kahzaabu.tools import handle_ask, _has_anthropic_key
+    from plugins.kahzaabu.tools import handle_ask, _has_anthropic_key, _conn
     if not _has_anthropic_key():
         print("ANTHROPIC_API_KEY not set; add to ~/.hermes/.env")
         return 2
@@ -206,8 +208,24 @@ def _cmd_ask(args) -> int:
         "question": " ".join(args.question),
         "enable_web": not args.no_web,
     }
+    # Resolve session_id from --session (explicit id) or --continue (most recent)
     if args.session:
         payload["session_id"] = args.session
+    elif getattr(args, "continue_last", False):
+        try:
+            from kahzaabu import claims_db
+            conn = _conn()
+            try:
+                sid = claims_db.most_recent_session_id(conn)
+            finally:
+                conn.close()
+            if sid:
+                payload["session_id"] = sid
+                print(f"(continuing session {sid[:8]}…)")
+            else:
+                print("(no recent session found within 24h — starting fresh)")
+        except Exception as e:
+            print(f"(--continue lookup failed: {e} — starting fresh)")
     print("...thinking...\n")
     out = json.loads(handle_ask(payload))
     if "error" in out:

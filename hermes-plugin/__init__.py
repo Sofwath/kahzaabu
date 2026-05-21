@@ -163,4 +163,68 @@ def register(ctx) -> None:
         ),
     )
 
-    logger.info("kahzaabu plugin registered: 8 tools + `hermes kahzaabu` CLI")
+    # Register the `/kahzaabu <question>` slash command — available in any
+    # hermes chat session, including messaging gateway (Telegram, WhatsApp).
+    ctx.register_command(
+        name="kahzaabu",
+        handler=_slash_kahzaabu,
+        description="Ask kahzaabu a question over the Maldives Presidency archive",
+        args_hint="<question>",
+    )
+
+    logger.info("kahzaabu plugin registered: 8 tools + `hermes kahzaabu` CLI "
+                "+ /kahzaabu slash command")
+
+
+def _slash_kahzaabu(raw_args: str) -> str:
+    """Handler for `/kahzaabu <question>` slash commands.
+
+    Reuses handle_ask so behaviour matches the agent-callable tool exactly
+    (same session memory, same narrative-tricks layer, same cost cap).
+    The slash command auto-continues the most-recent session — typing
+    `/kahzaabu follow-up` after a prior `/kahzaabu` retains context.
+    """
+    import json
+    raw_args = (raw_args or "").strip()
+    if not raw_args:
+        return ("Usage: /kahzaabu <question>\n"
+                "Example: /kahzaabu what did Muizzu do this week?")
+
+    # Auto-continue: pick up the most-recent session if any exists.
+    session_id = None
+    try:
+        from kahzaabu import claims_db
+        import sqlite3
+        db_path = Path("/Users/sofwath/Developer/myLabs/kahzaabu/data/kahzaabu.db")
+        try:
+            import kahzaabu as _kpkg
+            db_path = Path(_kpkg.__file__).resolve().parents[1] / "data" / "kahzaabu.db"
+        except ImportError:
+            pass
+        conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        try:
+            session_id = claims_db.most_recent_session_id(conn)
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.debug("slash kahzaabu: session-continue lookup failed: %s", e)
+
+    from plugins.kahzaabu.tools import handle_ask
+    payload = {"question": raw_args, "enable_web": False}
+    if session_id:
+        payload["session_id"] = session_id
+    result_json = handle_ask(payload)
+    try:
+        result = json.loads(result_json)
+    except json.JSONDecodeError:
+        return result_json
+
+    if "error" in result:
+        return f"❌ {result['error']}"
+
+    footer = (
+        f"\n\n— *session {result.get('session_id', '?')[:8]}… · "
+        f"${result.get('cost_usd', 0):.3f}*"
+    )
+    return result.get("answer", "(no answer)") + footer

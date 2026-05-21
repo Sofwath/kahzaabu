@@ -84,13 +84,17 @@ STATS_SCHEMA: Dict[str, Any] = {
 ASK_SCHEMA: Dict[str, Any] = {
     "name": "kahzaabu_ask",
     "description": (
-        "Natural-language Q&A over the kahzaabu archive. The internal agent "
-        "loop has 8 DB tools and optional Anthropic web_search. Pass "
-        "session_id (from a prior response) to continue a conversation — "
-        "prior turns and tool results are retained. Returns Markdown answer + "
-        "session_id + cost. Requires ANTHROPIC_API_KEY (read from "
-        "~/.hermes/.env automatically). 'Kahzaabu' and 'Muizzu' are the same "
-        "person."
+        "PREFERRED for any natural-language question about the Maldives "
+        "Presidency archive (Mohamed Muizzu / kahzaabu — same person). Runs "
+        "an internal multi-turn agent with 8 DB tools and optional "
+        "web_search, and returns a synthesized Markdown answer with citations "
+        "and a 🎭 narrative-tricks analysis. Use this INSTEAD of chaining "
+        "kahzaabu_search_* / kahzaabu_get_* tools yourself — it produces "
+        "better answers and costs less than 5+ separate tool calls. "
+        "Pass session_id from a prior response to continue a conversation; "
+        "the internal agent retains prior turns and tool results, so "
+        "follow-ups are cheap. Only skip this tool when the user asks for "
+        "raw data dumps or a specific row by id."
     ),
     "parameters": {
         "type": "object",
