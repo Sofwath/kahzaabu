@@ -111,6 +111,52 @@ class ConstitutionPageRouteTests(unittest.TestCase):
         self.assertIn("/api/reproducibility/", r.text)
 
 
+class NoExternalCDNScriptsTests(unittest.TestCase):
+    """Kahzaabu's UI must work fully offline / behind firewalls /
+    in zero-third-party-fetch deployments. ADR 0012 establishes
+    the same posture for content (link-out instead of import);
+    this test extends it to runtime JavaScript.
+
+    Every <script src="..."> reference in any static HTML page must
+    point to a local /static/... path. External CDN URLs are banned;
+    vendor the library into kahzaabu/web/static/js/ and add it to
+    NOTICE.md instead.
+    """
+    def test_no_static_html_loads_a_cdn_script(self):
+        import re
+        from pathlib import Path
+        static = (Path(__file__).resolve().parents[1]
+                  / "kahzaabu" / "web" / "static")
+        offenders = []
+        # External-script regex: src= followed by a URL with a scheme.
+        pat = re.compile(
+            r'<script[^>]*\bsrc=["\'](https?://[^"\']+)["\']',
+            re.IGNORECASE)
+        for page in sorted(static.glob("*.html")):
+            for m in pat.finditer(page.read_text()):
+                offenders.append(f"{page.name}: {m.group(1)}")
+        self.assertEqual(offenders, [],
+            "Static page loads JS from an external URL. Vendor the "
+            "library to kahzaabu/web/static/js/ and update the "
+            "NOTICE.md. Offenders:\n  " + "\n  ".join(offenders))
+
+    def test_vendored_libraries_are_present(self):
+        """The NOTICE-listed vendored libraries actually exist on
+        disk. If someone removes a file without updating the HTML
+        page that references it, the test catches the dead link."""
+        from pathlib import Path
+        js_dir = (Path(__file__).resolve().parents[1]
+                  / "kahzaabu" / "web" / "static" / "js")
+        for fn in ("chart.umd.min.js", "marked.min.js", "api.js",
+                    "charts.js"):
+            f = js_dir / fn
+            self.assertTrue(f.exists(), f"missing static JS: {fn}")
+            # Sanity: not an HTML 404 page accidentally saved.
+            body = f.read_text()[:500].lower()
+            self.assertNotIn("<!doctype html", body,
+                              f"{fn} appears to be HTML, not JS")
+
+
 class HTMLCacheHeaderTests(unittest.TestCase):
     """HTML pages contain inline <script> blocks. When we ship a JS
     fix, users with the old HTML cached in their browser still see
