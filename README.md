@@ -78,11 +78,13 @@ export ANTHROPIC_API_KEY=sk-ant-...
 If you have [Hermes Agent](https://github.com/NousResearch/hermes-agent) installed, kahzaabu integrates natively. **The plugin source lives in `hermes-plugin/` inside this repo** — install symlinks it into hermes' plugins dir so edits are live, no copy step.
 
 ```bash
-# One-time install (symlinks hermes-plugin/ -> ~/.hermes/hermes-agent/plugins/kahzaabu)
-./scripts/install-hermes-plugin.sh
+# One-time install — plugin + skills
+./scripts/install-hermes-plugin.sh     # symlinks hermes-plugin/ → ~/.hermes/hermes-agent/plugins/kahzaabu
+./scripts/install-hermes-skills.sh     # symlinks skills/* → ~/.hermes/skills/
 
 hermes kahzaabu setup        # interactive: API key, daily budget, freshness threshold
 hermes kahzaabu doctor       # health check (all should be ✅)
+hermes skills list           # should show kahzaabu-fact-check + kahzaabu-self-improver
 
 # Use it — three surfaces
 hermes kahzaabu status                          # archive counts + freshness
@@ -511,6 +513,9 @@ kahzaabu/                   The Python package
 
 hermes-plugin/              Hermes plugin source (symlinked from ~/.hermes/...)
                             — see hermes-plugin/README.md
+skills/                     Hermes-installable agentskills.io skills
+                            — kahzaabu-fact-check (symlinked into
+                            ~/.hermes/skills/)
 tests/                      End-to-end + unit tests (see tests/README.md)
 research/                   Historical one-shot scripts (see research/README.md)
                             — NOT imported by the package
