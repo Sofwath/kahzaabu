@@ -25,6 +25,7 @@ web = [
     "itsdangerous>=2.0",      # session-cookie signing
     "python-multipart>=0.0.9",  # FastAPI form-data support
     "pydantic>=2.0",
+    "prometheus-client>=0.20",  # /metrics endpoint (ADR 0010)
 ]
 tui = [
     "rich>=13.0",

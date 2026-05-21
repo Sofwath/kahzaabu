@@ -22,14 +22,19 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI
-from fastapi.responses import FileResponse, PlainTextResponse
+import time
+
+from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from .api import admin, articles, ask, auth, claimreview, contradictions, corrections, factchecks, freshness, inspect, manifesto, stats, viz
+from .api import (admin, articles, ask, auth, claimreview, contradictions,
+                  corrections, factchecks, freshness, inspect, manifesto,
+                  reproducibility, stats, viz)
 from .limits import limiter
+from . import metrics
 
 # Quiet noisy logs
 for name in ("httpx", "httpcore", "anthropic"):
@@ -62,6 +67,37 @@ app.include_router(manifesto.router, prefix="/api", tags=["manifesto"])
 app.include_router(freshness.router, prefix="/api", tags=["freshness"])
 app.include_router(claimreview.router, prefix="/api", tags=["claimreview"])
 app.include_router(contradictions.router, prefix="/api", tags=["contradictions"])
+app.include_router(reproducibility.router, prefix="/api", tags=["reproducibility"])
+
+
+# ADR 0010 — prometheus metrics middleware + /metrics endpoint.
+# Middleware times every request and records (path, method, status).
+# Path is templated where possible (the router's matched route) so
+# /api/article/1 and /api/article/2 collapse to /api/article/{id}.
+@app.middleware("http")
+async def _metrics_middleware(request: Request, call_next):
+    start = time.monotonic()
+    response = await call_next(request)
+    try:
+        route = request.scope.get("route")
+        path = getattr(route, "path", request.url.path)
+        metrics.record_api_request(
+            path=path,
+            method=request.method,
+            status=response.status_code,
+            duration_s=time.monotonic() - start,
+        )
+    except Exception:  # pragma: no cover - middleware must not crash
+        pass
+    return response
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics_endpoint():
+    """Prometheus exposition format. No auth — these are operational
+    counters/histograms, not corpus data. ADR 0010."""
+    body, content_type = metrics.render_metrics_payload()
+    return Response(content=body, media_type=content_type)
 
 
 @app.get("/robots.txt", include_in_schema=False)

@@ -49,3 +49,4 @@ scratch/
 *.key
 data/eval_history.jsonl
 data/backups/
+data/reports/

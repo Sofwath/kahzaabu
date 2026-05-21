@@ -941,3 +941,78 @@ def export(ctx, fmt, category, language, output):
 
     if output:
         click.echo(f"Exported {len(records)} articles to {output}")
+
+
+@main.command(name="reproducibility")
+@click.argument("fact_check_id", type=int)
+@click.option("--output", type=click.Path(), default=None,
+               help="Write JSON to file (default: stdout).")
+@click.pass_context
+def reproducibility_cmd(ctx, fact_check_id, output):
+    """V2 — emit the full provenance manifest for one fact_check (ADR 0010).
+
+    Joins the fact_check row with its curation_run, supporting claims,
+    decomposition questions, verification evidence, contradiction pair
+    (if any), cached ClaimReview JSON-LD, and git commit at publication
+    time. Output is the same JSON the /api/reproducibility/{id}.json
+    endpoint returns.
+    """
+    from .reproducibility import get_manifest_json
+    conn = ctx.obj["conn"]
+    body = get_manifest_json(conn, fact_check_id)
+    if body is None:
+        click.echo(f"fact_check {fact_check_id} not found", err=True)
+        sys.exit(1)
+    if output:
+        Path(output).write_text(body)
+        click.echo(f"Wrote {output}")
+    else:
+        click.echo(body)
+
+
+@main.command(name="audit")
+@click.option("--output", type=click.Path(), default=None,
+               help="Write markdown to file (default: data/reports/audit-<date>.md).")
+@click.pass_context
+def audit_cmd(ctx, output):
+    """V2 — bias/fairness audit report (ADR 0010).
+
+    Emits markdown with category-by-year + category-by-topic
+    contingency tables, chi-squared statistics, AVeriTeC verdict +
+    Truth-O-Meter ladder distributions, speaker concentration, and
+    authoritative-source coverage from ADR 0011.
+    """
+    from .audit import render_audit_report, write_audit_report
+    conn = ctx.obj["conn"]
+    if output:
+        Path(output).write_text(render_audit_report(conn))
+        click.echo(f"Wrote {output}")
+    else:
+        path = write_audit_report(conn)
+        click.echo(f"Wrote {path}")
+
+
+@main.command(name="transparency-report")
+@click.option("--since", required=True,
+               help="Window start date YYYY-MM-DD.")
+@click.option("--until", default=None,
+               help="Window end date YYYY-MM-DD (default: today).")
+@click.option("--output", type=click.Path(), default=None,
+               help="Write markdown to file (default: "
+                    "data/reports/transparency-<since>_to_<until>.md).")
+@click.pass_context
+def transparency_report_cmd(ctx, since, until, output):
+    """V2 — public-facing transparency report for a date window (ADR 0010).
+
+    Counts fact-checks issued, corrections received, LLM spend by
+    pipeline stage, and methodology changes from git in the window.
+    Intended to be regenerated monthly and published on the site.
+    """
+    from .transparency import render_report, write_report
+    conn = ctx.obj["conn"]
+    if output:
+        Path(output).write_text(render_report(conn, since, until))
+        click.echo(f"Wrote {output}")
+    else:
+        path = write_report(conn, since, until)
+        click.echo(f"Wrote {path}")

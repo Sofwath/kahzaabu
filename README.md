@@ -4,7 +4,7 @@
 > *"Kahzaabu"* (ކަޒާބު) is Dhivehi for *falsehood* — and the street nickname for Mohamed Muizzu.
 > The two names refer to the same person; the project treats them as synonyms.
 
-**License:** Apache-2.0 · **Tests:** 197 passing · **V2 status:** Slices 0–10 done, 11–12 in flight (see [V2 build plan](docs/V2_BUILD_PLAN.md))
+**License:** Apache-2.0 · **Tests:** 240 passing · **V2 status:** Slices 0–12 done (see [V2 build plan](docs/V2_BUILD_PLAN.md))
 
 This is a **research / educational project**: it scrapes public press releases from `presidency.gov.mv`, extracts factual claims with an LLM, curates contradictions across time, verifies them against the open web, and stores the result in a queryable SQLite archive. A native [Hermes Agent](https://github.com/NousResearch/hermes-agent) plugin exposes the archive to a chat agent so you can ask questions in plain English (or through Telegram / WhatsApp / Slack via the hermes gateway).
 
@@ -192,6 +192,9 @@ The DB is the source of truth. Every consumer is read-only over it except the pi
 | `kahzaabu export-claimreview` | `claimreview.py` — schema.org ClaimReview JSON-LD generation + caching to `fact_checks.claimreview_jsonld`. | [0006](docs/adr/0006-claimreview-jsonld.md) | $0 |
 | `kahzaabu eval` | `eval.py` — golden-set evaluation across all five LLM-call stages. Produces verified-subset + drift-detector metrics. | [0008](docs/adr/0008-quality-evaluation.md) | $0 |
 | *(registry)* | `registry.py` — public-sector entity registry (25 Maldives entities); auto-tags `fact_check_evidence.authoritative_entity_id` when a URL is on a registered .gov.mv / .com.mv domain. Source of truth in `data/registry/maldives_public_sector.yaml`. | [0011](docs/adr/0011-public-sector-registry.md) | $0 |
+| `kahzaabu reproducibility <id>` | `reproducibility.py` — emits full provenance JSON manifest for a fact-check (curation run + claims + decomposition + evidence + contradiction pair + ClaimReview + git SHA). Also exposed as `/api/reproducibility/{id}.json`. | [0010](docs/adr/0010-reproducibility-and-observability.md) | $0 |
+| `kahzaabu audit` | `audit.py` — bias/fairness markdown report with chi-squared on category×year + category×topic, verdict-label + Truth-O-Meter ladder distributions, speaker concentration, authoritative-source coverage. | [0010](docs/adr/0010-reproducibility-and-observability.md) | $0 |
+| `kahzaabu transparency-report --since` | `transparency.py` — public-facing window report: fact-checks issued, corrections, LLM spend, methodology git-log. | [0010](docs/adr/0010-reproducibility-and-observability.md) | $0 |
 
 Defaults: cycle runs every **12h** via launchd (`scripts/com.kahzaabu.pipeline.plist`). Budget cap defaults to **$1.00 per cycle**. Total V2-build spend: **~$16.50**. Total project spend to-date: ~$75.
 
@@ -459,7 +462,7 @@ Daily caps:
 | Priority | Item |
 |---|---|
 | 🔴 High | **Public VPS deploy.** Caddy + systemd templates in `scripts/`. Methodology page, robots.txt, rate-limits done. Needs: domain, server, DB sync strategy (push from laptop vs. run pipeline on server). |
-| 🔴 High | **V2 Slice 12 — Reproducibility + observability.** `/api/reproducibility.json` endpoint, `prometheus_client` metrics, Grafana dashboard JSON, `kahzaabu audit` (bias/fairness), `kahzaabu transparency-report`, Dockerfile. Tracked in [ADR 0010](docs/adr/0010-reproducibility-and-observability.md). |
+| ~~🔴 High~~ ✅ done | ~~**V2 Slice 12 — Reproducibility + observability.**~~ Shipped — `/api/reproducibility/{id}.json` + `kahzaabu reproducibility` CLI + `kahzaabu audit` + `kahzaabu transparency-report` + `/metrics` + Grafana dashboard JSON + Dockerfile. |
 | 🟡 Medium | **Grow the verified golden-set subset.** 24 of 25 fixtures are verified ground truth; 1 extractor fixture (`article-32009`) deliberately left unverified pending taxonomy clarification on `deadline_promise` vs event-schedule. Hand-review more articles to broaden coverage per stage. |
 | 🟡 Medium | **Viber channel.** Hermes doesn't support Viber. Would require a custom `ctx.register_platform(...)` adapter — 3-5 days. Out of scope unless Maldives-market demand justifies. |
 | ~~🟡 Medium~~ ✅ done | ~~**Migrate guarantee-pass to `ctx.llm`.**~~ Shipped: narrative-tricks pass now uses `ctx.llm.complete()` inside the plugin (anthropic fallback for non-plugin paths). Main loop still uses anthropic — needs tool-use. |
@@ -542,6 +545,9 @@ kahzaabu/                   The Python package
 ├── claimreview.py          Slice 6 — schema.org ClaimReview JSON-LD generator
 ├── eval.py                 Slice 10 — golden-set quality evaluation framework
 ├── registry.py             Slice 11.5 — public-sector entity registry / trust anchor
+├── reproducibility.py      Slice 12 — provenance manifest assembly (ADR 0010)
+├── audit.py                Slice 12 — bias/fairness audit with chi-squared
+├── transparency.py         Slice 12 — public-facing transparency report
 │
 └── web/                    FastAPI app
     ├── app.py
@@ -551,9 +557,11 @@ kahzaabu/                   The Python package
     │   ├── auth.py / admin.py
     │   ├── corrections.py / inspect.py
     │   ├── claimreview.py / contradictions.py    # V2
+    │   ├── reproducibility.py                    # V2 Slice 12
     ├── static/             HTML / CSS / JS (no SPA)
     │   └── contradictions.html                   # V2 — 4-way verdict browser
     ├── db_dep.py           FastAPI Depends() for DB
+    ├── metrics.py          Slice 12 — prometheus_client + /metrics
     └── limits.py           Rate-limiter + LRU cache for /api/ask
 
 hermes-plugin/              Hermes plugin source (symlinked from ~/.hermes/...)
@@ -586,7 +594,14 @@ data/                       SQLite DB + manifesto/ (other contents gitignored)
 ├── registry/               Public-sector entity registry (ADR 0011)
 │   ├── maldives_public_sector.yaml   ← source of truth (human-edit here)
 │   └── maldives_public_sector.json   ← machine-loaded twin
-└── backups/                Local-only sqlite3 dumps (gitignored)
+├── backups/                Local-only sqlite3 dumps (gitignored)
+└── reports/                `kahzaabu audit` + `transparency-report` output
+                             (gitignored — regenerate locally)
+Dockerfile                  One-command reproduction — python:3.11-slim
+                             base, editable install with chosen embedding
+                             backend (ADR 0010)
+docs/observability/
+└── grafana-dashboard.json  Importable dashboard (6 panels)
 LICENSE                     Apache-2.0
 SECURITY.md                 Vulnerability disclosure (90-day window)
 CONTRIBUTING.md             Slice discipline, ADR process, test gates

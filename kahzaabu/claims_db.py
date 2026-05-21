@@ -437,6 +437,14 @@ V2_SLICE_REGISTRY_MIGRATIONS = [
         "ON fact_check_evidence(authoritative_entity_id)",
 ]
 
+# V2 Slice 12 — Reproducibility manifest (ADR 0010).
+# Stamps the git commit hash on each fact-check at publication time so
+# reproducibility.json can return the exact code revision that produced
+# the verdict. Nullable: pre-Slice-12 fact-checks retain NULL.
+V2_SLICE12_MIGRATIONS = [
+    "ALTER TABLE fact_checks ADD COLUMN git_sha_at_publication TEXT",
+]
+
 VALID_VERDICT_LABELS = frozenset({
     "SUPPORTED", "REFUTED", "NOT_ENOUGH_EVIDENCE", "CONFLICTING_EVIDENCE",
 })
@@ -498,7 +506,8 @@ def init_claims_schema(conn: sqlite3.Connection) -> None:
     # Apply phase-3 ALTERs + V2 migrations idempotently
     for sql in (PUBLISH_MIGRATIONS + V2_SLICE1_MIGRATIONS
                 + V2_SLICE3_MIGRATIONS + V2_SLICE5_MIGRATIONS
-                + V2_SLICE6_MIGRATIONS + V2_SLICE_REGISTRY_MIGRATIONS):
+                + V2_SLICE6_MIGRATIONS + V2_SLICE_REGISTRY_MIGRATIONS
+                + V2_SLICE12_MIGRATIONS):
         try:
             conn.execute(sql)
         except sqlite3.OperationalError:
