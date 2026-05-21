@@ -70,3 +70,28 @@ jobs:
               --exclude-dir=.git --exclude-dir=.venv \
               --exclude=test.sh --exclude=test.yml \
               .
+
+  js-verify:
+    name: vendored-JS call-site verifier
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          # The package-lock.json is committed under scripts/js-verify/
+          # so npm ci reproduces the exact tree the verifier was authored against.
+          cache: 'npm'
+          cache-dependency-path: 'scripts/js-verify/package-lock.json'
+
+      - name: Install jsdom (locked)
+        working-directory: scripts/js-verify
+        run: npm ci --no-audit --no-fund
+
+      - name: Run vendored-JS call-site verifier
+        working-directory: scripts/js-verify
+        # Exits 0 if marked.parse + Chart.js both render correctly with the
+        # exact API call sites kahzaabu uses; non-zero blocks the PR.
+        run: npm run verify
