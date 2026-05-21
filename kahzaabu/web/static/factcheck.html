@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>kahzaabu — fact-check</title>
+<link rel="stylesheet" href="/static/css/kahzaabu.css" />
+<style>
+.fc-hero {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: var(--sp-xl);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: var(--sp-xl);
+    margin-bottom: var(--sp-lg);
+    align-items: start;
+}
+.fc-meter {
+    text-align: center;
+}
+.fc-meter .gauge {
+    font: 700 56px/1 system-ui, -apple-system, Segoe UI, sans-serif;
+    color: var(--fg);
+    margin: 0;
+}
+.fc-meter .gauge .denom {
+    color: var(--fg-dim); font-size: 28px; font-weight: 400;
+}
+.fc-meter .label {
+    display: inline-block;
+    margin-top: var(--sp-sm);
+    padding: 6px 14px;
+    border-radius: var(--r-pill);
+    font: var(--type-small-strong);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border: 1px solid;
+}
+.fc-meter .verdict {
+    margin-top: var(--sp-md);
+    font: var(--type-small);
+    color: var(--fg-muted);
+}
+.fc-meter .verdict strong { color: var(--fg); }
+
+.fc-ladder {
+    list-style: none;
+    margin: var(--sp-md) 0 0 0;
+    padding: 0;
+    font: var(--type-tiny);
+    color: var(--fg-dim);
+}
+.fc-ladder li {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 8px;
+    border-radius: var(--r-sm);
+    margin: 1px 0;
+}
+.fc-ladder li.active {
+    background: var(--surface-2);
+    color: var(--fg);
+    font-weight: 600;
+}
+
+.fc-claim {
+    font: var(--type-h2);
+    color: var(--fg);
+    margin: 0 0 var(--sp-md) 0;
+}
+.fc-meta {
+    display: flex;
+    gap: var(--sp-md);
+    font: var(--type-small);
+    color: var(--fg-muted);
+    flex-wrap: wrap;
+    margin-bottom: var(--sp-md);
+}
+.fc-meta .pill {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-pill);
+    padding: 2px 10px;
+}
+.fc-what {
+    font: var(--type-body-prose);
+    color: var(--fg-muted);
+    background: var(--surface-2);
+    border-radius: var(--r-sm);
+    padding: var(--sp-md);
+    border-left: 3px solid var(--accent);
+}
+
+.fc-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: var(--sp-lg) var(--sp-xl);
+    margin-bottom: var(--sp-md);
+}
+.fc-section h3 {
+    font: var(--type-h4);
+    color: var(--fg);
+    margin: 0 0 var(--sp-md) 0;
+}
+
+.evidence-row {
+    background: var(--surface-2);
+    border-radius: var(--r-sm);
+    padding: var(--sp-md);
+    margin-bottom: var(--sp-sm);
+    border-left: 3px solid var(--fg-muted);
+}
+.evidence-row.r-confirms     { border-left-color: var(--good); }
+.evidence-row.r-contradicts  { border-left-color: var(--lie); }
+.evidence-row.r-context      { border-left-color: var(--secondary); }
+.evidence-row .meta {
+    font: var(--type-caption);
+    color: var(--fg-dim);
+    margin-bottom: 4px;
+    display: flex;
+    gap: var(--sp-sm);
+    flex-wrap: wrap;
+    align-items: center;
+}
+.evidence-row .relevance {
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.evidence-row .relevance.r-confirms    { color: var(--good); }
+.evidence-row .relevance.r-contradicts { color: var(--lie); }
+.evidence-row .relevance.r-context     { color: var(--secondary); }
+.auth-badge {
+    background: rgba(91,199,135,0.20);
+    color: var(--good);
+    border: 1px solid var(--good);
+    border-radius: var(--r-pill);
+    padding: 1px 8px;
+    font: var(--type-tiny);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.evidence-row .title {
+    font: var(--type-body-strong);
+    color: var(--fg);
+    margin-bottom: 2px;
+}
+.evidence-row .snippet {
+    font: var(--type-body);
+    color: var(--fg-muted);
+}
+
+.const-pin {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--r-sm);
+    padding: var(--sp-md);
+    margin-bottom: var(--sp-sm);
+}
+.const-pin .num {
+    font: var(--type-caption);
+    color: var(--fg-dim);
+    text-transform: uppercase;
+}
+.const-pin .title {
+    font: var(--type-body-strong);
+    color: var(--fg);
+    margin: 2px 0;
+}
+.const-pin .excerpt {
+    font: var(--type-body);
+    color: var(--fg-muted);
+}
+
+.fc-empty {
+    color: var(--fg-dim);
+    font: var(--type-body);
+    font-style: italic;
+}
+.fc-loading { color: var(--fg-dim); padding: var(--sp-md); }
+
+@media (max-width: 760px) {
+    .fc-hero { grid-template-columns: 1fr; text-align: center; }
+}
+</style>
+</head>
+<body>
+<header class="site">
+    <div class="brand">kahzaabu <span class="tag">fact-check</span></div>
+    <nav>
+        <a href="/"        data-nav="dashboard">Dashboard</a>
+        <a href="/browse"  data-nav="browse">Articles</a>
+        <a href="/lies"    data-nav="lies">Fact-checks</a>
+        <a href="/contradictions" data-nav="contradictions">Contradictions</a>
+        <a href="/constitution" data-nav="constitution">Constitution</a>
+        <a href="/compare" data-nav="compare">Compare</a>
+        <a href="/manifesto" data-nav="manifesto">Manifesto</a>
+        <a href="/ask"     data-nav="ask">Ask</a>
+    </nav>
+</header>
+
+<main>
+    <p><a href="/lies">← All fact-checks</a></p>
+    <div id="content">
+        <div class="fc-loading">Loading fact-check…</div>
+    </div>
+</main>
+
+<script src="/static/js/api.js"></script>
+<script>
+const TRUTH_LADDER = [
+    { n: 6, label: "TRUE",          desc: "Statement is accurate." },
+    { n: 5, label: "MOSTLY_TRUE",   desc: "Accurate but needs clarification." },
+    { n: 4, label: "HALF_TRUE",     desc: "Partially accurate, leaves out important details." },
+    { n: 3, label: "MOSTLY_FALSE",  desc: "Contains an element of truth, but ignores critical facts." },
+    { n: 2, label: "FALSE",         desc: "Statement is not accurate." },
+    { n: 1, label: "PANTS_ON_FIRE", desc: "Not accurate and makes a ridiculous claim." },
+];
+
+const id = parseInt(window.location.pathname.split("/").pop(), 10);
+const $content = document.getElementById("content");
+
+const el = (tag, attrs = {}, ...children) => {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+        if (k === "class") e.className = v;
+        else if (k === "html") e.innerHTML = v;
+        else if (k.startsWith("on") && typeof v === "function") e.addEventListener(k.slice(2), v);
+        else e.setAttribute(k, v);
+    }
+    for (const c of children) {
+        if (typeof c === "string") e.appendChild(document.createTextNode(c));
+        else if (c != null) e.appendChild(c);
+    }
+    return e;
+};
+
+function renderLadder(active) {
+    const ul = el("ul", { class: "fc-ladder" });
+    for (const r of TRUTH_LADDER) {
+        const li = el("li", { class: r.n === active ? "active" : "" },
+            el("span", {}, `${r.n}/6 — ${r.label.replace(/_/g, " ")}`));
+        ul.appendChild(li);
+    }
+    return ul;
+}
+
+function renderHero(m) {
+    const score = m.truth_score;
+    const labelClass = score ? `truth-badge truth-${score}` : "truth-badge";
+    return el("section", { class: "fc-hero" },
+        el("div", { class: "fc-meter" },
+            el("h1", { class: "gauge" },
+                score ? String(score) : "?",
+                el("span", { class: "denom" }, "/6")),
+            el("span", { class: labelClass },
+                (m.truth_score_label || "—").replace(/_/g, " ")),
+            el("div", { class: "verdict" },
+                "AVeriTeC: ",
+                el("strong", {}, m.verdict_label || "—")),
+            renderLadder(score)
+        ),
+        el("div", { class: "fc-detail" },
+            el("h1", { class: "fc-claim" }, m.claim || "(no claim text)"),
+            el("div", { class: "fc-meta" },
+                el("span", { class: "pill" }, m.category || "—"),
+                m.claim_date ? el("span", { class: "pill" }, m.claim_date) : null,
+                m.speaker ? el("span", { class: "pill" }, m.speaker) : null,
+                m.topic ? el("span", { class: "pill" }, m.topic) : null,
+                el("span", { class: "pill" }, `confidence: ${m.confidence || "auto"}`)),
+            (m.what_actually_happened || m.public_summary)
+                ? el("div", { class: "fc-what" },
+                    m.what_actually_happened || m.public_summary)
+                : null,
+        )
+    );
+}
+
+function renderSupportingClaims(claims) {
+    if (!claims || !claims.length) return el("p", { class: "fc-empty" }, "No supporting claims linked.");
+    const wrap = el("div");
+    for (const c of claims.slice(0, 10)) {
+        wrap.appendChild(el("div", { class: "const-pin" },
+            el("div", { class: "num" },
+                `claim #${c.claim_id} · article #${c.article_id}` +
+                (c.canonical_claim_id ? ` · canonical #${c.canonical_claim_id}` : "")),
+            el("div", { class: "title" }, c.article_title || ""),
+            el("div", { class: "excerpt" }, c.quote || "")
+        ));
+    }
+    if (claims.length > 10) {
+        wrap.appendChild(el("p", { class: "fc-empty" },
+            `… and ${claims.length - 10} more.`));
+    }
+    return wrap;
+}
+
+function renderEvidence(rows) {
+    if (!rows || !rows.length) return el("p", { class: "fc-empty" }, "No web-search evidence collected for this fact-check.");
+    const wrap = el("div");
+    for (const r of rows) {
+        const cls = "evidence-row r-" + (r.relevance || "unclear");
+        const node = el("div", { class: cls },
+            el("div", { class: "meta" },
+                el("span", { class: "relevance r-" + (r.relevance || "unclear") },
+                    (r.relevance || "unclear").replace(/_/g, " ")),
+                r.authoritative_entity_id
+                    ? el("span", { class: "auth-badge" },
+                        `primary source: ${r.authoritative_entity_id}`)
+                    : null,
+                r.url
+                    ? el("a", { href: r.url, target: "_blank", rel: "noopener noreferrer" }, r.url)
+                    : null,
+            ),
+            r.title ? el("div", { class: "title" }, r.title) : null,
+            r.snippet ? el("div", { class: "snippet" }, r.snippet) : null,
+        );
+        wrap.appendChild(node);
+    }
+    return wrap;
+}
+
+function renderDecomposition(qs) {
+    if (!qs || !qs.length) return el("p", { class: "fc-empty" }, "No decomposition questions logged.");
+    const wrap = el("div");
+    for (const q of qs.slice(0, 8)) {
+        wrap.appendChild(el("div", { class: "const-pin" },
+            el("div", { class: "num" },
+                `${q.answer_type || "?"} · via ${q.source_medium || "?"}`),
+            el("div", { class: "excerpt" }, q.question || "")
+        ));
+    }
+    return wrap;
+}
+
+async function loadConstitutionLinks(query) {
+    if (!query) return [];
+    try {
+        const r = await fetchJSON(
+            `/api/constitution/search?q=${encodeURIComponent(query)}&limit=3`);
+        return r.items || [];
+    } catch { return []; }
+}
+
+(async () => {
+    let m;
+    try {
+        m = await fetchJSON(`/api/reproducibility/${id}.json`);
+    } catch (e) {
+        $content.innerHTML = `<div class='fc-empty'>Fact-check #${id} not found.</div>`;
+        return;
+    }
+    $content.innerHTML = "";
+    $content.appendChild(renderHero(m));
+
+    // Section: supporting claims
+    $content.appendChild(el("section", { class: "fc-section" },
+        el("h3", {}, `Supporting claims (${(m.supporting_claims || []).length})`),
+        renderSupportingClaims(m.supporting_claims),
+    ));
+
+    // Section: verification evidence
+    $content.appendChild(el("section", { class: "fc-section" },
+        el("h3", {}, `Verification evidence (${(m.verification_evidence || []).length})`),
+        renderEvidence(m.verification_evidence),
+    ));
+
+    // Section: decomposition questions
+    $content.appendChild(el("section", { class: "fc-section" },
+        el("h3", {}, `Verification questions (${(m.decomposition_questions || []).length})`),
+        renderDecomposition(m.decomposition_questions),
+    ));
+
+    // Section: constitutional context (search using topic + claim)
+    const constHits = await loadConstitutionLinks(
+        [m.topic, (m.claim || "").split(/\s+/).slice(0, 6).join(" ")]
+            .filter(Boolean).join(" "));
+    if (constHits.length) {
+        const wrap = el("div");
+        for (const a of constHits) {
+            const body = (a.body || "").slice(0, 220);
+            wrap.appendChild(el("div", { class: "const-pin" },
+                el("div", { class: "num" }, `Article ${a.article_no}`),
+                el("div", { class: "title" }, a.title || ""),
+                el("div", { class: "excerpt" }, body + (body.length === 220 ? "…" : ""))));
+        }
+        wrap.appendChild(el("p", { class: "fc-empty" },
+            "Cross-referenced from the Constitution of the Republic of Maldives. ",
+            el("a", { href: "/constitution" }, "Browse the full text →")));
+        $content.appendChild(el("section", { class: "fc-section" },
+            el("h3", {}, "Constitutional context"),
+            wrap,
+        ));
+    }
+
+    // Section: ClaimReview JSON-LD link + reproducibility info
+    const repro = el("p", { class: "fc-empty" });
+    repro.innerHTML = `Reproducibility manifest: `
+        + `<a href="/api/reproducibility/${m.fact_check_id}.json">JSON</a>`
+        + (m.git_sha_at_publication
+            ? ` · git: <code>${m.git_sha_at_publication.slice(0,12)}</code>`
+            : "");
+    $content.appendChild(el("section", { class: "fc-section" },
+        el("h3", {}, "Provenance"),
+        repro,
+        m.claimreview_jsonld
+            ? el("p", { class: "fc-empty" },
+                "Published as schema.org ClaimReview JSON-LD: ",
+                el("a", { href: `/api/factchecks/${m.fact_check_id}/jsonld` },
+                    "view"))
+            : null,
+    ));
+})();
+</script>
+</body>
+</html>

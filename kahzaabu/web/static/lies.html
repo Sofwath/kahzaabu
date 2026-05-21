@@ -14,6 +14,7 @@
         <a href="/browse"  data-nav="browse">Articles</a>
         <a href="/lies"    data-nav="lies">Fact-checks</a>
         <a href="/contradictions" data-nav="contradictions">Contradictions</a>
+        <a href="/constitution" data-nav="constitution">Constitution</a>
         <a href="/compare" data-nav="compare">Compare</a>
         <a href="/manifesto" data-nav="manifesto">Manifesto</a>
         <a href="/ask"     data-nav="ask">Ask</a>
@@ -93,7 +94,11 @@ function renderItem(it) {
     if (it.n_evidence) head.appendChild(el("span", { class: "topic", style: "color: var(--good);" }, `🌐 ${it.n_evidence} web sources`));
     if (it.contradiction_pair_id) head.appendChild(el("span", { class: "topic", style: "color: var(--lie);" }, `🪞 contradiction pair #${it.contradiction_pair_id}`));
     div.appendChild(head);
-    div.appendChild(el("div", { class: "claim" }, it.claim || ""));
+    div.appendChild(el("div", { class: "claim" },
+        el("a", {
+            href: `/factcheck/${it.id}`,
+            style: "color: inherit; text-decoration: none;",
+        }, it.claim || "")));
     if (it.what_actually_happened) {
         div.appendChild(el("div", { class: "body" }, it.what_actually_happened));
     }

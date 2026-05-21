@@ -30,9 +30,9 @@ from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from .api import (admin, articles, ask, auth, claimreview, contradictions,
-                  corrections, factchecks, freshness, inspect, manifesto,
-                  reproducibility, stats, viz)
+from .api import (admin, articles, ask, auth, claimreview, constitution,
+                  contradictions, corrections, factchecks, freshness, inspect,
+                  manifesto, reproducibility, stats, viz)
 from .limits import limiter
 from .. import metrics
 
@@ -68,6 +68,7 @@ app.include_router(freshness.router, prefix="/api", tags=["freshness"])
 app.include_router(claimreview.router, prefix="/api", tags=["claimreview"])
 app.include_router(contradictions.router, prefix="/api", tags=["contradictions"])
 app.include_router(reproducibility.router, prefix="/api", tags=["reproducibility"])
+app.include_router(constitution.router, prefix="/api", tags=["constitution"])
 
 
 # ADR 0010 — prometheus metrics middleware + /metrics endpoint.
@@ -133,6 +134,16 @@ def page_lies():
 @app.get("/contradictions", include_in_schema=False)
 def page_contradictions():
     return FileResponse(STATIC_DIR / "contradictions.html")
+
+
+@app.get("/constitution", include_in_schema=False)
+def page_constitution():
+    return FileResponse(STATIC_DIR / "constitution.html")
+
+
+@app.get("/factcheck/{fact_check_id}", include_in_schema=False)
+def page_factcheck(fact_check_id: int):
+    return FileResponse(STATIC_DIR / "factcheck.html")
 
 
 @app.get("/article/{article_id}", include_in_schema=False)

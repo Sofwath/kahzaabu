@@ -48,6 +48,26 @@ def fc_by_category(user: Optional[dict] = Depends(current_user),
     return {"labels": [r["category"] for r in rows], "values": [r["n"] for r in rows]}
 
 
+# ADR 0005 — Truth-O-Meter ladder distribution.
+# Returns the PolitiFact 6-rung ladder in its canonical order, even
+# for rungs with zero counts. The dashboard renders this as a stack.
+@router.get("/truth-score-ladder")
+def truth_score_ladder(user: Optional[dict] = Depends(current_user),
+                        conn: sqlite3.Connection = Depends(get_db)) -> dict:
+    LADDER = ["TRUE", "MOSTLY_TRUE", "HALF_TRUE",
+              "MOSTLY_FALSE", "FALSE", "PANTS_ON_FIRE"]
+    where = " WHERE published = 1" if _gated(user) else ""
+    rows = dict(conn.execute(
+        f"SELECT truth_score_label, COUNT(*) FROM fact_checks{where} "
+        "GROUP BY truth_score_label"
+    ).fetchall())
+    return {
+        "labels": LADDER,
+        "values": [int(rows.get(k, 0) or 0) for k in LADDER],
+        "_NULL":  int(rows.get(None, 0) or 0),
+    }
+
+
 @router.get("/factchecks-by-month")
 def fc_by_month(user: Optional[dict] = Depends(current_user),
                 conn: sqlite3.Connection = Depends(get_db)) -> dict:

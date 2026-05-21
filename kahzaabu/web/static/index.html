@@ -37,6 +37,7 @@
         <a href="/browse"  data-nav="browse">Articles</a>
         <a href="/lies"    data-nav="lies">Fact-checks</a>
         <a href="/contradictions" data-nav="contradictions">Contradictions</a>
+        <a href="/constitution" data-nav="constitution">Constitution</a>
         <a href="/compare" data-nav="compare">Compare</a>
         <a href="/manifesto" data-nav="manifesto">Manifesto</a>
         <a href="/ask"     data-nav="ask">Ask</a>
@@ -84,6 +85,20 @@
                 <canvas id="chart-topics"></canvas>
                 <div class="hint">Click a bar → /lies filtered by topic</div>
             </div>
+        </div>
+    </section>
+
+    <section>
+        <h2>Truth-O-Meter ladder</h2>
+        <p class="muted" style="font-size: 13px; margin-top: -8px;">
+            PolitiFact-style 6-rung scale, derived deterministically from each
+            fact-check's category + confidence per
+            <a href="/static/methodology.html" style="color: var(--accent);">ADR&nbsp;0005</a>.
+            Click any rung to see the matching fact-checks.
+        </p>
+        <div class="chart-box clickable">
+            <canvas id="chart-truth-ladder" style="max-height: 240px;"></canvas>
+            <div class="hint">Click a bar → /lies filtered by truth-score label</div>
         </div>
     </section>
 
@@ -224,7 +239,7 @@ function makeClickable(canvas, dataFn) {
 }
 
 async function loadDashboard() {
-    const [stats, articles, claims, fcCat, topics, fcMonth, recentFc, recentCards] = await Promise.all([
+    const [stats, articles, claims, fcCat, topics, fcMonth, recentFc, recentCards, truthLadder] = await Promise.all([
         fetchJSON("/api/stats"),
         fetchJSON("/api/viz/articles-per-month"),
         fetchJSON("/api/viz/claims-per-month"),
@@ -233,6 +248,7 @@ async function loadDashboard() {
         fetchJSON("/api/viz/factchecks-by-month"),
         fetchJSON("/api/factchecks?limit=5"),
         fetchJSON("/api/recent-factcards?limit=5").catch(() => ({ items: [] })),
+        fetchJSON("/api/viz/truth-score-ladder").catch(() => ({ labels: [], values: [] })),
     ]);
 
     // ===== Stat cards (clickable) =====
@@ -368,6 +384,45 @@ async function loadDashboard() {
         if (cat && from) {
             window.location.href = `/lies?category=${encodeURIComponent(cat)}&date_from=${from}&date_to=${to}`;
         }
+    });
+
+    // ===== Truth-O-Meter ladder (ADR 0005) =====
+    // Map ladder rungs to the same CSS color tokens used in the
+    // truth-* badge palette, so the chart stays visually coherent
+    // with the per-fact-check badge.
+    const TRUTH_COLORS = {
+        TRUE:          PALETTE.good,
+        MOSTLY_TRUE:   "rgba(91,199,135,0.55)",
+        HALF_TRUE:     "rgba(247,201,72,0.65)",
+        MOSTLY_FALSE:  "rgba(240,160,75,0.65)",
+        FALSE:         "rgba(233,69,96,0.55)",
+        PANTS_ON_FIRE: PALETTE.lie || "#e94560",
+    };
+    const truthLabelsPretty = truthLadder.labels.map(
+        (l, i) => `${6 - i}/6 ${l.replace(/_/g, " ")}`);
+    barChart(
+        document.getElementById("chart-truth-ladder"),
+        {
+            labels: truthLabelsPretty,
+            datasets: [{
+                label: "Fact-checks",
+                data: truthLadder.values,
+                backgroundColor: truthLadder.labels.map(l => TRUTH_COLORS[l] || PALETTE.dim),
+                borderRadius: 4,
+            }],
+        },
+        {
+            indexAxis: "y",
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { ticks: { color: PALETTE.fgDim, precision: 0 }, grid: { color: PALETTE.grid } },
+                y: { ticks: { color: PALETTE.fgDim }, grid: { display: false } },
+            },
+        },
+    );
+    makeClickable(document.getElementById("chart-truth-ladder"), (_, i) => {
+        const rung = truthLadder.labels[i];
+        if (rung) window.location.href = `/lies?truth_score_label=${encodeURIComponent(rung)}`;
     });
 
     // ===== Recent fact-checks =====
