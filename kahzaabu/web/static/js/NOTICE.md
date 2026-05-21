@@ -34,10 +34,25 @@ curl -sSfL -o kahzaabu/web/static/js/marked.min.js \
     "https://cdn.jsdelivr.net/npm/marked@VERSION/lib/marked.umd.min.js"
 ```
 
-After updating, bump the version in this `NOTICE.md` and run the full
-test suite (`./scripts/test.sh`). The `NoExternalCDNScriptsTests`
-regression guard asserts no `<script src="https://...">` references
-remain in any static HTML page.
+After updating:
+
+1. Bump the version in this `NOTICE.md` (the maintenance script
+   parses it; out-of-date pins generate false drift signals).
+2. Run **the JS-call-site verifier** to confirm the new lib still
+   works with kahzaabu's actual API usage:
+
+   ```bash
+   cd scripts/js-verify
+   npm install --silent     # one-time
+   npm run verify
+   ```
+
+   Exit 0 = both libs work end-to-end. Exit 1 = a call site broke;
+   investigate before commit. See `scripts/js-verify/README.md`.
+
+3. Run `./scripts/test.sh`. The `NoExternalCDNScriptsTests`
+   regression guard asserts no `<script src="https://...">`
+   references remain in any static HTML page.
 
 ## Checking for newer versions
 

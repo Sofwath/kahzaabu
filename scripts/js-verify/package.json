@@ -1,0 +1,13 @@
+{
+  "name": "kahzaabu-js-verify",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Devtime-only: exercises the vendored kahzaabu/web/static/js/* libraries against the exact API call sites kahzaabu uses, so post-upgrade we know the bundled lib still works. Not shipped, not imported by the kahzaabu Python package.",
+  "scripts": {
+    "verify": "node verify-vendored-libs.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.0"
+  }
+}
