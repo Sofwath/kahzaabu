@@ -43,6 +43,9 @@ ORG_URL_ENV = "KAHZAABU_ORG_URL"
 ORG_SAMEAS_ENV = "KAHZAABU_ORG_SAMEAS"   # comma-separated URLs
 
 DISCLAIMER = (
+    "Kahzaabu is a sample / reference implementation of a Hermes Agent "
+    "plugin and fact-checking pipeline, built for educational and "
+    "research purposes — not an authoritative source of information. "
     "This fact-check is the output of an automated analysis pipeline. "
     "The categorical verdict and 1-6 truth score are derived "
     "deterministically from extracted evidence; the underlying claim "
@@ -50,8 +53,9 @@ DISCLAIMER = (
     "presidency.gov.mv and (where applicable) Anthropic's web_search "
     "tool. Constitutional citations use the 2008 Dheena Hussain "
     "functional translation; the legally binding text is the Dhivehi "
-    "original. This is not legal advice and not finished journalism — "
-    "review the original press release before quoting."
+    "original. This is not legal advice, not finished journalism, and "
+    "must not be cited as evidence — read the original press release "
+    "on presidency.gov.mv before quoting or sharing."
 )
 
 

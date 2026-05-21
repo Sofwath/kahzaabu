@@ -141,6 +141,28 @@ header.site nav a.active {
     background: var(--primary-tint);
 }
 
+/* ─── site-wide reference-implementation banner ────────────────────── */
+/* Permanent (non-dismissible) above-the-fold notice. Mirrors the
+   ClaimReview JSON-LD disclaimer that every fact-check payload carries,
+   so a casual human visitor sees the same caveat machine agents do.
+   Regression-guarded by tests/test_disclaimer_banner.py. */
+.site-disclaimer {
+    background: rgba(240, 160, 75, 0.10);    /* --deadline @ 10% */
+    border-bottom: 1px solid var(--deadline);
+    color: var(--fg);
+    padding: var(--sp-sm) var(--sp-xxl);
+    font-size: 13px;
+    line-height: 1.5;
+    text-align: center;
+}
+.site-disclaimer strong { color: var(--deadline); }
+.site-disclaimer a {
+    color: var(--fg);
+    text-decoration: underline;
+    text-decoration-color: var(--deadline);
+}
+.site-disclaimer a:hover { color: var(--deadline); }
+
 /* ─── page shell ────────────────────────────────────────────────────── */
 main {
     max-width: 1280px;

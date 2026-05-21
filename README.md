@@ -4,7 +4,20 @@
 > *"Kahzaabu"* (ކަޒާބު) is Dhivehi for *falsehood* — and the street nickname for Mohamed Muizzu.
 > The two names refer to the same person; the project treats them as synonyms.
 
-**License:** Apache-2.0 · **Tests:** 327 passing · **V2 status:** Slices 0–12 done (see [V2 build plan](docs/V2_BUILD_PLAN.md)) · **Trust model:** read-only public web, operator actions via CLI (no in-app auth, no passwords)
+**License:** Apache-2.0 · **Tests:** 328 passing · **V2 status:** Slices 0–12 done (see [V2 build plan](docs/V2_BUILD_PLAN.md)) · **Trust model:** read-only public web, operator actions via CLI (no in-app auth, no passwords)
+
+> ## ⚠️ Reference implementation — not an authoritative source
+>
+> **Kahzaabu is a sample Hermes Agent plugin and fact-checking pipeline,
+> built for educational and research purposes.** Its output is *automated
+> analysis*, not findings of fact. **Do not cite kahzaabu's verdicts,
+> Truth-O-Meter ratings, or "contradictions" as evidence** in journalism,
+> legal proceedings, academic writing, political argument, or social
+> media. The only authoritative material is the underlying press release
+> on `presidency.gov.mv`, which every fact-check links back to.
+>
+> Full terms in [DISCLAIMER.md](DISCLAIMER.md). The "what this is /
+> what this isn't" matrix lives there.
 
 This is a **research / educational project**: it scrapes public press releases from `presidency.gov.mv`, extracts factual claims with an LLM, curates contradictions across time, verifies them against the open web, and stores the result in a queryable SQLite archive. A native [Hermes Agent](https://github.com/NousResearch/hermes-agent) plugin exposes the archive to a chat agent so you can ask questions in plain English (or through Telegram / WhatsApp / Slack via the hermes gateway).
 

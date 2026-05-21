@@ -1,5 +1,14 @@
 # Model Card — kahzaabu LLM-call stages
 
+> **Reference implementation.** Kahzaabu is a sample Hermes Agent
+> plugin and fact-checking pipeline built for educational and research
+> purposes — not an authoritative source of information. Every "Intended
+> use" section below should be read as "intended use *of the reference
+> implementation for study or adaptation*", not "intended use as a
+> public fact-checking service." Output must not be cited as evidence;
+> direct downstream readers to the underlying press release on
+> `presidency.gov.mv`. Full terms in [`../DISCLAIMER.md`](../DISCLAIMER.md).
+
 Following the Model Cards framework (Mitchell et al., FAccT 2019,
 [arXiv 1810.03993](https://arxiv.org/abs/1810.03993)).
 

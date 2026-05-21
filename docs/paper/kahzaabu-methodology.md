@@ -8,6 +8,20 @@
 
 ---
 
+> **Positioning statement.** This paper documents kahzaabu as a
+> **reference implementation** of an automated fact-checking pipeline
+> and a Hermes Agent plugin, built for educational and research
+> purposes. The pipeline's verdicts, Truth-O-Meter ratings, and
+> contradiction labels are *automated analysis*, not findings of
+> fact, and are not intended to be cited as evidence about any
+> individual. Reported quantitative results are properties of the
+> reference implementation against the live Maldives Presidency
+> corpus; the authoritative material is in every case the original
+> press release on `presidency.gov.mv` that each fact-check links
+> back to. Full terms: `DISCLAIMER.md` in the project repository.
+
+---
+
 ## Abstract
 
 We present **kahzaabu**, an open-source pipeline for automated

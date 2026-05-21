@@ -208,3 +208,8 @@ def page_manifesto():
 @app.get("/manifesto/{promise_id}", include_in_schema=False)
 def page_manifesto_detail(promise_id: int):
     return FileResponse(STATIC_DIR / "manifesto_detail.html")
+
+
+@app.get("/disclaimer", include_in_schema=False)
+def page_disclaimer():
+    return FileResponse(STATIC_DIR / "disclaimer.html")

@@ -1,5 +1,14 @@
 # Methodology — kahzaabu
 
+> **Reference implementation.** Kahzaabu is a sample Hermes Agent
+> plugin and fact-checking pipeline built for educational and research
+> purposes — *not* an authoritative source of information about the
+> Maldives Presidency. Pipeline output (verdicts, Truth-O-Meter
+> ratings, contradictions) is automated analysis that must not be
+> cited as evidence. The only authoritative material is the underlying
+> press release on `presidency.gov.mv`. Full terms in
+> [`DISCLAIMER.md`](../DISCLAIMER.md).
+
 This document is the public-facing extended methodology of the
 kahzaabu fact-checking pipeline. It explains, in plain English with
 citations, how the project goes from "scraped press release" to

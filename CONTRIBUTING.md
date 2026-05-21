@@ -1,5 +1,14 @@
 # Contributing to Kahzaabu
 
+> **Heads-up.** Kahzaabu is a **sample / reference implementation** of a
+> Hermes Agent plugin and fact-checking pipeline, built for educational
+> and research purposes (see [`DISCLAIMER.md`](DISCLAIMER.md)). PRs that
+> strengthen the reference architecture, add regression guards, improve
+> docs, or fix measurement bugs are on-mission. PRs that remove the
+> disclaimer banner, weaken the `not authoritative source` framing in
+> ClaimReview JSON-LD, or reposition the project as a publicly-cited
+> fact-checking outlet are off-mission and will be declined.
+
 Thanks for your interest in contributing. Kahzaabu is a civic-tech reference
 project for fact-checking Maldives Presidency press releases, combining
 AVeriTeC verdict structure, RAGAR Chain-of-RAG reasoning, Full Fact claim

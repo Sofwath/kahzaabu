@@ -1,5 +1,16 @@
 # Data Card — kahzaabu corpus
 
+> **Reference implementation.** Kahzaabu is a sample Hermes Agent
+> plugin and fact-checking pipeline built for educational and research
+> purposes. The corpus described below is a research dataset
+> *derived from* the public press release archive at
+> `presidency.gov.mv`; LLM-derived annotations (claims, verdicts,
+> Truth-O-Meter scores) are automated analysis, not authoritative
+> facts. Researchers may use the corpus for replication, methodology
+> study, and adaptation to other small-state political corpora; the
+> annotations are not citable as findings of fact. Full terms in
+> [`../DISCLAIMER.md`](../DISCLAIMER.md).
+
 Following the Data Cards framework (Pushkarna, Zaldivar, Kjartansson —
 FAccT 2022, [arXiv 2204.01075](https://arxiv.org/abs/2204.01075)).
 

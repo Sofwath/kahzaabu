@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>kahzaabu — disclaimer</title>
+<link rel="stylesheet" href="/static/css/kahzaabu.css" />
+<style>
+.disclaimer-prose { max-width: 760px; line-height: 1.65; }
+.disclaimer-prose h2 { margin-top: var(--sp-xxl); color: var(--deadline); }
+.disclaimer-prose h3 { margin-top: var(--sp-xl); color: var(--fg); }
+.disclaimer-prose ul { padding-left: var(--sp-lg); }
+.disclaimer-prose li { margin-bottom: var(--sp-sm); }
+.matrix {
+    display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-md);
+    margin: var(--sp-xl) 0;
+}
+.matrix .col {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 6px; padding: var(--sp-lg);
+}
+.matrix .col.is { border-left: 3px solid var(--ok, #4ade80); }
+.matrix .col.isnt { border-left: 3px solid var(--lie); }
+.matrix h4 { margin-top: 0; }
+@media (max-width: 800px) { .matrix { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header class="site">
+    <div class="brand">kahzaabu <span class="tag">Maldives Presidency archive</span></div>
+    <nav>
+        <a href="/"        data-nav="dashboard">Dashboard</a>
+        <a href="/browse"  data-nav="browse">Articles</a>
+        <a href="/lies"    data-nav="lies">Fact-checks</a>
+        <a href="/contradictions" data-nav="contradictions">Contradictions</a>
+        <a href="/constitution" data-nav="constitution">Constitution</a>
+        <a href="/laws"    data-nav="laws">Laws</a>
+        <a href="/compare" data-nav="compare">Compare</a>
+        <a href="/manifesto" data-nav="manifesto">Manifesto</a>
+        <a href="/ask"     data-nav="ask">Ask</a>
+    </nav>
+</header>
+
+<div class="site-disclaimer" role="note" aria-label="Reference-implementation notice">
+    ⚠️ <strong>Reference implementation</strong> — kahzaabu is a sample Hermes plugin for educational and research purposes. Verdicts are automated analysis, not findings of fact. <a href="/disclaimer">Full disclaimer</a> · sources at <a href="https://presidency.gov.mv" rel="noopener">presidency.gov.mv</a>
+</div>
+
+<main>
+    <h1>Disclaimer</h1>
+    <article class="disclaimer-prose">
+
+        <p><strong>Kahzaabu is a sample / reference implementation of a Hermes Agent plugin and fact-checking pipeline, built for educational and research purposes.</strong></p>
+
+        <p>It is <strong>not</strong> a journalistic outlet, <strong>not</strong> a regulated fact-checking organisation, and <strong>not</strong> an authoritative source of information about the Maldives Presidency or any individual.</p>
+
+        <div class="matrix">
+            <div class="col is">
+                <h4>What kahzaabu is</h4>
+                <ul>
+                    <li>A reference architecture for building a domain-specific Hermes Agent plugin (9 in-process tools, 4-layer discovery, manifest ↔ code regression guards).</li>
+                    <li>A worked example of AVeriTeC + RAGAR + Full Fact + PolitiFact + ClaimReview JSON-LD assembled into one open-source stack.</li>
+                    <li>A pointer to claims in the official press release archive that may merit a human fact-checker's attention.</li>
+                </ul>
+            </div>
+            <div class="col isnt">
+                <h4>What kahzaabu is not</h4>
+                <ul>
+                    <li>An authoritative source on whether the President or the Government did or said anything.</li>
+                    <li>A primary source you can cite in journalism, legal proceedings, academic writing, or political argument.</li>
+                    <li>Endorsed by, affiliated with, or sponsored by the Government of the Republic of Maldives.</li>
+                </ul>
+            </div>
+        </div>
+
+        <h2>What this means in practice</h2>
+
+        <h3>Verdicts are automated analysis, not findings of fact</h3>
+        <p>Every "fact-check", "verdict label", "truth score", and "contradiction" in this archive is the output of a probabilistic LLM pipeline. LLMs hallucinate, mis-extract numbers, conflate similar claims, and make category errors. The pipeline's measured macro-F1 is in <code>docs/EVAL_RESULTS.md</code>; it is not 1.0.</p>
+
+        <h3>Do not cite kahzaabu as a source</h3>
+        <p>Do not quote a Truth-O-Meter rating, a verdict label, or a "contradiction" from this archive as evidence. Cite the original press release on <a href="https://presidency.gov.mv" rel="noopener">presidency.gov.mv</a> directly. Every fact-check payload links back to the originating article ID + URL for exactly this reason.</p>
+
+        <h3>Constitutional citations are not legally binding</h3>
+        <p>The Constitution browser uses the 2008 Dheena Hussain functional English translation. The legally binding text is the Dhivehi original at <a href="https://mvlaw.gov.mv" rel="noopener">mvlaw.gov.mv</a>. The Constitution has been amended since 2008; the 2008 translation does not capture amendments.</p>
+
+        <h3>No relationship with the Government of Maldives</h3>
+        <p>This is an independent open-source project. It is not endorsed by, affiliated with, or sponsored by the Presidency, the Government of the Republic of Maldives, or any ministry, commission, or SOE listed in the entity registry.</p>
+
+        <h2>Reporting errors</h2>
+        <p>Mistakes in the archive are expected, not exceptional. Two ways to report them:</p>
+        <ul>
+            <li>Use the <a href="/corrections">corrections form</a> in this UI — submit the article ID and what's wrong.</li>
+            <li>Open an issue on GitHub at <a href="https://github.com/Sofwath/kahzaabu/issues" rel="noopener">github.com/Sofwath/kahzaabu/issues</a>.</li>
+        </ul>
+
+        <h2>License &amp; canonical text</h2>
+        <p>Apache-2.0. The canonical machine-readable version of this disclaimer is <a href="https://github.com/Sofwath/kahzaabu/blob/main/DISCLAIMER.md" rel="noopener">DISCLAIMER.md</a> in the repository. Each fact-check's ClaimReview JSON-LD payload also embeds the disclaimer in its <code>disclaimer</code> field.</p>
+
+    </article>
+</main>
+
+<footer class="site">Automated analysis of public press releases. Not legal advice. · <a href="/methodology">Methodology</a> · <a href="/corrections">Report a correction</a></footer>
+</body>
+</html>

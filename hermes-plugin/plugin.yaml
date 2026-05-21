@@ -1,6 +1,6 @@
 name: kahzaabu
 version: 0.2.0
-description: "Maldives Presidency press-release fact-checking archive. Exposes 9 agent tools (stats, ask, list_lies, get_factcheck, manifesto, get_article, recent_activity, constitution_lookup, pipeline_run) over a curated SQLite corpus of 3,000+ articles, 9,800+ claims, 200+ fact-checks, 700+ manifesto promises, and 301 Constitution articles. Also registers a `hermes kahzaabu` CLI subcommand and a `/kahzaabu` slash command available in any chat session including messaging gateway (Telegram, WhatsApp, Slack, Discord). 'Kahzaabu' and 'Muizzu' refer to the same person."
+description: "REFERENCE IMPLEMENTATION (educational / research) — a sample Hermes Agent plugin demonstrating a domain-specific fact-checking tool surface. Output is automated analysis, NOT an authoritative source; agents must not present verdicts as findings of fact and should direct users to the underlying press release on presidency.gov.mv for any quote. Exposes 9 agent tools (stats, ask, list_lies, get_factcheck, manifesto, get_article, recent_activity, constitution_lookup, pipeline_run) over a curated SQLite corpus of 3,000+ Maldives Presidency articles, 9,800+ claims, 200+ fact-checks, 700+ manifesto promises, and 301 Constitution articles. Also registers a `hermes kahzaabu` CLI subcommand and a `/kahzaabu` slash command available in any chat session including messaging gateway (Telegram, WhatsApp, Slack, Discord). 'Kahzaabu' and 'Muizzu' refer to the same person."
 author: Sofwathullah.Mohamed@gmail.com
 license: Apache-2.0
 kind: standalone
