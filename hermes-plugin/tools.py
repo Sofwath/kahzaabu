@@ -221,8 +221,9 @@ PIPELINE_RUN_SCHEMA: Dict[str, Any] = {
     "name": "kahzaabu_pipeline_run",
     "description": (
         "Trigger a fresh scrape → extract → curate cycle. Gated by "
-        "KAHZAABU_MCP_ALLOW_PIPELINE=1 to prevent runaway costs. Returns the "
-        "stages run, articles added, and dollar cost."
+        "KAHZAABU_ALLOW_PIPELINE=1 (legacy: KAHZAABU_MCP_ALLOW_PIPELINE=1 "
+        "still honored) to prevent runaway costs. Returns the stages run, "
+        "articles added, and dollar cost."
     ),
     "parameters": {
         "type": "object",
@@ -403,9 +404,17 @@ def handle_get_factcheck(args: Dict[str, Any], **_kw) -> str:
 
 
 def handle_manifesto(args: Dict[str, Any], **_kw) -> str:
+    """List manifesto promises with optional filters. Real schema
+    uses `promise_text_en` (LLM-translated English) and `delivery_
+    evidence_json` — the earlier version queried `promise` / `evidence
+    _note` which don't exist, raising OperationalError on every call.
+    Caught by the plugin's unit tests; landed without ever working in
+    production."""
     conn = _conn()
     try:
-        sql = ("SELECT id, category, promise, delivery_status, evidence_note "
+        sql = ("SELECT id, section, category, subject, target_value, "
+               "       deadline_stated, promise_text_en, "
+               "       delivery_status, delivery_evidence_json "
                "FROM manifesto_promises WHERE published=1")
         params: list = []
         if args.get("category"):
@@ -413,12 +422,24 @@ def handle_manifesto(args: Dict[str, Any], **_kw) -> str:
         if args.get("status"):
             sql += " AND delivery_status = ?"; params.append(args["status"])
         if args.get("q"):
-            sql += " AND promise LIKE ?"; params.append(f"%{args['q']}%")
+            sql += " AND promise_text_en LIKE ?"
+            params.append(f"%{args['q']}%")
         limit = max(1, min(int(args.get("limit", 50)), 200))
         sql += " ORDER BY id LIMIT ?"
         params.append(limit)
         rows = conn.execute(sql, params).fetchall()
-        return _result({"count": len(rows), "items": [dict(r) for r in rows]})
+        # Parse the embedded JSON evidence so consumers don't have to.
+        items: list = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["delivery_evidence"] = json.loads(
+                    d.pop("delivery_evidence_json") or "{}")
+            except (TypeError, json.JSONDecodeError):
+                d.pop("delivery_evidence_json", None)
+                d["delivery_evidence"] = {}
+            items.append(d)
+        return _result({"count": len(items), "items": items})
     finally:
         conn.close()
 
@@ -537,10 +558,15 @@ def handle_constitution_lookup(args: Dict[str, Any], **_kw) -> str:
 
 
 def handle_pipeline_run(args: Dict[str, Any], **_kw) -> str:
-    if os.environ.get("KAHZAABU_MCP_ALLOW_PIPELINE") != "1":
+    # New env-var name (KAHZAABU_ALLOW_PIPELINE) replaces the historical
+    # KAHZAABU_MCP_ALLOW_PIPELINE; the legacy name is still honored so
+    # users with existing ~/.hermes/.env don't break on upgrade.
+    enabled = (os.environ.get("KAHZAABU_ALLOW_PIPELINE") == "1"
+               or os.environ.get("KAHZAABU_MCP_ALLOW_PIPELINE") == "1")
+    if not enabled:
         return _result({
             "error": "pipeline trigger disabled — set "
-                     "KAHZAABU_MCP_ALLOW_PIPELINE=1 in ~/.hermes/.env to "
+                     "KAHZAABU_ALLOW_PIPELINE=1 in ~/.hermes/.env to "
                      "enable, then restart hermes."
         })
     if not _has_anthropic_key():
@@ -548,10 +574,11 @@ def handle_pipeline_run(args: Dict[str, Any], **_kw) -> str:
     from kahzaabu.pipeline import run_pipeline
     budget = float(args.get("budget_usd", 1.0))
     try:
-        result = run_pipeline(budget_usd=budget)
-        return _result({"ok": True, "result": result})
+        return _result({"result": run_pipeline(budget_usd=budget)})
     except Exception as e:
-        return _result({"ok": False, "error": str(e)})
+        # Standardised error shape — `{"error": ...}` only, no ok flag.
+        # Matches every other handler in this module.
+        return _result({"error": str(e)})
 
 
 # ---------------------------------------------------------------------------

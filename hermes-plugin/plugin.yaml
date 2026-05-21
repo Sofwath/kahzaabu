@@ -1,7 +1,8 @@
 name: kahzaabu
-version: 0.1.0
-description: "Maldives Presidency press-release fact-checking archive. Exposes 8 agent tools (stats, ask, list_lies, get_factcheck, manifesto, get_article, recent_activity, pipeline_run) over a curated SQLite corpus of 3,000+ articles, 9,800+ claims, 200+ fact-checks, 700+ manifesto promises. Includes a hermes kahzaabu CLI for setup, pipeline runs, status, and Q&A. 'Kahzaabu' and 'Muizzu' refer to the same person."
-author: chopey@lottiefiles.com
+version: 0.2.0
+description: "Maldives Presidency press-release fact-checking archive. Exposes 9 agent tools (stats, ask, list_lies, get_factcheck, manifesto, get_article, recent_activity, constitution_lookup, pipeline_run) over a curated SQLite corpus of 3,000+ articles, 9,800+ claims, 200+ fact-checks, 700+ manifesto promises, and 301 Constitution articles. Also registers a `hermes kahzaabu` CLI subcommand and a `/kahzaabu` slash command available in any chat session including messaging gateway (Telegram, WhatsApp, Slack, Discord). 'Kahzaabu' and 'Muizzu' refer to the same person."
+author: Sofwathullah.Mohamed@gmail.com
+license: Apache-2.0
 kind: standalone
 platforms:
   - linux
@@ -14,5 +15,10 @@ provides_tools:
   - kahzaabu_manifesto
   - kahzaabu_get_article
   - kahzaabu_recent_activity
+  - kahzaabu_constitution_lookup
   - kahzaabu_pipeline_run
+provides_slash_commands:
+  - /kahzaabu
+provides_cli_subcommands:
+  - hermes kahzaabu
 hooks: []
