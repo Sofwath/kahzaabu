@@ -137,6 +137,13 @@ def register(ctx) -> None:
     _load_hermes_env()
     _ensure_kahzaabu_importable()
 
+    # Stash ctx.llm so tool handlers (loaded after register) can route the
+    # narrative-tricks guarantee-pass through hermes' configured provider.
+    # Tool handlers are called with just (args, **kw) — they have no
+    # direct route to ctx — so we use module-level state.
+    from plugins.kahzaabu import tools as _tools_mod
+    _tools_mod.HOST_LLM = ctx.llm
+
     # Register the 8 agent-facing tools.
     from plugins.kahzaabu.tools import TOOLS, check_kahzaabu_requirements
     for name, schema, handler, emoji in TOOLS:

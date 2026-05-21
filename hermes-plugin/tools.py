@@ -25,6 +25,12 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 
+# Set by __init__.py:register() to ctx.llm. Tool handlers read this to route
+# the narrative-tricks guarantee-pass through hermes' provider config.
+# None when running outside a hermes context (e.g. direct unit test).
+HOST_LLM = None
+
+
 @functools.lru_cache(maxsize=1)
 def kahzaabu_home() -> Optional[Path]:
     """Return the kahzaabu dev tree, derived from the imported package."""
@@ -272,6 +278,7 @@ def handle_ask(args: Dict[str, Any], **_kw) -> str:
             max_iterations=max(1, min(int(args.get("max_iterations", 7)), 8)),
             enable_web=bool(args.get("enable_web", True)),
             daily_budget_usd=5.0,
+            host_llm=HOST_LLM,
         )
         return _result({
             "answer": res["answer"],

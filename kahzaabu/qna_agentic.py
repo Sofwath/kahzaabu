@@ -428,8 +428,16 @@ def ask_agentic(conn: sqlite3.Connection, question: str, *,
                 session_id: Optional[str] = None,
                 max_iterations: int = 7,
                 enable_web: bool = True,
-                daily_budget_usd: float = 5.0) -> dict:
-    """Agentic Q&A. Returns {answer, session_id, intent, n_iterations, cost_usd, tool_trace}."""
+                daily_budget_usd: float = 5.0,
+                host_llm=None) -> dict:
+    """Agentic Q&A. Returns {answer, session_id, intent, n_iterations, cost_usd, tool_trace}.
+
+    `host_llm`: optional `ctx.llm` from a hermes plugin context. When provided,
+    the narrative-tricks guarantee-pass routes through hermes' configured
+    provider (whatever the user picked in `hermes setup model`) instead of
+    calling anthropic directly. The main agentic loop still uses anthropic
+    because it needs tool-use which `ctx.llm.complete()` doesn't yet support.
+    """
     if "ANTHROPIC_API_KEY" not in os.environ:
         raise RuntimeError("ANTHROPIC_API_KEY not set")
 
@@ -582,40 +590,75 @@ def ask_agentic(conn: sqlite3.Connection, question: str, *,
     if (touched_articles and "🎭" not in final_text
             and not final_text.startswith("(")):  # skip on failure messages
         try:
-            messages.append({"role": "assistant", "content": final_text})
-            messages.append({
-                "role": "user",
-                "content": (
-                    "Good. Now append ONLY the '🎭 Narrative tricks observed' "
-                    "section as specified in your instructions. Use the catalog. "
-                    "For each item: technique name (bold), verbatim quote from "
-                    "the article text you already showed, one-line explanation. "
-                    "If you genuinely see nothing notable, output exactly: "
-                    "'🎭 Narrative tricks observed\\n\\nNo notable framing tricks "
-                    "observed beyond standard institutional language.' "
-                    "Do not repeat the substantive answer. Section only."
-                ),
-            })
-            r = client.messages.create(
-                model=HAIKU_MODEL, max_tokens=1500, system=SYSTEM_PROMPT,
-                messages=messages,
+            tricks_prompt = (
+                "Below is an answer I just synthesized over a corpus of "
+                "Maldives Presidency press releases. The user is "
+                f"{TODAY}. Read it, then output ONLY a '🎭 Narrative tricks "
+                "observed' section that flags PR/framing techniques you see "
+                "in the quoted press-release text within the answer.\n\n"
+                "For each item: technique name (bold) — verbatim quote in "
+                "italics — one-line explanation. Cap 5 items. If you "
+                "genuinely see nothing notable, output exactly:\n"
+                "'🎭 Narrative tricks observed\n\nNo notable framing tricks "
+                "observed beyond standard institutional language.'\n\n"
+                "Do NOT repeat or re-summarize the answer. Section only.\n\n"
+                "Use the catalog: hero framing, active voice for wins, "
+                "passive voice for failures, inherited-project credit, "
+                "manufactured momentum, vague timeframes, goalpost "
+                "shifting, empty markers of action, crisis externalization, "
+                "religious/national legitimacy, adverb inflation, pronoun "
+                "pivot, future-tense crowding, audience-specific framing, "
+                "bypass framing, pre-existing-event repackaging. Only flag "
+                "a technique when there's a clear verbatim quote that "
+                "exhibits it. No hedging language. No ceremonial language.\n"
+                "\n--- ANSWER ---\n" + final_text
             )
-            haiku_in = r.usage.input_tokens
-            haiku_out = r.usage.output_tokens
+
             tricks_text = ""
-            for block in r.content:
-                if getattr(block, "type", None) == "text":
-                    tricks_text += getattr(block, "text", "")
-            tricks_text = tricks_text.strip()
+            tricks_via = None
+            tricks_meta: dict = {}
+            if host_llm is not None:
+                # Route through hermes' host LLM facade — uses whatever
+                # provider/model the user picked in `hermes setup model`.
+                # ctx.llm bills against hermes' usage; we leave haiku_in/out
+                # at 0 to avoid double-counting.
+                result = host_llm.complete(
+                    messages=[{"role": "user", "content": tricks_prompt}],
+                    max_tokens=1500,
+                    purpose="kahzaabu-narrative-tricks",
+                )
+                tricks_text = (result.text or "").strip()
+                tricks_via = "ctx.llm"
+                tricks_meta = {"provider": getattr(result, "provider", "?"),
+                                "model": getattr(result, "model", "?")}
+            else:
+                # Standalone path (CLI/TUI/web outside hermes) — call
+                # anthropic directly with Haiku.
+                messages.append({"role": "assistant", "content": final_text})
+                messages.append({"role": "user", "content": tricks_prompt})
+                r = client.messages.create(
+                    model=HAIKU_MODEL, max_tokens=1500, system=SYSTEM_PROMPT,
+                    messages=messages,
+                )
+                haiku_in = r.usage.input_tokens
+                haiku_out = r.usage.output_tokens
+                for block in r.content:
+                    if getattr(block, "type", None) == "text":
+                        tricks_text += getattr(block, "text", "")
+                tricks_text = tricks_text.strip()
+                tricks_via = "anthropic-direct"
+                tricks_meta = {"model": HAIKU_MODEL}
+
             if tricks_text:
-                # Ensure visual separator and a leading heading marker
                 if not tricks_text.startswith("##") and not tricks_text.startswith("🎭"):
                     tricks_text = "## " + tricks_text
                 final_text = final_text.rstrip() + "\n\n---\n\n" + tricks_text
-                tool_trace.append({"iteration": iterations + 1,
-                                    "tool": "(narrative-tricks-pass)",
-                                    "args": {},
-                                    "result_preview": f"appended {len(tricks_text)} chars"})
+                tool_trace.append({
+                    "iteration": iterations + 1,
+                    "tool": f"(narrative-tricks-pass via {tricks_via})",
+                    "args": tricks_meta,
+                    "result_preview": f"appended {len(tricks_text)} chars",
+                })
         except Exception as e:
             logger.warning(f"narrative-tricks pass failed: {e}")
 
