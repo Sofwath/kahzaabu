@@ -17,8 +17,8 @@ license terms live in the file's leading comment.
 
 | File                       | Library    | Version  | License | Upstream                              |
 |---|---|---|---|---|
-| `chart.umd.min.js`         | Chart.js   | 4.4.0    | MIT     | https://www.chartjs.org/              |
-| `marked.min.js`            | marked     | 12.0.0   | MIT     | https://marked.js.org/                |
+| `chart.umd.min.js`         | Chart.js   | 4.5.1    | MIT     | https://www.chartjs.org/              |
+| `marked.min.js`            | marked     | 18.0.4   | MIT     | https://marked.js.org/                |
 
 ## Updating
 
@@ -27,8 +27,11 @@ license terms live in the file's leading comment.
 curl -sSfL -o kahzaabu/web/static/js/chart.umd.min.js \
     "https://cdn.jsdelivr.net/npm/chart.js@VERSION/dist/chart.umd.min.js"
 
+# marked: path varies by major version. v12 shipped at /marked.min.js;
+# v13+ ships at /lib/marked.umd.min.js. If the v12-style URL 404s,
+# fall back to /lib/marked.umd.min.js.
 curl -sSfL -o kahzaabu/web/static/js/marked.min.js \
-    "https://cdn.jsdelivr.net/npm/marked@VERSION/marked.min.js"
+    "https://cdn.jsdelivr.net/npm/marked@VERSION/lib/marked.umd.min.js"
 ```
 
 After updating, bump the version in this `NOTICE.md` and run the full
