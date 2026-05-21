@@ -4,7 +4,11 @@
 > *"Kahzaabu"* (ކަޒާބު) is Dhivehi for *falsehood* — and the street nickname for Mohamed Muizzu.
 > The two names refer to the same person; the project treats them as synonyms.
 
+**License:** Apache-2.0 · **Tests:** 197 passing · **V2 status:** Slices 0–10 done, 11–12 in flight (see [V2 build plan](docs/V2_BUILD_PLAN.md))
+
 This is a **research / educational project**: it scrapes public press releases from `presidency.gov.mv`, extracts factual claims with an LLM, curates contradictions across time, verifies them against the open web, and stores the result in a queryable SQLite archive. A native [Hermes Agent](https://github.com/NousResearch/hermes-agent) plugin exposes the archive to a chat agent so you can ask questions in plain English (or through Telegram / WhatsApp / Slack via the hermes gateway).
+
+V2 layers state-of-the-art fact-checking methodology onto V1's six-stage pipeline: **AVeriTeC** verdict structure (Schlichtkrull et al., EMNLP 2023), **RAGAR** Chain-of-RAG reasoning (arXiv 2404.12065), **Full Fact** canonical claim matching, **PolitiFact** Truth-O-Meter labels, and **schema.org ClaimReview** JSON-LD for Google Fact Check Explorer indexing. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full citation map and [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) for the public-facing methodology.
 
 **This is not journalism.** It is an automated pipeline that surfaces patterns. Every claim links back to the original press release on `presidency.gov.mv`. Read sources before drawing conclusions.
 
@@ -25,6 +29,10 @@ This is a **research / educational project**: it scrapes public press releases f
 11. [Costs](#costs)
 12. [Known issues & TODOs](#known-issues--todos)
 13. [Security & ethics](#security--ethics)
+14. [Testing](#testing)
+15. [Repository layout](#repository-layout)
+16. [License & contributing](#license--contributing)
+17. [Further reading](#further-reading)
 
 ---
 
@@ -36,21 +44,21 @@ Today (May 2026), the archive holds:
 |---|---|
 | Muizzu-era press releases (EN, 2023-11-17 onwards) | ~3,099 |
 | Extracted factual claims | ~8,954 |
-| Curated fact-checks (published) | 218 |
+| Q&A sub-questions (AVeriTeC decomposition) | 35,648 |
+| Canonical-claim paraphrase groups | 151 |
+| Curated fact-checks (published, V2-enriched) | 220 |
+| Contradiction pairs (4-way verdict) | 2 CONTRADICTION + 46 NOT_CONTRADICTORY |
 | Web-evidence rows backing fact-checks | 304 |
 | 2023 campaign manifesto promises (tracked) | 717 |
 | EN ↔ DV translation diff rows | varies |
 
-Fact-checks are classified into one of six categories:
+V2 publishes each fact-check with **three layered labels** (see [ADR 0005](docs/adr/0005-dual-labeling-averitec-politifact.md)):
 
-| Category | Meaning |
-|---|---|
-| **LIE** | Statement is provably false against a primary source |
-| **MISLEADING** | Technically true but framed to deceive |
-| **BROKEN DEADLINE** | A specific date was given and missed |
-| **CREDIT THEFT** | Claimed credit for an inherited project |
-| **SHIFTING NUMBERS** | The same metric reported with different values |
-| **CONTRADICTION** | Two statements that cannot both be true |
+1. **Internal category** (V1, kept): `LIE` · `MISLEADING` · `BROKEN_DEADLINE` · `CREDIT_THEFT` · `SHIFTING_NUMBERS` · `CONTRADICTION`. Used by the curator's classification.
+2. **AVeriTeC verdict** (V2): `SUPPORTED` · `REFUTED` · `NOT_ENOUGH_EVIDENCE` · `CONFLICTING_EVIDENCE`. Used by the agent/skill output, ClaimReview JSON-LD, and the public API.
+3. **Truth-O-Meter** (V2): a 6-rung public-facing ladder — `TRUE` (6) · `MOSTLY_TRUE` (5) · `HALF_TRUE` (4) · `MOSTLY_FALSE` (3) · `FALSE` (2) · `PANTS_ON_FIRE` (1). Used by the web UI's badge colors and Google's rich-result cards.
+
+All three derive deterministically in `kahzaabu/truth_score.py` from the curator's `(category, confidence)` pair — no second LLM call. The mapping is unit-tested as ADR 0005 ground truth (see [`docs/EVAL_RESULTS.md`](docs/EVAL_RESULTS.md)).
 
 A separate layer — the [narrative-tricks analysis](#the-narrative-tricks-layer) — sits on top of every article-derived answer and surfaces *framing* techniques (hero framing, manufactured momentum, vague timeframes, etc.) even when no factual error is present.
 
@@ -160,18 +168,31 @@ The DB is the source of truth. Every consumer is read-only over it except the pi
 
 ## The pipeline
 
-`kahzaabu pipeline` runs **six stages** in sequence. Each stage is idempotent — re-runnable, with budgets, with cost tracking.
+`kahzaabu pipeline` runs the **V1 six-stage core**, with the V2 layers running as separate slice commands. Each stage is idempotent — re-runnable, with budgets, with cost tracking.
+
+**V1 core (every cycle):**
 
 | # | Stage | What it does | LLM cost per item |
 |---|---|---|---|
 | 1 | **scrape** | `scraper.py` — incremental crawl of `presidency.gov.mv/news/{press_release,speech,vp_speech}` (EN + DV). HTTP only. | $0 |
-| 2 | **extract** | `extractor.py` — Sonnet reads each article, returns a list of `{type, text, value, unit, target_date, location, persons}` claim records. | ~$0.005-0.010 |
+| 2 | **extract** | `extractor.py` — Sonnet reads each article, returns a list of `{type, polarity, subject_normalized, is_checkable, ...}` claim records (V2 schema, ADR 0002). | ~$0.005-0.010 |
 | 3 | **inspect** | `inspector.py` — generates a per-article *fact card* (summary, history-check, severity, viz spec). Stored in `article_fact_cards`. | ~$0.015 |
 | 4 | **curate** | `curator.py` — Sonnet sees *all claims on the same topic across time* and flags contradictions / broken deadlines / credit theft. Inserts `fact_checks` rows. | ~$0.05/topic |
 | 5 | **verify** | `verifier.py` — Haiku does Anthropic web_search for each fact-check; agrees/disagrees evidence saved to `fact_check_evidence`. Bounded — only the high-severity ones. | ~$0.03 + $0.01/search |
 | 6 | **dv-compare** | `dv_compare.py` — Sonnet reads paired EN+DV bodies, flags numeric / omission / softening differences. Inserts `dv_en_inconsistencies`. | ~$0.08/pair |
 
-Defaults: cycle runs every **12h** via launchd (`scripts/com.kahzaabu.pipeline.plist`). Budget cap defaults to **$1.00 per cycle**. Total project spend to-date: ~$58.
+**V2 enrichment slices (run on demand; one-shot backfills + periodic top-ups):**
+
+| Cmd | What it does | ADR | Cost so far |
+|---|---|---|---|
+| `kahzaabu decompose` | `decomposer.py` — Haiku 4.5 breaks each claim into AVeriTeC Q&A pairs (`{question, answer_type, source_medium}`). | [0001](docs/adr/0001-v2-architecture-overview.md) | $12.51 (8,954 claims) |
+| `kahzaabu match` | `matcher.py` + `embeddings.py` — embeds every claim, groups paraphrases via cosine ≥ 0.85 + entity overlap ≥ 0.6 + Haiku tiebreaker. Provider abstraction (local / OpenAI / Voyage). | [0003](docs/adr/0003-canonical-claim-matching.md), [0007](docs/adr/0007-embedding-provider-abstraction.md) | $0 (local) |
+| `kahzaabu find-contradictions` | `contradictions.py` — polarity-pair SQL shortlist + semantic-similarity filter [0.55, 0.95] + Sonnet 4.6 4-way classifier (CONTRADICTION / EVOLVING_POSITION / CONTEXT_CHANGED / NOT_CONTRADICTORY) with reasoning chain. | [0004](docs/adr/0004-contradiction-verdict-4way.md) | $3.50 |
+| `kahzaabu enrich-factchecks` | `fact_check_enricher.py` — deterministic V2-label backfill: `verdict_label` + `truth_score` + `truth_score_label` + `reasoning_chain` for every fact-check. | [0005](docs/adr/0005-dual-labeling-averitec-politifact.md) | $0 |
+| `kahzaabu export-claimreview` | `claimreview.py` — schema.org ClaimReview JSON-LD generation + caching to `fact_checks.claimreview_jsonld`. | [0006](docs/adr/0006-claimreview-jsonld.md) | $0 |
+| `kahzaabu eval` | `eval.py` — golden-set evaluation across all five LLM-call stages. Produces verified-subset + drift-detector metrics. | [0008](docs/adr/0008-quality-evaluation.md) | $0 |
+
+Defaults: cycle runs every **12h** via launchd (`scripts/com.kahzaabu.pipeline.plist`). Budget cap defaults to **$1.00 per cycle**. Total V2-build spend: **~$16.50**. Total project spend to-date: ~$75.
 
 A separate `manifesto-extract` + `manifesto-crossref` flow extracts ~717 promises from the 2023 campaign PDF (Dhivehi, 51 MB) and cross-references each against the archive to assign a delivery status.
 
@@ -434,8 +455,11 @@ Daily caps:
 | Priority | Item |
 |---|---|
 | 🔴 High | **Public VPS deploy.** Caddy + systemd templates in `scripts/`. Methodology page, robots.txt, rate-limits done. Needs: domain, server, DB sync strategy (push from laptop vs. run pipeline on server). |
+| 🔴 High | **V2 Slice 12 — Reproducibility + observability.** `/api/reproducibility.json` endpoint, `prometheus_client` metrics, Grafana dashboard JSON, `kahzaabu audit` (bias/fairness), `kahzaabu transparency-report`, Dockerfile. Tracked in [ADR 0010](docs/adr/0010-reproducibility-and-observability.md). |
+| 🟡 Medium | **Grow the verified golden-set subset.** 24 of 25 fixtures are verified ground truth; 1 extractor fixture (`article-32009`) deliberately left unverified pending taxonomy clarification on `deadline_promise` vs event-schedule. Hand-review more articles to broaden coverage per stage. |
 | 🟡 Medium | **Viber channel.** Hermes doesn't support Viber. Would require a custom `ctx.register_platform(...)` adapter — 3-5 days. Out of scope unless Maldives-market demand justifies. |
 | ~~🟡 Medium~~ ✅ done | ~~**Migrate guarantee-pass to `ctx.llm`.**~~ Shipped: narrative-tricks pass now uses `ctx.llm.complete()` inside the plugin (anthropic fallback for non-plugin paths). Main loop still uses anthropic — needs tool-use. |
+| ~~🟡 Medium~~ ✅ done | ~~**Quality evals + prompt regression tests.**~~ Slice 10 shipped — see `kahzaabu eval` + `docs/EVAL_RESULTS.md`. |
 | 🟡 Medium | **Self-improver loop.** A hermes skill at `~/.hermes/skills/kahzaabu/kahzaabu-self-improver/` already exists. Has produced `test_claims_db.py` with 17 unit tests. Pending: branch merge, additional iterations. |
 | 🟢 Low | **Replace launchd with `hermes cron`** (see Known issues #3). |
 | ~~🟢 Low~~ ✅ partial | ~~**Per-tenant LLM selection.**~~ Secondary tricks pass now follows hermes' provider config. Main loop still hard-coded to Anthropic — would need a tool-use-capable host-LLM facade. |
@@ -461,17 +485,19 @@ Daily caps:
 ## Testing
 
 ```bash
-./scripts/test.sh                              # full local suite (unit, ~0.01s)
+./scripts/test.sh                              # full local suite — 197 tests, ~2.3s
 .venv/bin/python -m unittest discover tests/   # just the unit tests
 .venv/bin/python tests/system_check.py         # live web-stack integration check
+.venv/bin/kahzaabu eval                        # golden-set quality eval (ADR 0008)
 ```
 
-The unit suite is offline, no external deps, and runs in milliseconds. It catches:
-- `host_llm` branch invariants in the agentic Q&A
-- JSON1 vs LIKE-fallback parity in `handle_get_article`
-- Drift between the README's `## Data model` block and the real DB schema (the bug I shipped twice before this test existed)
+The unit suite is offline, no external deps, and runs in seconds. It catches:
+- V1 invariants: `host_llm` branch in agentic Q&A, JSON1 vs LIKE-fallback parity, README schema drift
+- V2 invariants per slice: claim-enrichment migrations, decomposer enums, embedding-provider selection, matcher cosine + entity overlap, contradiction 4-way verdict validation, truth-score deterministic mapping, ClaimReview JSON-LD shape, eval framework metrics + verified-vs-pinned semantics
 
-CI: `.github/workflows/test.yml` runs the unit suite on every push and PR to `main`. See `tests/README.md` for the file-by-file map.
+CI: `.github/workflows/test.yml` runs the unit suite on every push and PR to `main`. Use `./scripts/ci-dry-run.sh` to validate a fresh-worktree install before pushing.
+
+**Quality regression detection**: `kahzaabu eval` produces verified-subset metrics (real quality) and all-fixture metrics (drift detector) for each LLM-call stage. A prompt edit that drops the verified subset below 1.000 is a real regression; the drift-detector subset surfaces LLM noise without claiming truth. See [`docs/EVAL_RESULTS.md`](docs/EVAL_RESULTS.md).
 
 ---
 
@@ -481,9 +507,9 @@ CI: `.github/workflows/test.yml` runs the unit suite on every push and PR to `ma
 kahzaabu/                   The Python package
 ├── __init__.py
 ├── cli.py                  Click-based CLI (kahzaabu <subcommand>)
-├── pipeline.py             Orchestrates the 6 stages
+├── pipeline.py             Orchestrates the 6 V1 stages
 ├── scraper.py              presidency.gov.mv crawler (EN + DV)
-├── extractor.py            Per-article claim extraction (Sonnet)
+├── extractor.py            Per-article claim extraction (Sonnet) — V2 schema
 ├── inspector.py            Per-article fact card (Sonnet)
 ├── curator.py              Cross-time contradiction detector (Sonnet)
 ├── verifier.py             Web-search-verifier (Haiku)
@@ -500,6 +526,18 @@ kahzaabu/                   The Python package
 ├── scheduler.py            launchd helper
 ├── tui.py                  Textual TUI
 ├── mcp_server.py           [legacy] stdio MCP server — superseded by plugin
+│
+│  # V2 modules (ADR-driven)
+├── decomposer.py           Slice 2 — AVeriTeC Q&A decomposition (Haiku)
+├── embeddings.py           Slice 3 — provider abstraction (local/OpenAI/Voyage)
+├── matcher.py              Slice 3 — canonical claim matching
+├── claims_enricher.py      Slice 4 prep — polarity/subject/is_checkable backfill
+├── contradictions.py       Slice 4 — 4-way verdict classifier (Sonnet)
+├── truth_score.py          Slice 5 — deterministic AVeriTeC + Truth-O-Meter mapping
+├── fact_check_enricher.py  Slice 5 — V2-label backfill for fact_checks
+├── claimreview.py          Slice 6 — schema.org ClaimReview JSON-LD generator
+├── eval.py                 Slice 10 — golden-set quality evaluation framework
+│
 └── web/                    FastAPI app
     ├── app.py
     ├── api/                JSON endpoints
@@ -507,7 +545,9 @@ kahzaabu/                   The Python package
     │   ├── ask.py / freshness.py / stats.py / viz.py
     │   ├── auth.py / admin.py
     │   ├── corrections.py / inspect.py
+    │   ├── claimreview.py / contradictions.py    # V2
     ├── static/             HTML / CSS / JS (no SPA)
+    │   └── contradictions.html                   # V2 — 4-way verdict browser
     ├── db_dep.py           FastAPI Depends() for DB
     └── limits.py           Rate-limiter + LRU cache for /api/ask
 
@@ -516,20 +556,54 @@ hermes-plugin/              Hermes plugin source (symlinked from ~/.hermes/...)
 skills/                     Hermes-installable agentskills.io skills
                             — kahzaabu-fact-check (symlinked into
                             ~/.hermes/skills/)
-tests/                      End-to-end + unit tests (see tests/README.md)
+tests/                      Unit + integration tests (197 total)
+├── test_*.py               14 modules
+└── golden/                 Quality-eval fixtures (5 stages, 25 fixtures,
+                            24/25 verified ground truth — ADR 0008)
 research/                   Historical one-shot scripts (see research/README.md)
                             — NOT imported by the package
-scripts/                    test.sh, install-hermes-plugin.sh, launchd plist,
-                            run_pipeline.sh, Caddyfile, systemd unit
-.github/workflows/          CI: test.yml runs unit suite on push + PR
+scripts/                    test.sh, install-hermes-plugin.sh, install-hermes-skills.sh,
+                            ci-dry-run.sh, run_pipeline.sh, Caddyfile, systemd unit
+docs/                       Project documentation
+├── ARCHITECTURE.md         Full V2 architecture with citation map
+├── METHODOLOGY.md          Public-facing methodology (Slice 11)
+├── MODEL_CARD.md           Per-stage LLM model card (Slice 11)
+├── DATA_CARD.md            Corpus data card (Slice 11)
+├── EVAL_RESULTS.md         Auto-generated quality eval report
+├── V2_BUILD_PLAN.md        Slice tracker
+├── TEST_REPORT.md          Latest full-stack test snapshot
+└── adr/                    Architecture Decision Records (0001-0010)
+.github/
+├── workflows/              CI: test.yml runs unit suite on push + PR
+├── ISSUE_TEMPLATE/         Bug report + feature request templates (Slice 11)
+└── PULL_REQUEST_TEMPLATE.md
 data/                       SQLite DB + manifesto/ (other contents gitignored)
+LICENSE                     Apache-2.0
+SECURITY.md                 Vulnerability disclosure (90-day window)
+CONTRIBUTING.md             Slice discipline, ADR process, test gates
+CODE_OF_CONDUCT.md          Contributor Covenant 2.1
 ```
+
+---
+
+## License & contributing
+
+- **License**: [Apache-2.0](LICENSE). Patent grant included. Derivative works may re-license; attribution required. See [ADR 0009](docs/adr/0009-oss-readiness.md) for the rationale.
+- **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md) — slice discipline, ADR process, test gates, commit format. PRs without ADRs for non-trivial changes get bounced.
+- **Code of Conduct**: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — Contributor Covenant 2.1. Enforcement contact: `Sofwathullah.Mohamed@gmail.com`.
+- **Security**: [SECURITY.md](SECURITY.md) — 90-day responsible-disclosure window; report to `Sofwathullah.Mohamed@gmail.com` with `[kahzaabu-security]` in the subject.
+- **ADRs**: every architectural decision is documented under [`docs/adr/`](docs/adr/). 0001–0010 cover V2.
+- **Model & data cards**: [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md) and [`docs/DATA_CARD.md`](docs/DATA_CARD.md) describe each LLM-call stage's prompts/biases/limitations and the corpus's coverage, gaps, and refresh cadence.
 
 ---
 
 ## Further reading
 
-- The hermes plugin's own README: `~/.hermes/hermes-agent/plugins/kahzaabu/README.md` (created by this commit)
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — full V2 architecture with citation map (AVeriTeC, RAGAR, Full Fact, PolitiFact, ClaimReview)
+- [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) — public-facing methodology (Slice 11 — paper-draft basis)
+- [`docs/EVAL_RESULTS.md`](docs/EVAL_RESULTS.md) — quality evaluation results (auto-generated by `kahzaabu eval`)
+- [`docs/V2_BUILD_PLAN.md`](docs/V2_BUILD_PLAN.md) — slice tracker
+- The hermes plugin's own README: `~/.hermes/hermes-agent/plugins/kahzaabu/README.md`
 - The agent's usage guide for kahzaabu: `~/.hermes/hermes-agent/plugins/kahzaabu/SKILL.md`
 - Hermes docs: <https://github.com/NousResearch/hermes-agent>
 
