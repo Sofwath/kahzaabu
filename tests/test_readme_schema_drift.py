@@ -145,6 +145,23 @@ class ReadmeSchemaDriftTests(unittest.TestCase):
                     f"README entry.",
                 )
 
+    def test_parser_found_columns_for_every_documented_table(self):
+        """Guard against silent-pass: if someone reformats the data-model
+        block and breaks the `cols: a, b, c` parser convention, the column
+        existence check would trivially pass (empty set ⊆ anything). This
+        invariant forces a real failure in that case."""
+        MIN_COLS_PER_TABLE = 3  # every table in the docs has ≥ 3 columns IRL
+        for t in DOCUMENTED_TABLES:
+            with self.subTest(table=t):
+                self.assertGreaterEqual(
+                    len(self.readme.get(t, set())), MIN_COLS_PER_TABLE,
+                    f"Parser extracted <{MIN_COLS_PER_TABLE} columns for "
+                    f"'{t}' from README — likely the docs were reformatted "
+                    f"away from the `-- cols: a, b, c` convention the parser "
+                    f"expects. Either restore that format or update the "
+                    f"parser in this test file.",
+                )
+
     def test_every_column_named_in_readme_exists_in_real_schema(self):
         """The key invariant: if README says column X exists on table Y, it
         must actually exist. Catches the kind of bug we fixed in 43ac29f.

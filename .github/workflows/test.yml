@@ -1,0 +1,68 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  unit:
+    name: unit tests (offline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install kahzaabu (editable) — minimal deps only
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          # Install just the package; the unit tests stub external deps so
+          # we don't need scikit-learn / fastapi / bs4 etc. on CI.
+          pip install -e .
+          # The plugin tests import from hermes' plugins/ namespace; we
+          # don't install hermes itself in CI, just stage the path.
+          mkdir -p hermes-stub/plugins
+          ln -sf "$(pwd)/hermes-plugin" hermes-stub/plugins/kahzaabu
+          touch hermes-stub/plugins/__init__.py
+
+      - name: Create empty DB fixture (the drift test needs it)
+        run: |
+          # The schema-drift test reads data/kahzaabu.db. Create a minimal
+          # DB with the full schema so the test has something to inspect.
+          # claims_db.init_claims_schema() handles creation + migrations.
+          . .venv/bin/activate
+          mkdir -p data
+          python -c "
+          import sqlite3
+          from kahzaabu import claims_db, db
+          from pathlib import Path
+          p = Path('data/kahzaabu.db')
+          conn = sqlite3.connect(str(p))
+          db.init_db(conn)
+          claims_db.init_claims_schema(conn)
+          conn.close()
+          print(f'Created {p} ({p.stat().st_size} bytes)')
+          "
+
+      - name: Run unit tests
+        run: |
+          . .venv/bin/activate
+          export PYTHONPATH="$(pwd)/hermes-stub:$PYTHONPATH"
+          python -m unittest discover tests/ -v
+
+      - name: Verify no stale test_system.py references
+        run: |
+          # Catches accidental re-introduction of the old name. Exclude this
+          # workflow file and scripts/test.sh — both legitimately mention the
+          # old name as part of the check itself.
+          ! grep -rln "test_system\.py" \
+              --exclude-dir=.git --exclude-dir=.venv \
+              --exclude=test.sh --exclude=test.yml \
+              .

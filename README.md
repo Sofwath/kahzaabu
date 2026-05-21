@@ -175,6 +175,13 @@ A separate `manifesto-extract` + `manifesto-crossref` flow extracts ~717 promise
 
 ## Data model
 
+> **Editor protocol** — when changing this block, derive column lists from
+> `sqlite3 data/kahzaabu.db ".schema"` rather than memory. Each entry below
+> uses the format `tablename -- description` followed by indented `-- cols: a, b, c`
+> lines. The `cols:` convention is load-bearing: `tests/test_readme_schema_drift.py`
+> parses it and fails if any documented column is absent from the live
+> schema. Run `./scripts/test.sh` before committing.
+
 The interesting tables:
 
 ```sql
@@ -440,6 +447,23 @@ Daily caps:
 
 ---
 
+## Testing
+
+```bash
+./scripts/test.sh                              # full local suite (unit, ~0.01s)
+.venv/bin/python -m unittest discover tests/   # just the unit tests
+.venv/bin/python tests/system_check.py         # live web-stack integration check
+```
+
+The unit suite is offline, no external deps, and runs in milliseconds. It catches:
+- `host_llm` branch invariants in the agentic Q&A
+- JSON1 vs LIKE-fallback parity in `handle_get_article`
+- Drift between the README's `## Data model` block and the real DB schema (the bug I shipped twice before this test existed)
+
+CI: `.github/workflows/test.yml` runs the unit suite on every push and PR to `main`. See `tests/README.md` for the file-by-file map.
+
+---
+
 ## Repository layout
 
 ```
@@ -481,8 +505,9 @@ hermes-plugin/              Hermes plugin source (symlinked from ~/.hermes/...)
 tests/                      End-to-end + unit tests (see tests/README.md)
 research/                   Historical one-shot scripts (see research/README.md)
                             — NOT imported by the package
-scripts/                    launchd plist, install-hermes-plugin.sh, run_pipeline.sh,
-                            Caddyfile, systemd unit
+scripts/                    test.sh, install-hermes-plugin.sh, launchd plist,
+                            run_pipeline.sh, Caddyfile, systemd unit
+.github/workflows/          CI: test.yml runs unit suite on push + PR
 data/                       SQLite DB + manifesto/ (other contents gitignored)
 ```
 
