@@ -1,0 +1,59 @@
+{
+  "id": "claim-6976",
+  "input": {
+    "claim_id": 6976,
+    "quote": "The bill was passed by the People's Majlis at its Seventh Special Session, convened on Tuesday, 16 September 2025, outside the ordinary sitting.",
+    "type": "policy_assertion",
+    "polarity": "CLAIM_OF_FACT",
+    "subject_normalized": "the People's Majlis"
+  },
+  "expected": {
+    "questions": [
+      {
+        "question": "Did the People's Majlis hold a Seventh Special Session on Tuesday, 16 September 2025?",
+        "answer_type": "Boolean",
+        "source_medium": "archive"
+      },
+      {
+        "question": "Was the Maldives Media and Broadcasting Regulation Bill passed during the Seventh Special Session on 16 September 2025?",
+        "answer_type": "Boolean",
+        "source_medium": "archive"
+      },
+      {
+        "question": "What is the official date on which President ratified the Maldives Media and Broadcasting Regulation Bill?",
+        "answer_type": "Extractive",
+        "source_medium": "archive"
+      },
+      {
+        "question": "Was 16 September 2025 a Tuesday?",
+        "answer_type": "Boolean",
+        "source_medium": "web_search"
+      }
+    ]
+  },
+  "predicted": {
+    "questions": [
+      {
+        "question": "Did the People's Majlis hold a Seventh Special Session on Tuesday, 16 September 2025?",
+        "answer_type": "Boolean",
+        "source_medium": "archive"
+      },
+      {
+        "question": "Was the Maldives Media and Broadcasting Regulation Bill passed during the Seventh Special Session on 16 September 2025?",
+        "answer_type": "Boolean",
+        "source_medium": "archive"
+      },
+      {
+        "question": "What is the official date on which President ratified the Maldives Media and Broadcasting Regulation Bill?",
+        "answer_type": "Extractive",
+        "source_medium": "archive"
+      },
+      {
+        "question": "Was 16 September 2025 a Tuesday?",
+        "answer_type": "Boolean",
+        "source_medium": "web_search"
+      }
+    ]
+  },
+  "notes": "Live decomposer output for claim 6976. Pins the (answer_type, source_medium) set."
+}

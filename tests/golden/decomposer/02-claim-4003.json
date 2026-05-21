@@ -1,0 +1,59 @@
+{
+  "id": "claim-4003",
+  "input": {
+    "claim_id": 4003,
+    "quote": "The announcement was made in Directive 25/2024 from the President's Office.",
+    "type": "policy_assertion",
+    "polarity": "CLAIM_OF_FACT",
+    "subject_normalized": "the President's Office"
+  },
+  "expected": {
+    "questions": [
+      {
+        "question": "Was Directive 25/2024 actually issued by the President's Office in 2024?",
+        "answer_type": "Boolean",
+        "source_medium": "archive"
+      },
+      {
+        "question": "What is the exact date of issuance for Directive 25/2024?",
+        "answer_type": "Extractive",
+        "source_medium": "archive"
+      },
+      {
+        "question": "Does Directive 25/2024 contain instructions to restructure Ministries' responsibilities?",
+        "answer_type": "Boolean",
+        "source_medium": "archive"
+      },
+      {
+        "question": "What specific Ministry responsibilities were restructured according to Directive 25/2024?",
+        "answer_type": "Abstractive",
+        "source_medium": "archive"
+      }
+    ]
+  },
+  "predicted": {
+    "questions": [
+      {
+        "question": "Was Directive 25/2024 actually issued by the President's Office in 2024?",
+        "answer_type": "Boolean",
+        "source_medium": "archive"
+      },
+      {
+        "question": "What is the exact date of issuance for Directive 25/2024?",
+        "answer_type": "Extractive",
+        "source_medium": "archive"
+      },
+      {
+        "question": "Does Directive 25/2024 contain instructions to restructure Ministries' responsibilities?",
+        "answer_type": "Boolean",
+        "source_medium": "archive"
+      },
+      {
+        "question": "What specific Ministry responsibilities were restructured according to Directive 25/2024?",
+        "answer_type": "Abstractive",
+        "source_medium": "archive"
+      }
+    ]
+  },
+  "notes": "Live decomposer output for claim 4003. Pins the (answer_type, source_medium) set."
+}

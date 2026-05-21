@@ -1,0 +1,24 @@
+{
+  "id": "pair-5",
+  "input": {
+    "claim_a": {
+      "quote": "President Dr Mohamed Muizzu assured that his Administration has no plans to seek salary increases for the President, Vice president, and Ministers.",
+      "polarity": "DENY",
+      "date": "2023-12-20"
+    },
+    "claim_b": {
+      "quote": "President Dr Mohamed Muizzu has appointed new members, a President and a Vice President, to the Employment Tribunal.",
+      "polarity": "AFFIRM",
+      "date": "2024-04-15"
+    },
+    "subject": "President Muizzu"
+  },
+  "expected": {
+    "verdict": "NOT_CONTRADICTORY",
+    "confidence_min": 0.5
+  },
+  "predicted": {
+    "verdict": "NOT_CONTRADICTORY"
+  },
+  "notes": "Real NOT_CONTRADICTORY from live corpus (contradiction_pair #5, conf=0.98)."
+}

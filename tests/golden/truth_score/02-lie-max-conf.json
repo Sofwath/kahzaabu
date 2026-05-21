@@ -1,0 +1,6 @@
+{
+  "id": "lie-max-conf",
+  "input": {"category": "LIE", "confidence": 0.97},
+  "expected": {"verdict_label": "REFUTED", "truth_score": 1, "truth_score_label": "PANTS_ON_FIRE"},
+  "notes": "PANTS_ON_FIRE gate: LIE category + confidence >= 0.95."
+}

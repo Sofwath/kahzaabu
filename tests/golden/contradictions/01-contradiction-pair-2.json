@@ -1,0 +1,24 @@
+{
+  "id": "pair-2",
+  "input": {
+    "claim_a": {
+      "quote": "What it means is that the President's Office interfering in the judiciary ends here right now.",
+      "polarity": "AFFIRM",
+      "date": "2023-11-17"
+    },
+    "claim_b": {
+      "quote": "neither he nor the President has interfered with the judiciary's work",
+      "polarity": "DENY",
+      "date": "2025-05-12"
+    },
+    "subject": "President Muizzu"
+  },
+  "expected": {
+    "verdict": "CONTRADICTION",
+    "confidence_min": 0.5
+  },
+  "predicted": {
+    "verdict": "CONTRADICTION"
+  },
+  "notes": "Real CONTRADICTION from live corpus (contradiction_pair #2, conf=0.78)."
+}

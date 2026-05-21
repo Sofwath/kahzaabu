@@ -1,0 +1,24 @@
+{
+  "id": "pair-11",
+  "input": {
+    "claim_a": {
+      "quote": "the importance of implementing the Food Safety Act, which was recently ratified by President Dr Mohamed Muizzu",
+      "polarity": "AFFIRM",
+      "date": "2024-06-06"
+    },
+    "claim_b": {
+      "quote": "President Dr Muizzu assured that there is currently no risk of fuel or food shortages",
+      "polarity": "DENY",
+      "date": "2026-03-02"
+    },
+    "subject": "President Muizzu"
+  },
+  "expected": {
+    "verdict": "NOT_CONTRADICTORY",
+    "confidence_min": 0.5
+  },
+  "predicted": {
+    "verdict": "NOT_CONTRADICTORY"
+  },
+  "notes": "Real NOT_CONTRADICTORY from live corpus (contradiction_pair #11, conf=0.95)."
+}

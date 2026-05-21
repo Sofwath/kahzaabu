@@ -1,0 +1,14 @@
+{
+  "id": "diff-2",
+  "input": {
+    "quote_a": "The most recent change broadened the scope of the exception to include employee-only caf\u00e9s, making the legislation more comprehensive.",
+    "quote_b": "Maldives is host to a significant number of Sri Lankans"
+  },
+  "expected": {
+    "label": "DIFFERENT"
+  },
+  "predicted": {
+    "label": "DIFFERENT"
+  },
+  "notes": "Different subject_normalized \u2014 should not be matched."
+}

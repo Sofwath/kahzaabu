@@ -1,0 +1,89 @@
+{
+  "id": "article-30296",
+  "input": {
+    "article_id": 30296,
+    "title": "The President officially announces the inclusion of Maaddoo Island in Eydhafushi Island Council",
+    "body_excerpt": "President Dr Mohamed Muizzu has officially announced the Administration's decision to incorporate Maaddoo Island into the jurisdiction of the Eydhafushi Island Council. The President stated that the necessary documentation for this inclusion would be finalised and promptly handed over to the Council within the week. He made these announcements while addressing the residents of Eydhafushi Island in the South Maalhosmadulu Atoll.Explaining the rationale behind including Maaddoo within the purview ",
+    "category": "press_release",
+    "date": "2024-03-03"
+  },
+  "expected": {
+    "claims": [
+      {
+        "type": "credit_claim",
+        "polarity": "AFFIRM",
+        "quote": "President Dr Mohamed Muizzu has officially announced the Administration's decision to incorporate Maaddoo Island into the jurisdiction of the Eydhafushi Island Council.",
+        "subject_normalized": "President Muizzu",
+        "is_checkable": 1
+      },
+      {
+        "type": "deadline_promise",
+        "polarity": "PROMISE",
+        "quote": "the necessary documentation for this inclusion would be finalised and promptly handed over to the Council within the week.",
+        "subject_normalized": "the government",
+        "is_checkable": 1
+      },
+      {
+        "type": "numeric_promise",
+        "polarity": "PROMISE",
+        "quote": "the Administration would prioritize the island under its plans to build 40,000 housing units in regions other than the Mal\u00e9 region.",
+        "subject_normalized": "the government",
+        "is_checkable": 1
+      },
+      {
+        "type": "numeric_promise",
+        "polarity": "PROMISE",
+        "quote": "President Dr Muizzu outlined the development of seven specific regions as urban centres intended to benefit a large number of citizens, identifying Eydhafushi Island among these seven urban centers.",
+        "subject_normalized": "President Muizzu",
+        "is_checkable": 1
+      },
+      {
+        "type": "numeric_update",
+        "polarity": "CLAIM_OF_FACT",
+        "quote": "Eydhafushi marks the President's fifth destination on his tour of several North and South Maalhosmadulu Atoll islands.",
+        "subject_normalized": "President Muizzu",
+        "is_checkable": 1
+      }
+    ]
+  },
+  "predicted": {
+    "claims": [
+      {
+        "type": "credit_claim",
+        "polarity": "AFFIRM",
+        "quote": "President Dr Mohamed Muizzu has officially announced the Administration's decision to incorporate Maaddoo Island into the jurisdiction of the Eydhafushi Island Council.",
+        "subject_normalized": "President Muizzu",
+        "is_checkable": 1
+      },
+      {
+        "type": "deadline_promise",
+        "polarity": "PROMISE",
+        "quote": "the necessary documentation for this inclusion would be finalised and promptly handed over to the Council within the week.",
+        "subject_normalized": "the government",
+        "is_checkable": 1
+      },
+      {
+        "type": "numeric_promise",
+        "polarity": "PROMISE",
+        "quote": "the Administration would prioritize the island under its plans to build 40,000 housing units in regions other than the Mal\u00e9 region.",
+        "subject_normalized": "the government",
+        "is_checkable": 1
+      },
+      {
+        "type": "numeric_promise",
+        "polarity": "PROMISE",
+        "quote": "President Dr Muizzu outlined the development of seven specific regions as urban centres intended to benefit a large number of citizens, identifying Eydhafushi Island among these seven urban centers.",
+        "subject_normalized": "President Muizzu",
+        "is_checkable": 1
+      },
+      {
+        "type": "numeric_update",
+        "polarity": "CLAIM_OF_FACT",
+        "quote": "Eydhafushi marks the President's fifth destination on his tour of several North and South Maalhosmadulu Atoll islands.",
+        "subject_normalized": "President Muizzu",
+        "is_checkable": 1
+      }
+    ]
+  },
+  "notes": "Live extraction output from article 30296 (The President officially announces the inclusion of Maaddoo \u2026). Pins the (type, polarity, quote-prefix) tuple set as the current correct extraction."
+}

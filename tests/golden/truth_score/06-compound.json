@@ -1,0 +1,6 @@
+{
+  "id": "compound-lie-misleading",
+  "input": {"category": "LIE / MISLEADING", "confidence": 0.96},
+  "expected": {"verdict_label": "REFUTED", "truth_score": 1, "truth_score_label": "PANTS_ON_FIRE"},
+  "notes": "Compound 'LIE / MISLEADING' resolves to LIE for the PANTS_ON_FIRE gate."
+}

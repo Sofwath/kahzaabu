@@ -1,0 +1,47 @@
+{
+  "id": "article-33168",
+  "input": {
+    "article_id": 33168,
+    "title": "President appoints a Member to the Judicial Service Commission",
+    "body_excerpt": "President Dr Mohamed Muizzu today appointed Yazmeed Mohamed as a Member of the Judicial Service Commission (JSC) in accordance with the powers granted to the President under Article 158 (h) of the Constitution of the Republic of Maldives and Article 3(8) of the Judicial Service Commission Act (Act 10/2008)\n\nPrior to the ceremony, the President dismissed Mohamed Sameer from the Judicial Service Commission under Article 165 of the\u00a0Constitution of the Republic of Maldives and Section 14(a) of Judic",
+    "category": "press_release",
+    "date": "2025-02-23"
+  },
+  "expected": {
+    "claims": [
+      {
+        "type": "credit_claim",
+        "polarity": "AFFIRM",
+        "quote": "President Dr Mohamed Muizzu today appointed Yazmeed Mohamed as a Member of the Judicial Service Commission (JSC)",
+        "subject_normalized": "President Muizzu",
+        "is_checkable": 1
+      },
+      {
+        "type": "credit_claim",
+        "polarity": "AFFIRM",
+        "quote": "the President dismissed Mohamed Sameer from the Judicial Service Commission under Article 165 of the Constitution of the Republic of Maldives and Section 14(a) of Judicial Service Commission Act",
+        "subject_normalized": "President Muizzu",
+        "is_checkable": 1
+      }
+    ]
+  },
+  "predicted": {
+    "claims": [
+      {
+        "type": "credit_claim",
+        "polarity": "AFFIRM",
+        "quote": "President Dr Mohamed Muizzu today appointed Yazmeed Mohamed as a Member of the Judicial Service Commission (JSC)",
+        "subject_normalized": "President Muizzu",
+        "is_checkable": 1
+      },
+      {
+        "type": "credit_claim",
+        "polarity": "AFFIRM",
+        "quote": "the President dismissed Mohamed Sameer from the Judicial Service Commission under Article 165 of the Constitution of the Republic of Maldives and Section 14(a) of Judicial Service Commission Act",
+        "subject_normalized": "President Muizzu",
+        "is_checkable": 1
+      }
+    ]
+  },
+  "notes": "Live extraction output from article 33168 (President appoints a Member to the Judicial Service Commissi\u2026). Pins the (type, polarity, quote-prefix) tuple set as the current correct extraction."
+}

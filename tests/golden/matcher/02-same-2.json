@@ -1,0 +1,14 @@
+{
+  "id": "same-2",
+  "input": {
+    "quote_a": "delivering housing for all Maldivians within his five-year term is a crucial commitment",
+    "quote_b": "Delivering housing for all Maldivians within his term is a Presidential pledge."
+  },
+  "expected": {
+    "label": "SAME"
+  },
+  "predicted": {
+    "label": "SAME"
+  },
+  "notes": "Canonical pair from live matcher run \u2014 high cosine + entity overlap."
+}

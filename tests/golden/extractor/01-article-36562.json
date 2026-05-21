@@ -1,0 +1,47 @@
+{
+  "id": "article-36562",
+  "input": {
+    "article_id": 36562,
+    "title": "Minister of Foreign Affairs, Foreign Employment and Tourism of Sri Lanka pays a courtesy call on the President",
+    "body_excerpt": "The Minister of Foreign Affairs, Foreign Employment and Tourism of Sri Lanka, Honourable Vijitha Herath, MP, paid a courtesy call on His Excellency President Dr Mohamed Muizzu today, during the President\u2019s ongoing State Visit to Sri Lanka.\n\nDuring the call, the President and the Minister reflected on the six decades of formal diplomatic relations between the Maldives and Sri Lanka, founded on shared values, mutual respect and friendship between their peoples. They reaffirmed commitment to contin",
+    "category": "press_release",
+    "date": "2026-05-04"
+  },
+  "expected": {
+    "claims": [
+      {
+        "type": "policy_assertion",
+        "polarity": "NEUTRAL",
+        "quote": "six decades of formal diplomatic relations between the Maldives and Sri Lanka",
+        "subject_normalized": "the government",
+        "is_checkable": 0
+      },
+      {
+        "type": "policy_assertion",
+        "polarity": "AFFIRM",
+        "quote": "State Visit to Sri Lanka at the invitation of His Excellency Anura Kumara Disanayaka, President of the Democratic Socialist Republic of Sri Lanka, from 3 to 6 May 2026",
+        "subject_normalized": "President Muizzu",
+        "is_checkable": 1
+      }
+    ]
+  },
+  "predicted": {
+    "claims": [
+      {
+        "type": "policy_assertion",
+        "polarity": "NEUTRAL",
+        "quote": "six decades of formal diplomatic relations between the Maldives and Sri Lanka",
+        "subject_normalized": "the government",
+        "is_checkable": 0
+      },
+      {
+        "type": "policy_assertion",
+        "polarity": "AFFIRM",
+        "quote": "State Visit to Sri Lanka at the invitation of His Excellency Anura Kumara Disanayaka, President of the Democratic Socialist Republic of Sri Lanka, from 3 to 6 May 2026",
+        "subject_normalized": "President Muizzu",
+        "is_checkable": 1
+      }
+    ]
+  },
+  "notes": "Live extraction output from article 36562 (Minister of Foreign Affairs, Foreign Employment and Tourism \u2026). Pins the (type, polarity, quote-prefix) tuple set as the current correct extraction."
+}

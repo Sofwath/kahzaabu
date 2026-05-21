@@ -1,0 +1,14 @@
+{
+  "id": "same-3",
+  "input": {
+    "quote_a": "A completely new Foreign Investment Law is in the pipeline with provisions guaranteeing investment security as well as paving the way for investment treaties.",
+    "quote_b": "a new Foreign Investment Law is in the pipeline, with provisions guaranteeing investment security and paving the way for the execution of investment treaties"
+  },
+  "expected": {
+    "label": "SAME"
+  },
+  "predicted": {
+    "label": "SAME"
+  },
+  "notes": "Canonical pair from live matcher run \u2014 high cosine + entity overlap."
+}

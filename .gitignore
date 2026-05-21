@@ -47,3 +47,4 @@ scratch/
 .env.*
 *.pem
 *.key
+data/eval_history.jsonl

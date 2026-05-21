@@ -1,0 +1,14 @@
+{
+  "id": "diff-1",
+  "input": {
+    "quote_a": "contracted Batch Construction Private Limited for the construction of the As\u00e9ria Homes & Townhouses on a plot spanning 19,746.88 square meters.",
+    "quote_b": "on September 21st, that the Maldives celebrated the fifty-ninth anniversary of its membership at the United Nations"
+  },
+  "expected": {
+    "label": "DIFFERENT"
+  },
+  "predicted": {
+    "label": "DIFFERENT"
+  },
+  "notes": "Different subject_normalized \u2014 should not be matched."
+}

@@ -1,0 +1,14 @@
+{
+  "id": "diff-3",
+  "input": {
+    "quote_a": "The Government will provide one thousand opportunities to the poorest in the nation, to perform Hajj. In this regard, 50 people will be given the opportunity this year.",
+    "quote_b": "the explosion that occurred at an ammunition factory in Balikesir Province, which tragically claimed the lives of 12 individuals and left others injured"
+  },
+  "expected": {
+    "label": "DIFFERENT"
+  },
+  "predicted": {
+    "label": "DIFFERENT"
+  },
+  "notes": "Different subject_normalized \u2014 should not be matched."
+}

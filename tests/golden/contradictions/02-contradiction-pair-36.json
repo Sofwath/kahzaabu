@@ -1,0 +1,24 @@
+{
+  "id": "pair-36",
+  "input": {
+    "claim_a": {
+      "quote": "In the Maldives, we are grappling with high debt burdens. Uncertainties in the global market and unfavourable market conditions remains a challenge to refinance our debt obligations.",
+      "polarity": "CLAIM_OF_FACT",
+      "date": "2024-01-20"
+    },
+    "claim_b": {
+      "quote": "the Maldives faces no concerns regarding the repayment of its external debt",
+      "polarity": "DENY",
+      "date": "2026-03-02"
+    },
+    "subject": "the Maldives"
+  },
+  "expected": {
+    "verdict": "CONTRADICTION",
+    "confidence_min": 0.5
+  },
+  "predicted": {
+    "verdict": "CONTRADICTION"
+  },
+  "notes": "Real CONTRADICTION from live corpus (contradiction_pair #36, conf=0.78)."
+}

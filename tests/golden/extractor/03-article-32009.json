@@ -1,0 +1,75 @@
+{
+  "id": "article-32009",
+  "input": {
+    "article_id": 32009,
+    "title": "The President inaugurates the 'Nasruge Dhuvahuge Sifainge Maurazu 2024",
+    "body_excerpt": "President Dr Mohamed Muizzu has inaugurated the 'Nasruge Dhuvahuge Sifainge Maurazu 2024' at a special ceremony held this morning at the National Art Gallery.\n\nFollowing the inauguration, the President toured the exhibition.\n\nThe exhibition showcases the damage caused by the terrorist attack on November 3, 1988 and highlights the bravery displayed by the armed forces in achieving victory that day. One of the main objectives of the exhibition is to educate the current generation about Victory Day",
+    "category": "press_release",
+    "date": "2024-11-03"
+  },
+  "expected": {
+    "claims": [
+      {
+        "type": "numeric_update",
+        "polarity": "AFFIRM",
+        "quote": "It features over 200 displays, and unlike previous years, it includes, alongside photographs, original weapons and items used during Victory Day for public viewing.",
+        "subject_normalized": "Nasruge Dhuvahuge Sifainge Maurazu 2024 exhibition",
+        "is_checkable": 1
+      },
+      {
+        "type": "deadline_promise",
+        "polarity": "AFFIRM",
+        "quote": "The exhibition will take place at the National Art Gallery from November 3 to 9. It will be open for public viewing from 9 AM to 12 PM, from 2 PM to 6 PM, and from 8 PM to 10 PM.",
+        "subject_normalized": "Nasruge Dhuvahuge Sifainge Maurazu 2024 exhibition",
+        "is_checkable": 1
+      },
+      {
+        "type": "credit_claim",
+        "polarity": "AFFIRM",
+        "quote": "President Dr Mohamed Muizzu has inaugurated the 'Nasruge Dhuvahuge Sifainge Maurazu 2024' at a special ceremony held this morning at the National Art Gallery.",
+        "subject_normalized": "President Muizzu",
+        "is_checkable": 1
+      },
+      {
+        "type": "boast",
+        "polarity": "AFFIRM",
+        "quote": "unlike previous years, it includes, alongside photographs, original weapons and items used during Victory Day for public viewing.",
+        "subject_normalized": "Nasruge Dhuvahuge Sifainge Maurazu 2024 exhibition",
+        "is_checkable": 1
+      }
+    ]
+  },
+  "predicted": {
+    "claims": [
+      {
+        "type": "numeric_update",
+        "polarity": "AFFIRM",
+        "quote": "It features over 200 displays, and unlike previous years, it includes, alongside photographs, original weapons and items used during Victory Day for public viewing.",
+        "subject_normalized": "Nasruge Dhuvahuge Sifainge Maurazu 2024 exhibition",
+        "is_checkable": 1
+      },
+      {
+        "type": "deadline_promise",
+        "polarity": "AFFIRM",
+        "quote": "The exhibition will take place at the National Art Gallery from November 3 to 9. It will be open for public viewing from 9 AM to 12 PM, from 2 PM to 6 PM, and from 8 PM to 10 PM.",
+        "subject_normalized": "Nasruge Dhuvahuge Sifainge Maurazu 2024 exhibition",
+        "is_checkable": 1
+      },
+      {
+        "type": "credit_claim",
+        "polarity": "AFFIRM",
+        "quote": "President Dr Mohamed Muizzu has inaugurated the 'Nasruge Dhuvahuge Sifainge Maurazu 2024' at a special ceremony held this morning at the National Art Gallery.",
+        "subject_normalized": "President Muizzu",
+        "is_checkable": 1
+      },
+      {
+        "type": "boast",
+        "polarity": "AFFIRM",
+        "quote": "unlike previous years, it includes, alongside photographs, original weapons and items used during Victory Day for public viewing.",
+        "subject_normalized": "Nasruge Dhuvahuge Sifainge Maurazu 2024 exhibition",
+        "is_checkable": 1
+      }
+    ]
+  },
+  "notes": "Live extraction output from article 32009 (The President inaugurates the 'Nasruge Dhuvahuge Sifainge Ma\u2026). Pins the (type, polarity, quote-prefix) tuple set as the current correct extraction."
+}

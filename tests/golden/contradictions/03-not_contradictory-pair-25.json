@@ -1,0 +1,24 @@
+{
+  "id": "pair-25",
+  "input": {
+    "claim_a": {
+      "quote": "measures are being taken to diversify energy supply sources, reducing reliance on a limited number of countries to strengthen national fuel security.",
+      "polarity": "AFFIRM",
+      "date": "2026-03-12"
+    },
+    "claim_b": {
+      "quote": "there is currently no risk to the country's fuel supply",
+      "polarity": "DENY",
+      "date": "2026-04-29"
+    },
+    "subject": "the government"
+  },
+  "expected": {
+    "verdict": "NOT_CONTRADICTORY",
+    "confidence_min": 0.5
+  },
+  "predicted": {
+    "verdict": "NOT_CONTRADICTORY"
+  },
+  "notes": "Real NOT_CONTRADICTORY from live corpus (contradiction_pair #25, conf=0.85)."
+}

@@ -264,6 +264,52 @@ def enrich_claims(ctx, limit, budget, concurrency):
                 f"{r.get('errors', 0)} errors, ${r['cost_usd']:.3f}")
 
 
+@main.command(name="eval")
+@click.option("--stage", "stages", multiple=True,
+               help="Restrict to one or more stages (repeat). Default: all.")
+@click.option("--small", is_flag=True,
+               help="CI-fast: first 3 fixtures per stage. Default: full set.")
+@click.option("--no-report", is_flag=True,
+               help="Skip writing docs/EVAL_RESULTS.md.")
+@click.option("--no-history", is_flag=True,
+               help="Skip appending to data/eval_history.jsonl.")
+@click.pass_context
+def eval_cmd(ctx, stages, small, no_report, no_history):
+    """V2 — run quality evaluation across pipeline stages (ADR 0008).
+
+    Fixtures live under tests/golden/<stage>/*.json. The eval is
+    deterministic for the truth_score stage and STATIC for the others
+    (compares fixture-recorded predicted output against expected). To
+    refresh predicted outputs against the current pipeline, re-curate
+    the fixtures by re-running the LLM stage on each input.
+    """
+    from .eval import run_eval, append_history, write_report, render_markdown_report
+    stage_list = list(stages) or None
+    results = run_eval(stages=stage_list, small=small)
+    if not no_history:
+        append_history(results)
+    if not no_report:
+        write_report(results)
+    # Brief stdout summary
+    click.echo("\n──── Eval summary ────")
+    for stage, r in results.items():
+        if stage.startswith("_"):
+            continue
+        if r.get("note") == "no fixtures yet":
+            click.echo(f"  {stage:<18} (no fixtures)")
+            continue
+        if "macro_f1" in r:
+            click.echo(f"  {stage:<18}  n={r.get('n','?'):<3}  "
+                        f"acc={r.get('accuracy',0):.3f}  "
+                        f"macro_f1={r.get('macro_f1',0):.3f}")
+        elif "f1" in r:
+            click.echo(f"  {stage:<18}  n={r.get('n','?'):<3}  "
+                        f"P={r.get('precision',0):.3f}  "
+                        f"R={r.get('recall',0):.3f}  "
+                        f"F1={r.get('f1',0):.3f}")
+    click.echo(f"\nReport: docs/EVAL_RESULTS.md  (history: data/eval_history.jsonl)")
+
+
 @main.command(name="export-claimreview")
 @click.option("--only-published/--all", default=True,
                help="Default: only published fact_checks (ADR 0006)")

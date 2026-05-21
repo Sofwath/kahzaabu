@@ -1,0 +1,14 @@
+{
+  "id": "same-1",
+  "input": {
+    "quote_a": "This year, the Maldives and the United Kingdom mark 60 years of diplomatic relations.",
+    "quote_b": "we mark 60 years of diplomatic relations"
+  },
+  "expected": {
+    "label": "SAME"
+  },
+  "predicted": {
+    "label": "SAME"
+  },
+  "notes": "Canonical pair from live matcher run \u2014 high cosine + entity overlap."
+}

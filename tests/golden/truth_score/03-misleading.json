@@ -1,0 +1,6 @@
+{
+  "id": "misleading-auto",
+  "input": {"category": "MISLEADING", "confidence": "auto"},
+  "expected": {"verdict_label": "CONFLICTING_EVIDENCE", "truth_score": 4, "truth_score_label": "HALF_TRUE"},
+  "notes": "MISLEADING maps to CONFLICTING_EVIDENCE which always lands HALF_TRUE/4."
+}

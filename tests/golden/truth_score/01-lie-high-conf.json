@@ -1,0 +1,6 @@
+{
+  "id": "lie-high-conf",
+  "input": {"category": "LIE", "confidence": "reviewed"},
+  "expected": {"verdict_label": "REFUTED", "truth_score": 2, "truth_score_label": "FALSE"},
+  "notes": "ADR 0005: LIE + reviewed (0.90) → REFUTED. Confidence 0.90 < 0.95 so it's FALSE/2, not PANTS_ON_FIRE/1."
+}

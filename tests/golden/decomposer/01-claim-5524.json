@@ -1,0 +1,59 @@
+{
+  "id": "claim-5524",
+  "input": {
+    "claim_id": 5524,
+    "quote": "necessary permissions have been granted to recruit 411 additional employees for the sector.",
+    "type": "numeric_update",
+    "polarity": "AFFIRM",
+    "subject_normalized": "the government"
+  },
+  "expected": {
+    "questions": [
+      {
+        "question": "Did the President officially grant permissions to recruit 411 additional employees for the health sector, and when was this announcement made?",
+        "answer_type": "Boolean",
+        "source_medium": "archive"
+      },
+      {
+        "question": "What is the exact number of additional health sector employees that were authorized for recruitment in the most recent official government announcement or policy decision?",
+        "answer_type": "Extractive",
+        "source_medium": "archive"
+      },
+      {
+        "question": "Has the government previously announced recruitment permissions for the health sector with a different number of employees, and if so, what were those figures?",
+        "answer_type": "Abstractive",
+        "source_medium": "web_search"
+      },
+      {
+        "question": "What is the current staffing level at IGMH and other major health facilities, and what are the documented workforce gaps that justify the need for 411 additional employees?",
+        "answer_type": "Abstractive",
+        "source_medium": "web_search"
+      }
+    ]
+  },
+  "predicted": {
+    "questions": [
+      {
+        "question": "Did the President officially grant permissions to recruit 411 additional employees for the health sector, and when was this announcement made?",
+        "answer_type": "Boolean",
+        "source_medium": "archive"
+      },
+      {
+        "question": "What is the exact number of additional health sector employees that were authorized for recruitment in the most recent official government announcement or policy decision?",
+        "answer_type": "Extractive",
+        "source_medium": "archive"
+      },
+      {
+        "question": "Has the government previously announced recruitment permissions for the health sector with a different number of employees, and if so, what were those figures?",
+        "answer_type": "Abstractive",
+        "source_medium": "web_search"
+      },
+      {
+        "question": "What is the current staffing level at IGMH and other major health facilities, and what are the documented workforce gaps that justify the need for 411 additional employees?",
+        "answer_type": "Abstractive",
+        "source_medium": "web_search"
+      }
+    ]
+  },
+  "notes": "Live decomposer output for claim 5524. Pins the (answer_type, source_medium) set."
+}
