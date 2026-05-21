@@ -72,6 +72,20 @@ Don't just dump tool results. Synthesize. If you find a conflict between manifes
 
 DATA FRESHNESS: When the question is about "recent" or "this week" or "what's happening now", call `archive_stats` first and check the `freshness` field. If `is_stale` is true (>24h since last scrape), warn the user at the end of your answer that the data may be missing very recent items, and suggest they run the pipeline to refresh. Do NOT trigger the pipeline yourself — only report.
 
+CONSTITUTIONAL CROSS-CHECK: For every fact-check, promise, or presidential statement you discuss in detail, consider whether it touches a constitutional provision. Use `constitution_lookup` to check when the topic involves:
+- Presidential powers, conduct, election, qualifications, or removal (Chapter IV, Art. 105-128)
+- Judicial process, judges, courts, independence (Chapter VI, Art. 141-159)
+- Fundamental rights — life, religion, expression, assembly, fair trial, etc. (Chapter II, Art. 16-69)
+- Separation of powers, legislative authority (Chapter III, People's Majlis)
+- Religion of the State, prohibition of non-Islamic law (Art. 10)
+- Decentralisation, councils, elections (Chapter VIII, Art. 230-235)
+- Emergency declarations, war powers (Art. 253-258)
+- Any explicit claim the subject made about "the constitution"
+
+When the constitution is relevant, cite article numbers inline as `[Const. Art. NN]` and quote the operative phrase verbatim. Do NOT render legal opinions — say "Art. 16 protects X; whether this action violates it is a matter for the courts." If lookup returns nothing relevant, omit the cross-check rather than fabricate.
+
+IMPORTANT DISCLAIMER: the constitution lookup uses a 2008 functional translation (Dheena Hussain); the legally binding text is the Dhivehi original and may have amendments since 2008. Surface this caveat when the constitutional point is non-trivial.
+
 === NARRATIVE-TRICKS ANALYSIS (REQUIRED for article-based answers) ===
 
 Whenever your answer draws on the body or quotes of press releases / speeches, you MUST end with a section titled exactly:
@@ -333,15 +347,38 @@ def _tool_archive_stats(conn) -> dict:
             "freshness": claims_db.freshness(conn)}
 
 
+def _tool_constitution_lookup(conn, q: str = "", limit: int = 5) -> dict:
+    """Keyword search over the parsed Constitution of the Maldives (2008
+    functional translation, English). Returns up to `limit` articles whose
+    title or body matches."""
+    from kahzaabu import constitution as _const
+    try:
+        hits = _const.lookup(conn, q, limit=max(1, min(int(limit), 10)))
+    except Exception as e:
+        return {"error": f"constitution_lookup failed: {e}"}
+    return {
+        "count": len(hits),
+        "items": [
+            {"article_no": h["article_no"],
+             "chapter": h["chapter"],
+             "title": h["title"],
+             "body": _truncate(h["body"], 800),
+             "source": h["source_version"]}
+            for h in hits
+        ],
+    }
+
+
 TOOL_HANDLERS = {
-    "search_articles":    _tool_search_articles,
-    "search_factchecks":  _tool_search_factchecks,
-    "search_manifesto":   _tool_search_manifesto,
-    "get_article":        _tool_get_article,
-    "get_factcheck":      _tool_get_factcheck,
-    "get_promise":        _tool_get_promise,
-    "list_recent":        _tool_list_recent,
-    "archive_stats":      _tool_archive_stats,
+    "search_articles":      _tool_search_articles,
+    "search_factchecks":    _tool_search_factchecks,
+    "search_manifesto":     _tool_search_manifesto,
+    "get_article":          _tool_get_article,
+    "get_factcheck":        _tool_get_factcheck,
+    "get_promise":          _tool_get_promise,
+    "list_recent":          _tool_list_recent,
+    "archive_stats":        _tool_archive_stats,
+    "constitution_lookup":  _tool_constitution_lookup,
 }
 
 
@@ -390,6 +427,25 @@ def _tool_specs(include_web: bool = True) -> list[dict]:
          "input_schema": {"type": "object", "properties": {
              "days":  {"type": "integer", "default": 7},
              "limit": {"type": "integer", "default": 15}}}},
+        {"name": "constitution_lookup",
+         "description": (
+             "Search the Constitution of the Republic of Maldives (English "
+             "functional translation, 2008 baseline) by keyword. Returns "
+             "matching articles with their number, chapter, title, and body. "
+             "Use this whenever the user's question touches: presidential "
+             "powers / conduct, judicial independence, fundamental rights, "
+             "religion of the State, separation of powers, election "
+             "qualifications, constitutional procedures (e.g. emergency "
+             "declarations, removal from office), or any explicit claim "
+             "about what 'the constitution says'. Cite article numbers "
+             "inline as [Const. Art. NN]. Treat hits as evidence, NOT as "
+             "legal opinion."
+         ),
+         "input_schema": {"type": "object", "properties": {
+             "q":     {"type": "string", "description": "keyword/phrase"},
+             "limit": {"type": "integer", "minimum": 1, "maximum": 10,
+                        "default": 5}},
+             "required": ["q"]}},
     ]
     if include_web:
         tools.append({

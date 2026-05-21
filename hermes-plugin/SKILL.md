@@ -20,7 +20,16 @@ You have 8 in-process tools for querying a curated SQLite archive of Maldives Pr
 | Pure listing with filters (no synthesis): "list every BROKEN DEADLINE in 2025" | `kahzaabu_list_lies` |
 | "what did the manifesto say about housing" (filterable) | `kahzaabu_manifesto` |
 | "anything in the past N days" (raw list, no synthesis) | `kahzaabu_recent_activity` |
+| "is this action constitutional / what does the constitution say about X" | `kahzaabu_constitution_lookup` |
 | User explicitly asks to refresh the archive | `kahzaabu_pipeline_run` (gated; check `kahzaabu_stats.freshness` first) |
+
+## Constitutional cross-check
+
+`kahzaabu_ask` automatically calls `constitution_lookup` (its internal twin of `kahzaabu_constitution_lookup`) when the question touches presidential powers, judicial independence, fundamental rights, religion of the State, separation of powers, emergency declarations, or election qualifications. The answer cites article numbers inline as `[Const. Art. NN]`.
+
+If you call `kahzaabu_constitution_lookup` directly: treat hits as **textual citations**, not legal opinions. The Supreme Court interprets the constitution, not us. Use phrases like *"Article 16 protects X; whether this action violates it is a matter for the courts."* Skip the cross-check entirely if the user's question has no constitutional dimension (most housing/budget/deadline questions don't).
+
+**Always disclaim**: the lookup uses a 2008 functional translation (Dheena Hussain); the legally binding text is the Dhivehi original, and the constitution has been amended since 2008.
 
 ## Session memory
 

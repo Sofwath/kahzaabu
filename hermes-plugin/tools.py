@@ -232,6 +232,33 @@ PIPELINE_RUN_SCHEMA: Dict[str, Any] = {
     },
 }
 
+CONSTITUTION_LOOKUP_SCHEMA: Dict[str, Any] = {
+    "name": "kahzaabu_constitution_lookup",
+    "description": (
+        "Search the Constitution of the Republic of Maldives (English "
+        "functional translation by Dheena Hussain, 2008 baseline) by "
+        "keyword. Returns matching articles with their number, chapter, "
+        "title, and body. Use this whenever a fact-check or presidential "
+        "statement touches: presidential powers / conduct / election / "
+        "removal, judicial independence, fundamental rights, religion of "
+        "the State, separation of powers, election qualifications, "
+        "emergency declarations, or any explicit claim about what 'the "
+        "constitution says'. Cite article numbers inline as "
+        "[Const. Art. NN]. Treat hits as evidence to point AT, NOT as "
+        "legal opinion — interpretation is the Supreme Court's job. "
+        "NOTE: this is a 2008 baseline translation; the legally binding "
+        "text is the Dhivehi original and may have been amended since."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "keyword or short phrase"},
+            "limit": {"type": "integer", "description": "default 5, max 10"},
+        },
+        "required": ["query"],
+    },
+}
+
 
 # ---------------------------------------------------------------------------
 # Handlers — each takes (args, **_kw) and returns a JSON-encoded string.
@@ -474,6 +501,40 @@ def handle_recent_activity(args: Dict[str, Any], **_kw) -> str:
         conn.close()
 
 
+def handle_constitution_lookup(args: Dict[str, Any], **_kw) -> str:
+    query = (args.get("query") or "").strip()
+    if not query:
+        return _result({"error": "query is required"})
+    limit = max(1, min(int(args.get("limit", 5)), 10))
+    from kahzaabu import constitution
+    conn = _conn()
+    try:
+        hits = constitution.lookup(conn, query, limit=limit)
+    except sqlite3.OperationalError as e:
+        return _result({
+            "error": f"constitution table missing: {e}. "
+                     "Run: .venv/bin/python -m kahzaabu.constitution --import"
+        })
+    finally:
+        conn.close()
+    return _result({
+        "query": query,
+        "count": len(hits),
+        "items": [
+            {"article_no": h["article_no"],
+             "chapter": h["chapter"],
+             "title": h["title"],
+             "body": h["body"][:800] + ("…" if len(h["body"]) > 800 else ""),
+             "source": h["source_version"]}
+            for h in hits
+        ],
+        "disclaimer": ("2008 functional translation; legally binding text is "
+                        "the Dhivehi original. Constitutional interpretation "
+                        "is the Supreme Court's role — these hits are "
+                        "citations, not legal opinions."),
+    })
+
+
 def handle_pipeline_run(args: Dict[str, Any], **_kw) -> str:
     if os.environ.get("KAHZAABU_MCP_ALLOW_PIPELINE") != "1":
         return _result({
@@ -497,12 +558,13 @@ def handle_pipeline_run(args: Dict[str, Any], **_kw) -> str:
 # ---------------------------------------------------------------------------
 
 TOOLS = (
-    ("kahzaabu_stats",           STATS_SCHEMA,           handle_stats,           "📊"),
-    ("kahzaabu_ask",             ASK_SCHEMA,             handle_ask,             "🔍"),
-    ("kahzaabu_list_lies",       LIST_LIES_SCHEMA,       handle_list_lies,       "🎭"),
-    ("kahzaabu_get_factcheck",   GET_FACTCHECK_SCHEMA,   handle_get_factcheck,   "📋"),
-    ("kahzaabu_manifesto",       MANIFESTO_SCHEMA,       handle_manifesto,       "📜"),
-    ("kahzaabu_get_article",     GET_ARTICLE_SCHEMA,     handle_get_article,     "📰"),
-    ("kahzaabu_recent_activity", RECENT_ACTIVITY_SCHEMA, handle_recent_activity, "📅"),
-    ("kahzaabu_pipeline_run",    PIPELINE_RUN_SCHEMA,    handle_pipeline_run,    "🔄"),
+    ("kahzaabu_stats",                 STATS_SCHEMA,                 handle_stats,                 "📊"),
+    ("kahzaabu_ask",                   ASK_SCHEMA,                   handle_ask,                   "🔍"),
+    ("kahzaabu_list_lies",             LIST_LIES_SCHEMA,             handle_list_lies,             "🎭"),
+    ("kahzaabu_get_factcheck",         GET_FACTCHECK_SCHEMA,         handle_get_factcheck,         "📋"),
+    ("kahzaabu_manifesto",             MANIFESTO_SCHEMA,             handle_manifesto,             "📜"),
+    ("kahzaabu_get_article",           GET_ARTICLE_SCHEMA,           handle_get_article,           "📰"),
+    ("kahzaabu_recent_activity",       RECENT_ACTIVITY_SCHEMA,       handle_recent_activity,       "📅"),
+    ("kahzaabu_constitution_lookup",   CONSTITUTION_LOOKUP_SCHEMA,   handle_constitution_lookup,   "⚖️"),
+    ("kahzaabu_pipeline_run",          PIPELINE_RUN_SCHEMA,          handle_pipeline_run,          "🔄"),
 )

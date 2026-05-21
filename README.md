@@ -217,6 +217,9 @@ manifesto_promises  -- 2023 campaign promises with delivery tracking.
 qna_sessions        -- agentic-ask multi-turn memory.
                     -- cols: id (uuid), messages_json (full message history),
                     --       total_cost_usd, n_turns, created_at, last_used_at
+constitution_articles -- parsed Constitution of the Republic of Maldives.
+                    -- cols: article_no, chapter, title, body, source_version,
+                    --       imported_at
 scrape_runs         -- audit log of pipeline cycles.
                     -- cols: category_id, language, started_at, finished_at,
                     --       pages_scraped, articles_scraped, articles_new,

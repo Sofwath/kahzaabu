@@ -30,7 +30,7 @@ DB = ROOT / "data" / "kahzaabu.db"
 DOCUMENTED_TABLES = {
     "articles", "claims", "fact_checks", "fact_check_evidence",
     "article_fact_cards", "dv_en_inconsistencies",
-    "manifesto_promises",
+    "manifesto_promises", "constitution_articles",
     "qna_sessions", "scrape_runs", "web_users",
 }
 
