@@ -361,7 +361,7 @@ def _trim_messages(messages: list, max_bytes: int = MAX_SESSION_BYTES) -> list:
 
 def ask_agentic(conn: sqlite3.Connection, question: str, *,
                 session_id: Optional[str] = None,
-                max_iterations: int = 5,
+                max_iterations: int = 7,
                 enable_web: bool = True,
                 daily_budget_usd: float = 5.0) -> dict:
     """Agentic Q&A. Returns {answer, session_id, intent, n_iterations, cost_usd, tool_trace}."""
@@ -455,6 +455,55 @@ def ask_agentic(conn: sqlite3.Connection, question: str, *,
             logger.warning(f"agentic ask budget hit (${today_spent + cost:.2f}); stopping")
             final_text = "(daily budget exhausted before answer was complete)"
             break
+
+    # If we ran out of iterations while still in tool-use mode, force a final
+    # synthesis. The last message in `messages` is a `[tool_result, ...]` user
+    # message, which makes Claude think the prior tool-use turn is fully
+    # resolved and the next move is whatever the user wants. Without a NEW
+    # user prompt and without tools, Claude responds end_turn with empty
+    # content. So we explicitly append a user instruction asking for the
+    # summary, with no tools available.
+    if not final_text:
+        try:
+            messages.append({
+                "role": "user",
+                "content": (
+                    "You've used all the tool calls available for this question. "
+                    "Now write your best answer based on what you've already "
+                    "gathered above. Use Markdown, cite article ids inline as "
+                    "[NNNNN] / fact_check ids / promise ids. If the evidence is "
+                    "incomplete, say so explicitly rather than asking for more "
+                    "tool calls."
+                ),
+            })
+            r = client.messages.create(
+                model=MODEL, max_tokens=4000, system=SYSTEM_PROMPT,
+                messages=messages,
+            )
+            tokens_in += r.usage.input_tokens
+            tokens_out += r.usage.output_tokens
+            messages.append({"role": "assistant", "content": [
+                block.model_dump(exclude_none=True) if hasattr(block, "model_dump") else block.__dict__
+                for block in r.content
+            ]})
+            for block in r.content:
+                if getattr(block, "type", None) == "text":
+                    final_text += getattr(block, "text", "")
+            tool_trace.append({"iteration": iterations + 1, "tool": "(forced-synthesis)",
+                                "args": {}, "result_preview": f"no-tools wrap-up, "
+                                f"{len(final_text)} chars"})
+        except Exception as e:
+            final_text = (f"(no answer — agent hit iteration cap and forced-synthesis "
+                          f"call failed: {e})")
+
+    # If even after the forced synthesis we have nothing, surface the failure
+    # honestly rather than silently returning "".
+    if not final_text:
+        final_text = (
+            "(I hit the iteration cap on this question before producing an answer. "
+            "Try rephrasing more narrowly, or run again with a higher `max_iterations` "
+            "if your client supports it.)"
+        )
 
     cost = (tokens_in / 1e6 * PRICE_IN_PER_M + tokens_out / 1e6 * PRICE_OUT_PER_M
             + web_searches * WEB_SEARCH_PRICE_PER_SEARCH)
