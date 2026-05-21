@@ -22,7 +22,7 @@ This project draws on:
 **To cite kahzaabu** (placeholder until paper/DOI exists):
 ```
 Kahzaabu: Automated Political Fact-Checking for the Maldives Presidency, 2025.
-https://github.com/<TBD>
+https://github.com/Sofwath/kahzaabu
 ```
 
 ---
@@ -462,7 +462,7 @@ Until a paper / DOI exists:
            of a Single-Speaker Political Corpus},
   author = {Mohamed, Sofwathullah and contributors},
   year = {2026},
-  url = {https://github.com/<TBD>},
+  url = {https://github.com/Sofwath/kahzaabu},
   note = {Open-source civic-tech project. Apache-2.0 licensed.}
 }
 ```

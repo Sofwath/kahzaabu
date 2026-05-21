@@ -265,7 +265,7 @@ the project and the upstream papers it builds on:
   title  = {Kahzaabu — automated fact-checking archive for the Maldives Presidency},
   author = {Mohamed, Sofwathullah and contributors},
   year   = {2026},
-  url    = {https://github.com/<repo>/kahzaabu},
+  url    = {https://github.com/Sofwath/kahzaabu},
   license = {Apache-2.0}
 }
 

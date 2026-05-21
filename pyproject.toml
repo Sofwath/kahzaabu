@@ -16,6 +16,11 @@ dependencies = [
     "Pillow>=10.0",         # infographics renderer
 ]
 
+[project.urls]
+Homepage = "https://github.com/Sofwath/kahzaabu"
+Repository = "https://github.com/Sofwath/kahzaabu"
+Issues = "https://github.com/Sofwath/kahzaabu/issues"
+
 [project.optional-dependencies]
 web = [
     "fastapi>=0.110",

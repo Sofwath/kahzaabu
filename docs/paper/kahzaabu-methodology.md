@@ -575,7 +575,7 @@ dataset for fake news detection. In *Proc. ACL*, pp. 422–426.
   author = {Mohamed, Sofwathullah and contributors},
   year   = {2026},
   note   = {Apache-2.0; submitted to arXiv (preprint forthcoming)},
-  url    = {https://github.com/<repo>/kahzaabu}
+  url    = {https://github.com/Sofwath/kahzaabu}
 }
 
 @inproceedings{schlichtkrull2023averitec,

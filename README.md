@@ -69,7 +69,7 @@ A separate layer — the [narrative-tricks analysis](#the-narrative-tricks-layer
 ### Path A — standalone (CLI + web)
 
 ```bash
-git clone <this repo> kahzaabu && cd kahzaabu
+git clone https://github.com/Sofwath/kahzaabu.git && cd kahzaabu
 python3 -m venv .venv
 .venv/bin/pip install -e ".[all]"       # core + web + TUI + MCP server
 # or pick extras: .[web]  .[tui]  .[mcp]  — bare `-e .` gets pipeline only
