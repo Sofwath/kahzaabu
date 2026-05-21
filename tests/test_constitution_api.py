@@ -111,6 +111,65 @@ class ConstitutionPageRouteTests(unittest.TestCase):
         self.assertIn("/api/reproducibility/", r.text)
 
 
+class LawsPageTests(unittest.TestCase):
+    """ADR 0012 — /laws is a static link-out page. It MUST NOT make
+    any backend HTTP requests to mvlaw.gov.mv. The page is purely
+    deep-links + a client-side Google site-search redirect.
+    """
+    @classmethod
+    def setUpClass(cls):
+        cls.c = TestClient(app)
+
+    def test_laws_page_route(self):
+        r = self.c.get("/laws")
+        self.assertEqual(r.status_code, 200)
+
+    def test_laws_page_links_to_all_five_canonical_sections(self):
+        r = self.c.get("/laws")
+        body = r.text
+        for url in (
+            "old.mvlaw.gov.mv/constitution.php",
+            "old.mvlaw.gov.mv/ganoon_main.php",
+            "old.mvlaw.gov.mv/cancelganoon.php",
+            "old.mvlaw.gov.mv/gavaid_main.php",
+            "old.mvlaw.gov.mv/publications.php",
+        ):
+            self.assertIn(url, body, f"missing deep-link: {url}")
+
+    def test_laws_page_links_open_new_tab_with_safe_rel(self):
+        """target=_blank links must carry rel='noopener noreferrer'
+        — otherwise the new tab can hijack the opener (CWE-1022)."""
+        r = self.c.get("/laws")
+        # Count <a target="_blank" tags and verify each has the safe rel.
+        import re
+        opens = re.findall(
+            r'<a [^>]*target="_blank"[^>]*>', r.text)
+        self.assertGreater(len(opens), 4,
+                            "expected multiple mvlaw deep-links")
+        for tag in opens:
+            self.assertIn("noopener", tag,
+                           f"missing noopener: {tag[:120]}")
+            self.assertIn("noreferrer", tag,
+                           f"missing noreferrer: {tag[:120]}")
+
+    def test_laws_page_carries_adr_attribution(self):
+        """The link-out rationale must be visible to users —
+        otherwise they'll assume we just forgot to import the laws."""
+        r = self.c.get("/laws")
+        body = r.text.lower()
+        # Either ADR 0012 or the EU directive reference must be on
+        # the page so users understand WHY we link out.
+        self.assertTrue(
+            "adr 0012" in body or "directive 2019/790" in body,
+            "page missing ADR / EU 2019/790 attribution")
+
+    def test_no_backend_api_under_laws(self):
+        """ADR 0012 forbids server-side fetches from mvlaw.gov.mv.
+        Sanity-check: no /api/laws/* endpoint should exist."""
+        r = self.c.get("/api/laws/search?q=test")
+        self.assertIn(r.status_code, (404, 405))
+
+
 class TruthScoreLadderVizTests(unittest.TestCase):
     """The /api/viz/truth-score-ladder endpoint always returns the
     6 rungs in canonical order, even when some have zero counts."""

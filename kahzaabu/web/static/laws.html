@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>kahzaabu — Maldivian laws</title>
+<link rel="stylesheet" href="/static/css/kahzaabu.css" />
+<style>
+.laws-intro {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--r-md);
+    padding: var(--sp-lg) var(--sp-xl);
+    margin-bottom: var(--sp-lg);
+}
+.laws-intro p { margin: 0 0 var(--sp-sm) 0; }
+.laws-intro p:last-child { margin: 0; }
+
+.laws-search {
+    display: flex;
+    gap: var(--sp-md);
+    margin-bottom: var(--sp-lg);
+    align-items: stretch;
+}
+.laws-search input[type="search"] {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: var(--sp-sm) var(--sp-md);
+    color: var(--fg);
+    font: var(--type-body);
+}
+.laws-search button {
+    background: var(--accent);
+    border: none;
+    border-radius: var(--r-sm);
+    padding: var(--sp-sm) var(--sp-xl);
+    color: var(--fg-inverse);
+    font: var(--type-body-strong);
+    cursor: pointer;
+}
+.laws-search button:hover { filter: brightness(1.1); }
+
+.laws-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: var(--sp-md);
+    margin-bottom: var(--sp-lg);
+}
+.laws-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: var(--sp-lg);
+    text-decoration: none;
+    color: var(--fg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-sm);
+    transition: border-color 0.12s, transform 0.12s;
+}
+.laws-section:hover {
+    border-color: var(--accent);
+    transform: translateY(-1px);
+}
+.laws-section .dv {
+    font: 600 18px/1.4 "Faruma", "Mv Faseyha", system-ui, sans-serif;
+    direction: rtl;
+    color: var(--fg);
+    text-align: right;
+}
+.laws-section .en {
+    font: var(--type-h4);
+    color: var(--fg);
+}
+.laws-section .desc {
+    font: var(--type-small);
+    color: var(--fg-muted);
+}
+.laws-section .external {
+    margin-top: auto;
+    padding-top: var(--sp-sm);
+    font: var(--type-caption);
+    color: var(--fg-dim);
+}
+.laws-section .external::after {
+    content: " ↗";
+    color: var(--accent);
+}
+
+.laws-note {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: var(--sp-md) var(--sp-lg);
+    margin-top: var(--sp-lg);
+    font: var(--type-small);
+    color: var(--fg-muted);
+}
+.laws-note h3 {
+    font: var(--type-body-strong);
+    color: var(--fg);
+    margin: 0 0 var(--sp-sm) 0;
+}
+.laws-note ul { margin: var(--sp-xs) 0 0 var(--sp-lg); padding: 0; }
+.laws-note li { margin: 4px 0; }
+</style>
+</head>
+<body>
+<header class="site">
+    <div class="brand">kahzaabu <span class="tag">laws</span></div>
+    <nav>
+        <a href="/"        data-nav="dashboard">Dashboard</a>
+        <a href="/browse"  data-nav="browse">Articles</a>
+        <a href="/lies"    data-nav="lies">Fact-checks</a>
+        <a href="/contradictions" data-nav="contradictions">Contradictions</a>
+        <a href="/constitution" data-nav="constitution">Constitution</a>
+        <a href="/laws"    data-nav="laws">Laws</a>
+        <a href="/compare" data-nav="compare">Compare</a>
+        <a href="/manifesto" data-nav="manifesto">Manifesto</a>
+        <a href="/ask"     data-nav="ask">Ask</a>
+    </nav>
+</header>
+
+<main>
+    <h1>Maldivian statutory law</h1>
+
+    <section class="laws-intro">
+        <p>
+            The canonical archive of Maldivian statutes lives at
+            <a href="https://old.mvlaw.gov.mv/" target="_blank"
+               rel="noopener noreferrer">old.mvlaw.gov.mv</a>,
+            published by the
+            <a href="https://www.agoffice.gov.mv/" target="_blank"
+               rel="noopener noreferrer">Attorney General's Office</a>.
+            Kahzaabu links out to it rather than reimporting the
+            content. See
+            <a href="/static/methodology.html" rel="noopener noreferrer">ADR 0012</a>
+            for the rationale.
+        </p>
+        <p>
+            The Constitution is bundled with kahzaabu as a one-time
+            text snapshot (parsed pre-ADR-0012) and is searchable
+            inline at <a href="/constitution">/constitution</a>. For
+            anything else — Acts, regulations, repealed laws,
+            publications — follow the links below to the AGO's
+            canonical source.
+        </p>
+    </section>
+
+    <form class="laws-search" onsubmit="return runSearch(event)">
+        <input type="search" id="q" autocomplete="off"
+               placeholder="Search Maldivian laws — opens Google site-search on a new tab"
+               aria-label="Search Maldivian laws" />
+        <button type="submit">Search</button>
+    </form>
+
+    <div class="laws-grid">
+        <a class="laws-section" target="_blank" rel="noopener noreferrer"
+           href="https://old.mvlaw.gov.mv/constitution.php">
+            <div class="dv">ޤާނޫނު އަސާސީ</div>
+            <div class="en">Constitution</div>
+            <div class="desc">Constitution of the Republic of Maldives — the supreme law. Also available inline at <a href="/constitution" style="color: var(--accent);">/constitution</a>.</div>
+            <div class="external">old.mvlaw.gov.mv/constitution.php</div>
+        </a>
+        <a class="laws-section" target="_blank" rel="noopener noreferrer"
+           href="https://old.mvlaw.gov.mv/ganoon_main.php">
+            <div class="dv">ޤާނޫނު</div>
+            <div class="en">Laws (Acts)</div>
+            <div class="desc">Acts ratified by the President. Includes commercial, criminal, family, employment, and sector-specific statutes.</div>
+            <div class="external">old.mvlaw.gov.mv/ganoon_main.php</div>
+        </a>
+        <a class="laws-section" target="_blank" rel="noopener noreferrer"
+           href="https://old.mvlaw.gov.mv/cancelganoon.php">
+            <div class="dv">އުވާލާފައިވާ ޤާނޫނު</div>
+            <div class="en">Repealed laws</div>
+            <div class="desc">Acts that have been formally repealed by subsequent legislation. Useful for tracking historical statutory context.</div>
+            <div class="external">old.mvlaw.gov.mv/cancelganoon.php</div>
+        </a>
+        <a class="laws-section" target="_blank" rel="noopener noreferrer"
+           href="https://old.mvlaw.gov.mv/gavaid_main.php">
+            <div class="dv">ގަވާއިދު</div>
+            <div class="en">Regulations</div>
+            <div class="desc">Subordinate regulations issued by ministries and independent commissions under enabling Acts.</div>
+            <div class="external">old.mvlaw.gov.mv/gavaid_main.php</div>
+        </a>
+        <a class="laws-section" target="_blank" rel="noopener noreferrer"
+           href="https://old.mvlaw.gov.mv/publications.php">
+            <div class="dv">ޕަބްލިކޭޝަން</div>
+            <div class="en">Publications</div>
+            <div class="desc">Official AGO publications — gazettes, indices, and other reference material.</div>
+            <div class="external">old.mvlaw.gov.mv/publications.php</div>
+        </a>
+        <a class="laws-section" target="_blank" rel="noopener noreferrer"
+           href="https://old.mvlaw.gov.mv/">
+            <div class="dv">ފުރަތަމަ ސަފްޙާ</div>
+            <div class="en">Home</div>
+            <div class="desc">Browse the AGO law archive from the top — useful if you don't yet know which section to look in.</div>
+            <div class="external">old.mvlaw.gov.mv</div>
+        </a>
+    </div>
+
+    <section class="laws-note">
+        <h3>Why kahzaabu links out instead of importing</h3>
+        <p>
+            <a href="https://old.mvlaw.gov.mv/robots.txt" target="_blank"
+               rel="noopener noreferrer">mvlaw.gov.mv's robots.txt</a>
+            invokes Article 4 of EU Directive 2019/790 as an express
+            reservation of rights for AI-input and AI-training uses.
+            Kahzaabu is a fact-checking pipeline that feeds its
+            corpus to LLMs — exactly that use case.
+        </p>
+        <p>The link-out approach honors that reservation by:</p>
+        <ul>
+            <li>Never fetching, parsing, or storing mvlaw.gov.mv
+                content in kahzaabu's database.</li>
+            <li>Sending users to the canonical source where
+                attribution and current-as-of dates are correctly
+                presented by the AGO.</li>
+            <li>Keeping kahzaabu's posture toward third-party
+                rights-holders explicit and auditable
+                (see <code>docs/adr/0012-mvlaw-link-out-not-scrape.md</code>).</li>
+        </ul>
+        <p style="margin-top: var(--sp-md);">
+            If you have an inline fact-check that needs to quote
+            statutory text, follow the link, copy the relevant
+            section, and paste it into the fact-check's
+            <code>evidence_quotes</code> JSON with explicit
+            attribution. Same model kahzaabu uses for any other
+            external quotation.
+        </p>
+    </section>
+</main>
+
+<script>
+function runSearch(event) {
+    event.preventDefault();
+    const q = (document.getElementById("q").value || "").trim();
+    if (!q) return false;
+    const url = "https://www.google.com/search?q=" +
+        encodeURIComponent("site:old.mvlaw.gov.mv " + q);
+    window.open(url, "_blank", "noopener");
+    return false;
+}
+</script>
+</body>
+</html>

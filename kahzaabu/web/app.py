@@ -141,6 +141,13 @@ def page_constitution():
     return FileResponse(STATIC_DIR / "constitution.html")
 
 
+@app.get("/laws", include_in_schema=False)
+def page_laws():
+    """Link-out page to old.mvlaw.gov.mv. No scrape, no fetch.
+    See docs/adr/0012-mvlaw-link-out-not-scrape.md."""
+    return FileResponse(STATIC_DIR / "laws.html")
+
+
 @app.get("/factcheck/{fact_check_id}", include_in_schema=False)
 def page_factcheck(fact_check_id: int):
     return FileResponse(STATIC_DIR / "factcheck.html")

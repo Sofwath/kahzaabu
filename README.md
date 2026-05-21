@@ -4,7 +4,7 @@
 > *"Kahzaabu"* (ކަޒާބު) is Dhivehi for *falsehood* — and the street nickname for Mohamed Muizzu.
 > The two names refer to the same person; the project treats them as synonyms.
 
-**License:** Apache-2.0 · **Tests:** 248 passing · **V2 status:** Slices 0–12 done (see [V2 build plan](docs/V2_BUILD_PLAN.md))
+**License:** Apache-2.0 · **Tests:** 262 passing · **V2 status:** Slices 0–12 done (see [V2 build plan](docs/V2_BUILD_PLAN.md))
 
 This is a **research / educational project**: it scrapes public press releases from `presidency.gov.mv`, extracts factual claims with an LLM, curates contradictions across time, verifies them against the open web, and stores the result in a queryable SQLite archive. A native [Hermes Agent](https://github.com/NousResearch/hermes-agent) plugin exposes the archive to a chat agent so you can ask questions in plain English (or through Telegram / WhatsApp / Slack via the hermes gateway).
 
