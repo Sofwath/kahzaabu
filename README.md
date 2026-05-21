@@ -191,8 +191,12 @@ articles            -- PK (id, language). EN ↔ DV pairs via shared id + paired
                     -- cols: title, category, body_text, body_html, published_date,
                     --       reference, scraped_at, raw_page_html
 claims              -- extracted from article body_text by the LLM.
-                    -- cols: article_id+language (FK), type, subject, value,
-                    --       deadline, actor_credited, quote, extraction_run_id
+                    -- cols: article_id, language (FK), type, subject, value,
+                    --       deadline, actor_credited, quote, extraction_run_id,
+                    --       polarity (V2: AFFIRM/DENY/PROMISE/DENIAL_OF_PROMISE/
+                    --                CLAIM_OF_FACT/NEUTRAL — see ADR 0002),
+                    --       subject_normalized (V2: entity-resolved subject),
+                    --       is_checkable (V2: 0=opinion/rhetoric, 1=factual)
 fact_checks         -- curated contradictions / broken deadlines / etc.
                     -- cols: category, claim_date, claim, what_actually_happened,
                     --       topic, confidence, source_article_ids (JSON array

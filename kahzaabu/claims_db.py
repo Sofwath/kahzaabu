@@ -272,6 +272,25 @@ PUBLISH_MIGRATIONS = [
     "ALTER TABLE dv_compare_pairs ADD COLUMN published INTEGER DEFAULT 0",
 ]
 
+# V2 Slice 1 — claims enrichment (ADR 0002):
+#   polarity            stance label, 6-way (AFFIRM / DENY / PROMISE /
+#                       DENIAL_OF_PROMISE / CLAIM_OF_FACT / NEUTRAL);
+#                       NULL until enriched.
+#   subject_normalized  entity-resolved subject (e.g. "the President" /
+#                       "Muizzu" / "Dr Mohamed Muizzu" -> "President Muizzu");
+#                       used by the contradiction finder to bucket claims.
+#   is_checkable        1 = factual claim a verifier should look at;
+#                       0 = rhetoric / opinion (PolitiFact's filter);
+#                       NULL until enriched.
+V2_SLICE1_MIGRATIONS = [
+    "ALTER TABLE claims ADD COLUMN polarity TEXT",
+    "ALTER TABLE claims ADD COLUMN subject_normalized TEXT",
+    "ALTER TABLE claims ADD COLUMN is_checkable INTEGER",
+    "CREATE INDEX IF NOT EXISTS idx_claims_polarity   ON claims(polarity)",
+    "CREATE INDEX IF NOT EXISTS idx_claims_subject_n  ON claims(subject_normalized)",
+    "CREATE INDEX IF NOT EXISTS idx_claims_checkable  ON claims(is_checkable)",
+]
+
 
 def init_claims_schema(conn: sqlite3.Connection) -> None:
     """Bootstrap the full kahzaabu schema on `conn`. Idempotent.
@@ -293,7 +312,7 @@ def init_claims_schema(conn: sqlite3.Connection) -> None:
     """
     conn.executescript(CLAIMS_SCHEMA)
     # Apply phase-3 ALTERs idempotently
-    for sql in PUBLISH_MIGRATIONS:
+    for sql in PUBLISH_MIGRATIONS + V2_SLICE1_MIGRATIONS:
         try:
             conn.execute(sql)
         except sqlite3.OperationalError:
@@ -342,20 +361,55 @@ def finish_extraction_run(conn: sqlite3.Connection, run_id: int, *,
 
 # ---------- claims ----------
 
+VALID_POLARITIES = frozenset({
+    "AFFIRM", "DENY", "PROMISE", "DENIAL_OF_PROMISE",
+    "CLAIM_OF_FACT", "NEUTRAL",
+})
+
+
 def insert_claims(conn: sqlite3.Connection, run_id: int, article_id: int,
                   language: str, claims: list[dict]) -> int:
+    """Insert claims. Backward-compatible — V2 fields (polarity,
+    subject_normalized, is_checkable) are optional; missing keys store
+    NULL. Per ADR 0002, polarity values are validated against
+    VALID_POLARITIES — invalid labels are coerced to NULL rather than
+    silently stored, so a regressed LLM doesn't poison the table.
+    """
     now = now_iso()
+
+    def _polarity(c):
+        p = c.get("polarity")
+        if p is None:
+            return None
+        p = str(p).strip().upper().replace(" ", "_")
+        return p if p in VALID_POLARITIES else None
+
+    def _is_checkable(c):
+        v = c.get("is_checkable")
+        if v is None:
+            return None
+        # accept bool, int, or str ("true"/"false"); coerce to 0/1
+        if isinstance(v, bool):
+            return int(v)
+        if isinstance(v, int):
+            return 1 if v else 0
+        if isinstance(v, str):
+            return 1 if v.lower() in ("true", "yes", "1") else 0
+        return None
+
     rows = [
         (article_id, language, run_id, c.get("type"), c.get("subject"),
          c.get("value"), c.get("deadline"), c.get("actor_credited"),
-         c.get("quote"), now)
+         c.get("quote"), now,
+         _polarity(c), c.get("subject_normalized"), _is_checkable(c))
         for c in claims
     ]
     conn.executemany(
         """INSERT INTO claims
            (article_id, language, extraction_run_id, type, subject, value,
-            deadline, actor_credited, quote, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            deadline, actor_credited, quote, created_at,
+            polarity, subject_normalized, is_checkable)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?)""",
         rows,
     )
     conn.commit()
