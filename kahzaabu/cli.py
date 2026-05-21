@@ -264,6 +264,30 @@ def enrich_claims(ctx, limit, budget, concurrency):
                 f"{r.get('errors', 0)} errors, ${r['cost_usd']:.3f}")
 
 
+@main.command(name="export-claimreview")
+@click.option("--only-published/--all", default=True,
+               help="Default: only published fact_checks (ADR 0006)")
+@click.pass_context
+def export_claimreview(ctx, only_published):
+    """V2 — regenerate ClaimReview JSON-LD blobs for fact_checks
+    (Slice 6, ADR 0006). Caches to fact_checks.claimreview_jsonld;
+    served at /api/factchecks/{id}/jsonld + /api/claimreviews/feed.json.
+
+    Set KAHZAABU_PUBLIC_BASE_URL in the env to override the canonical
+    URL prefix (default http://localhost:8765)."""
+    from .claimreview import regenerate_all
+    from . import claims_db
+    conn = ctx.obj["conn"]
+    claims_db.init_claims_schema(conn)
+
+    def _p(done, total):
+        if done % 50 == 0 or done == total:
+            click.echo(f"  {done}/{total}")
+
+    r = regenerate_all(conn, only_published=only_published, progress_cb=_p)
+    click.echo(f"\nRegenerated: {r['regenerated']} ClaimReview blobs")
+
+
 @main.command(name="enrich-factchecks")
 @click.option("--limit", default=0, type=int)
 @click.option("--rebuild", is_flag=True,

@@ -22,7 +22,7 @@ Each slice is complete + tested before the next starts. Discipline:
 | 3 | Claim matching (canonical_claim_id, embeddings + entity) | ✅ done | 0003, 0007 | 8,954/8,954 embedded; 151 paraphrase-grouped (1.7%); 53 LLM tiebreakers; **$0 spend** (local sentence-transformers); provider abstraction via ADR 0007 supports openai/voyage too |
 | 4 | Contradiction finder (the headline feature) | ✅ done | 0004 | enrichment backfill: 8,954 claims @ $3; finder: 48 candidates → **2 CONTRADICTION verdicts** (judicial interference + external debt), 46 NOT_CONTRADICTORY, @ $0.41. Sonnet 4.6 verifier; semantic-similarity prefilter (cosine 0.55-0.95) keeps shortlist tractable. Total slice cost ~$3.50. |
 | 5 | AVeriTeC verdict + Truth-O-Meter + RAGAR reasoning_chain | ✅ done | 0005 | 220/220 enriched (218 existing + 2 promoted from contradictions); 172 with reasoning_chain; deterministic derivation in kahzaabu/truth_score.py — $0 LLM cost; distribution: REFUTED 179, CONFLICTING_EVIDENCE 41 |
-| 6 | ClaimReview JSON-LD export | ⚪ pending | 0006 | per-factcheck + feed endpoint |
+| 6 | ClaimReview JSON-LD export | ✅ done | 0006 | 218 published fact-checks have cached JSON-LD; 2 API endpoints (/api/factchecks/{id}/jsonld + /api/claimreviews/feed.json); Google Rich Results checklist passes; KAHZAABU_PUBLIC_BASE_URL env var; $0 cost |
 | 7 | Web UI: Truth-O-Meter card + Q&A trace + /contradictions | ⚪ pending | — | UX |
 | 8 | `kahzaabu-fact-check` agentskills.io skill | ⚪ pending | — | hermes skill for external use |
 | 9 | docs/ARCHITECTURE.md fill-in + citation block | ⚪ pending | — | reference-project polish |

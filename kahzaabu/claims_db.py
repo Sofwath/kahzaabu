@@ -417,6 +417,13 @@ V2_SLICE5_MIGRATIONS = [
     "CREATE INDEX IF NOT EXISTS idx_fc_contradiction  ON fact_checks(contradiction_pair_id)",
 ]
 
+# V2 Slice 6 — ClaimReview JSON-LD storage (ADR 0006).
+# Cached schema.org blob; regenerated on demand or via the
+# `kahzaabu export-claimreview` CLI.
+V2_SLICE6_MIGRATIONS = [
+    "ALTER TABLE fact_checks ADD COLUMN claimreview_jsonld TEXT",
+]
+
 VALID_VERDICT_LABELS = frozenset({
     "SUPPORTED", "REFUTED", "NOT_ENOUGH_EVIDENCE", "CONFLICTING_EVIDENCE",
 })
@@ -477,7 +484,8 @@ def init_claims_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(V2_SLICE4_SCHEMA)
     # Apply phase-3 ALTERs + V2 migrations idempotently
     for sql in (PUBLISH_MIGRATIONS + V2_SLICE1_MIGRATIONS
-                + V2_SLICE3_MIGRATIONS + V2_SLICE5_MIGRATIONS):
+                + V2_SLICE3_MIGRATIONS + V2_SLICE5_MIGRATIONS
+                + V2_SLICE6_MIGRATIONS):
         try:
             conn.execute(sql)
         except sqlite3.OperationalError:
