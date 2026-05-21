@@ -182,6 +182,64 @@ def decompose(ctx, budget, limit, concurrency):
 
 
 @main.command()
+@click.option("--limit", default=0, type=int,
+               help="Cap to N claims (testing)")
+@click.option("--embed-budget", default=5.0, type=float,
+               help="Embedding spend cap in USD (very cheap; default $5)")
+@click.option("--llm-budget", default=10.0, type=float,
+               help="LLM tiebreaker spend cap in USD")
+@click.option("--skip-embedding", is_flag=True,
+               help="Skip the embedding pass; only run matching")
+@click.option("--skip-matching", is_flag=True,
+               help="Only run embedding; skip the matching pass")
+@click.pass_context
+def match(ctx, limit, embed_budget, llm_budget, skip_embedding,
+           skip_matching):
+    """V2 — canonical claim matching (Slice 3, ADR 0003).
+
+    Embeds every checkable claim, then groups paraphrase-equivalent
+    claims under a single canonical_claim_id. Embedding uses OpenAI
+    text-embedding-3-small (needs OPENAI_API_KEY). LLM tiebreaker
+    uses Anthropic Haiku 4.5.
+
+    Idempotent: re-runs only embed un-embedded claims and only
+    match claims without canonical_claim_id.
+
+    Two-step run:
+      kahzaabu match --skip-matching --limit 50    # embed sample
+      kahzaabu match --skip-embedding              # match on existing embeds
+      kahzaabu match                               # full both-phase run
+    """
+    from .matcher import run_embedding, run_matching
+    from . import claims_db
+
+    conn = ctx.obj["conn"]
+    claims_db.init_claims_schema(conn)
+
+    if not skip_embedding:
+        def _ep(done, total, tok, cost):
+            if done % 200 == 0 or done == total:
+                click.echo(f"  embed {done}/{total}  tokens={tok}  cost=${cost:.4f}")
+        click.echo("Phase 1: embed")
+        er = run_embedding(conn, limit=(limit or None),
+                            budget_usd=embed_budget, progress_cb=_ep)
+        click.echo(f"  done: {er['claims_embedded']} embedded, ${er['cost_usd']:.4f}")
+
+    if not skip_matching:
+        def _mp(compared, total, matched, llm, cost):
+            if matched % 25 == 0 or compared == total:
+                click.echo(f"  match {compared} comparisons  matched={matched}  "
+                            f"llm_tie={llm}  cost=${cost:.4f}")
+        click.echo("\nPhase 2: match (build canonical_claim_id graph)")
+        mr = run_matching(conn, limit=(limit or None),
+                          budget_usd=llm_budget, progress_cb=_mp)
+        click.echo(f"  done: {mr['claims_processed']} claims, "
+                    f"{mr['pairs_matched']} matched to earlier canonical, "
+                    f"{mr['llm_tiebreakers']} LLM tiebreaks, "
+                    f"${mr['llm_cost_usd']:.4f}")
+
+
+@main.command()
 @click.option("--budget", default=1.0, type=float, help="Daily LLM budget cap in USD")
 @click.option("--days-back", default=7, type=int)
 @click.option("--full", is_flag=True, help="Curate over ALL claims, not just recent")

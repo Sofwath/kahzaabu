@@ -339,6 +339,45 @@ VALID_SOURCE_MEDIUMS = frozenset({
     "archive", "web_search", "constitution", "manifesto",
 })
 
+# V2 Slice 3 — canonical claim matching (ADR 0003).
+#   canonical_claim_id (FK on claims, self-referential) — claims that
+#       say the same thing point back to the FIRST occurrence. The first
+#       occurrence either points to itself (canonical_claim_id = id) or
+#       has NULL (we use self-pointer convention for clarity).
+#   claim_embeddings — side table storing the float32 embedding vector
+#       per claim, packed as a BLOB. Used to short-list candidate
+#       matches via cosine similarity before LLM tiebreaker.
+V2_SLICE3_MIGRATIONS = [
+    "ALTER TABLE claims ADD COLUMN canonical_claim_id INTEGER REFERENCES claims(id)",
+    "CREATE INDEX IF NOT EXISTS idx_claims_canonical ON claims(canonical_claim_id)",
+]
+V2_SLICE3_SCHEMA = """
+CREATE TABLE IF NOT EXISTS claim_embeddings (
+    claim_id INTEGER PRIMARY KEY REFERENCES claims(id),
+    vector BLOB NOT NULL,
+    model TEXT NOT NULL,
+    dim INTEGER NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS matching_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    claims_embedded INTEGER DEFAULT 0,
+    pairs_compared INTEGER DEFAULT 0,
+    pairs_matched INTEGER DEFAULT 0,
+    llm_tiebreakers INTEGER DEFAULT 0,
+    embed_tokens INTEGER DEFAULT 0,
+    embed_cost_usd REAL DEFAULT 0,
+    llm_cost_usd REAL DEFAULT 0,
+    embed_model TEXT,
+    llm_model TEXT,
+    status TEXT DEFAULT 'running',
+    error_message TEXT
+);
+"""
+
 
 def init_claims_schema(conn: sqlite3.Connection) -> None:
     """Bootstrap the full kahzaabu schema on `conn`. Idempotent.
@@ -360,8 +399,9 @@ def init_claims_schema(conn: sqlite3.Connection) -> None:
     """
     conn.executescript(CLAIMS_SCHEMA)
     conn.executescript(V2_SLICE2_SCHEMA)
-    # Apply phase-3 ALTERs idempotently
-    for sql in PUBLISH_MIGRATIONS + V2_SLICE1_MIGRATIONS:
+    conn.executescript(V2_SLICE3_SCHEMA)
+    # Apply phase-3 ALTERs + V2 migrations idempotently
+    for sql in PUBLISH_MIGRATIONS + V2_SLICE1_MIGRATIONS + V2_SLICE3_MIGRATIONS:
         try:
             conn.execute(sql)
         except sqlite3.OperationalError:
@@ -535,6 +575,100 @@ def insert_claim_questions(conn: sqlite3.Connection, run_id: int,
     )
     conn.commit()
     return len(rows)
+
+
+def start_matching_run(conn: sqlite3.Connection, *,
+                        embed_model: str, llm_model: str) -> int:
+    cur = conn.execute(
+        "INSERT INTO matching_runs (started_at, embed_model, llm_model) "
+        "VALUES (?, ?, ?)",
+        (now_iso(), embed_model, llm_model),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def finish_matching_run(conn: sqlite3.Connection, run_id: int, *,
+                         claims_embedded: int = 0, pairs_compared: int = 0,
+                         pairs_matched: int = 0, llm_tiebreakers: int = 0,
+                         embed_tokens: int = 0, embed_cost_usd: float = 0.0,
+                         llm_cost_usd: float = 0.0,
+                         status: str = "completed",
+                         error_message: Optional[str] = None) -> None:
+    conn.execute(
+        """UPDATE matching_runs
+           SET finished_at=?, claims_embedded=?, pairs_compared=?,
+               pairs_matched=?, llm_tiebreakers=?,
+               embed_tokens=?, embed_cost_usd=?, llm_cost_usd=?,
+               status=?, error_message=?
+           WHERE id=?""",
+        (now_iso(), claims_embedded, pairs_compared, pairs_matched,
+         llm_tiebreakers, embed_tokens, embed_cost_usd, llm_cost_usd,
+         status, error_message, run_id),
+    )
+    conn.commit()
+
+
+def get_claim_embedding(conn: sqlite3.Connection,
+                         claim_id: int) -> Optional[tuple]:
+    """Return (vector_bytes, model, dim) or None."""
+    r = conn.execute(
+        "SELECT vector, model, dim FROM claim_embeddings WHERE claim_id = ?",
+        (claim_id,),
+    ).fetchone()
+    if r is None:
+        return None
+    return (r["vector"] if hasattr(r, "keys") else r[0],
+            r["model"] if hasattr(r, "keys") else r[1],
+            r["dim"] if hasattr(r, "keys") else r[2])
+
+
+def upsert_claim_embedding(conn: sqlite3.Connection, claim_id: int,
+                            vector_bytes: bytes, model: str, dim: int) -> None:
+    conn.execute(
+        """INSERT INTO claim_embeddings
+           (claim_id, vector, model, dim, created_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(claim_id) DO UPDATE SET
+               vector=excluded.vector, model=excluded.model,
+               dim=excluded.dim, created_at=excluded.created_at""",
+        (claim_id, vector_bytes, model, dim, now_iso()),
+    )
+    conn.commit()
+
+
+def set_canonical(conn: sqlite3.Connection, claim_id: int,
+                   canonical_id: int) -> None:
+    """Point claim_id at canonical_id. The canonical claim points at
+    itself (canonical_claim_id = id)."""
+    conn.execute(
+        "UPDATE claims SET canonical_claim_id = ? WHERE id = ?",
+        (canonical_id, claim_id),
+    )
+    conn.commit()
+
+
+def claims_missing_embedding(conn: sqlite3.Connection, *,
+                              language: str = "EN",
+                              limit: Optional[int] = None
+                              ) -> list[sqlite3.Row]:
+    """Checkable, non-sentinel claims that don't yet have an embedding."""
+    sql = """
+        SELECT c.id, c.quote, c.subject, c.subject_normalized,
+               c.polarity, c.type
+        FROM claims c
+        LEFT JOIN claim_embeddings ce ON ce.claim_id = c.id
+        WHERE c.language = ?
+          AND ce.claim_id IS NULL
+          AND c.type IS NOT NULL
+          AND c.type != 'no_specific_claims'
+          AND c.quote IS NOT NULL
+        ORDER BY c.id
+    """
+    params: list = [language]
+    if limit:
+        sql += f" LIMIT {int(limit)}"
+    return list(conn.execute(sql, params))
 
 
 def claims_missing_decomposition(conn: sqlite3.Connection, *,

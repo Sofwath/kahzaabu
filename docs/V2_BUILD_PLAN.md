@@ -19,7 +19,7 @@ Each slice is complete + tested before the next starts. Discipline:
 | 0 | Bootstrap: ADRs + build plan + ARCHITECTURE skeleton | ✅ done (95fd8c3) | 0001-0006 | docs-only |
 | 1 | Claims enrichment (polarity / subject / is_checkable) | ✅ done (2e8c81d) | 0002 | DB + extractor + tests |
 | 2 | Q&A decomposition + backfill | ✅ done (749fa6a + backfill) | 0001 | 8,954 / 8,954 claims; 35,648 questions; avg 3.98/claim; $12.51 total spend (vs $200 ADR projection — Haiku 4.5 outperformed expectations) |
-| 3 | Claim matching (canonical_claim_id, embeddings + entity) | ⚪ pending | 0003 | new claim_embeddings table |
+| 3 | Claim matching (canonical_claim_id, embeddings + entity) | 🟢 code+tests in; live backfill pending | 0003 | new claim_embeddings + matching_runs; OpenAI text-embedding-3-small (~$0.20 expected); Anthropic Haiku 4.5 tiebreaker; ENTITY_OVERLAP threshold 0.6 / COSINE threshold 0.85 |
 | 4 | Contradiction finder (the headline feature) | ⚪ pending | 0004 | new contradiction_pairs table + pipeline stage |
 | 5 | AVeriTeC verdict + Truth-O-Meter + RAGAR reasoning_chain | ⚪ pending | 0005 | enrich fact_checks; derivation function |
 | 6 | ClaimReview JSON-LD export | ⚪ pending | 0006 | per-factcheck + feed endpoint |
