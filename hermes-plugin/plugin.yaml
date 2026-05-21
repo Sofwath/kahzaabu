@@ -1,0 +1,18 @@
+name: kahzaabu
+version: 0.1.0
+description: "Maldives Presidency press-release fact-checking archive. Exposes 8 agent tools (stats, ask, list_lies, get_factcheck, manifesto, get_article, recent_activity, pipeline_run) over a curated SQLite corpus of 3,000+ articles, 9,800+ claims, 200+ fact-checks, 700+ manifesto promises. Includes a hermes kahzaabu CLI for setup, pipeline runs, status, and Q&A. 'Kahzaabu' and 'Muizzu' refer to the same person."
+author: chopey@lottiefiles.com
+kind: standalone
+platforms:
+  - linux
+  - macos
+provides_tools:
+  - kahzaabu_stats
+  - kahzaabu_ask
+  - kahzaabu_list_lies
+  - kahzaabu_get_factcheck
+  - kahzaabu_manifesto
+  - kahzaabu_get_article
+  - kahzaabu_recent_activity
+  - kahzaabu_pipeline_run
+hooks: []

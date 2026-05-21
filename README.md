@@ -73,11 +73,12 @@ export ANTHROPIC_API_KEY=sk-ant-...
 
 ### Path B — as a Hermes plugin (recommended)
 
-If you have [Hermes Agent](https://github.com/NousResearch/hermes-agent) installed, kahzaabu integrates natively:
+If you have [Hermes Agent](https://github.com/NousResearch/hermes-agent) installed, kahzaabu integrates natively. **The plugin source lives in `hermes-plugin/` inside this repo** — install symlinks it into hermes' plugins dir so edits are live, no copy step.
 
 ```bash
-# One-time setup
-hermes plugins enable kahzaabu
+# One-time install (symlinks hermes-plugin/ -> ~/.hermes/hermes-agent/plugins/kahzaabu)
+./scripts/install-hermes-plugin.sh
+
 hermes kahzaabu setup        # interactive: API key, daily budget, freshness threshold
 hermes kahzaabu doctor       # health check (all should be ✅)
 
@@ -93,7 +94,7 @@ hermes gateway install     # install as systemd / launchd service
 hermes gateway start       # now messages to your bot route to kahzaabu tools
 ```
 
-The hermes plugin lives at `~/.hermes/hermes-agent/plugins/kahzaabu/` and **does not vendor code** — it imports the package from this dev tree. See [hermes plugin section](#hermes-plugin) for details.
+The hermes plugin source lives at `hermes-plugin/` in this repo and is symlinked into `~/.hermes/hermes-agent/plugins/kahzaabu/` by the install script. It **does not vendor code** — it imports the package from this dev tree. See [hermes plugin section](#hermes-plugin) for details.
 
 ---
 
@@ -247,17 +248,21 @@ See `qna_agentic.py:SYSTEM_PROMPT` for the catalog and `_ARTICLE_TOOLS` for the 
 
 ## Hermes plugin
 
-The plugin lives at `~/.hermes/hermes-agent/plugins/kahzaabu/`. Layout:
+The plugin source lives at `hermes-plugin/` in this repo. The install script (`scripts/install-hermes-plugin.sh`) symlinks it into `~/.hermes/hermes-agent/plugins/kahzaabu/` so hermes can find it. Edits in `hermes-plugin/` are live — no copy/sync step.
+
+Layout:
 
 ```
-plugin.yaml        Manifest: name, version, provides_tools, platforms
-__init__.py        register(ctx) — entry point. Three jobs:
-                     1. Hydrate ~/.hermes/.env into os.environ
-                     2. Ensure kahzaabu is importable (self-heal .pth)
-                     3. Register 8 tools + `hermes kahzaabu` CLI
-tools.py           8 handler functions wrapping qna_agentic / claims_db
-cli.py             argparse setup for `hermes kahzaabu {setup,status,…}`
-SKILL.md           Agent-facing guidance: when to use which tool
+hermes-plugin/
+├── plugin.yaml    Manifest: name, version, provides_tools, platforms
+├── __init__.py    register(ctx) — entry point. Three jobs:
+│                    1. Hydrate ~/.hermes/.env into os.environ
+│                    2. Ensure kahzaabu is importable (self-heal .pth)
+│                    3. Register 8 tools + `hermes kahzaabu` CLI
+├── tools.py       8 handler functions wrapping qna_agentic / claims_db
+├── cli.py         argparse setup for `hermes kahzaabu {setup,status,…}`
+├── SKILL.md       Agent-facing guidance: when to use which tool
+└── README.md      Plugin-source README (design choices, bootstrap layers)
 ```
 
 **Design choices to know**:
@@ -419,10 +424,13 @@ kahzaabu/                   The Python package
     ├── db_dep.py           FastAPI Depends() for DB
     └── limits.py           Rate-limiter + LRU cache for /api/ask
 
+hermes-plugin/              Hermes plugin source (symlinked from ~/.hermes/...)
+                            — see hermes-plugin/README.md
 tests/                      End-to-end + unit tests (see tests/README.md)
 research/                   Historical one-shot scripts (see research/README.md)
                             — NOT imported by the package
-scripts/                    launchd plist, run_pipeline.sh, Caddyfile, systemd unit
+scripts/                    launchd plist, install-hermes-plugin.sh, run_pipeline.sh,
+                            Caddyfile, systemd unit
 data/                       SQLite DB + manifesto/ (other contents gitignored)
 ```
 
