@@ -111,6 +111,52 @@ class ConstitutionPageRouteTests(unittest.TestCase):
         self.assertIn("/api/reproducibility/", r.text)
 
 
+class StaticPageJSShadowingTests(unittest.TestCase):
+    """Regression guard for the const-shadow-of-api-export bug.
+
+    When an inline <script> declares a top-level `const FOO = ...`
+    that matches a global function-declaration in /static/js/api.js,
+    classic-script lexical binding rules throw
+        SyntaxError: Identifier 'FOO' has already been declared
+    on parse, which silently aborts the whole inline block — every
+    `fetchJSON(...)` call inside it never runs. The page loads, but
+    no data ever appears.
+
+    Caught and fixed in factcheck.html + constitution.html where
+    `const el = ...` collided with api.js's `function el(){}`. This
+    test pins the invariant going forward: no static page may
+    redeclare any of the api.js exports as `const` or `let`.
+
+    Function declarations (`function el(){...}`) are still allowed —
+    they silently override in classic scripts without throwing.
+    """
+
+    API_EXPORTS = ("fetchJSON", "el", "escapeHtml", "catClass",
+                    "catBadgeClass", "fmtDate", "qs", "setNavActive")
+
+    def test_no_static_page_const_shadows_api_export(self):
+        import re
+        from pathlib import Path
+        static = (Path(__file__).resolve().parents[1]
+                  / "kahzaabu" / "web" / "static")
+        offenders = []
+        for page in sorted(static.glob("*.html")):
+            text = page.read_text()
+            for name in self.API_EXPORTS:
+                # Top-of-line const/let with this name. Anchored to
+                # start-of-line so nested declarations aren't flagged.
+                pat = re.compile(
+                    rf"^\s*(const|let)\s+{name}\s*=", re.MULTILINE)
+                if pat.search(text):
+                    offenders.append(f"{page.name}: const/let {name}")
+        self.assertEqual(offenders, [],
+            "Inline <script> in a static page redeclares an api.js "
+            "export with const/let — this throws SyntaxError on parse "
+            "in classic scripts and aborts data loading. Use the "
+            "global from api.js or rename your local. Offenders:\n  "
+            + "\n  ".join(offenders))
+
+
 class LawsPageTests(unittest.TestCase):
     """ADR 0012 — /laws is a static link-out page. It MUST NOT make
     any backend HTTP requests to mvlaw.gov.mv. The page is purely

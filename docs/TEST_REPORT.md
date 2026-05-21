@@ -42,7 +42,7 @@ Runtime: ~2.3s total.
 
 `./scripts/ci-dry-run.sh` clones HEAD into a temporary worktree, creates a
 clean venv, installs editable, bootstraps the DB, runs all 197 tests,
-and checks for stale `test_system.py` references. **All steps pass.**
+and checks for stale references to the old end-to-end-test filename. **All steps pass.**
 
 ---
 
