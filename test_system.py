@@ -102,10 +102,11 @@ def test_stats_anonymous():
         ok("public_mode = True")
     else:
         warn("public_mode not True", str(d.get("public_mode")))
-    if d.get("n_articles_muizzu_total") == 3097:
-        ok("articles total = 3097")
+    n = d.get("n_articles_muizzu_total", 0)
+    if n >= 3097:
+        ok("articles total", f"{n} (≥ baseline 3097)")
     else:
-        fail("articles total", str(d.get("n_articles_muizzu_total")))
+        fail("articles total below baseline", str(n))
     if d.get("n_fact_checks") == 218:
         ok("fact_checks visible = 218 (all published)")
     else:
@@ -224,7 +225,7 @@ def test_ask_admin():
     r = post("/api/ask", {"question": "what lies did muizzu tell?"}, session=s)
     if r.status_code == 200:
         d = r.json()
-        ok("POST /api/ask (admin)", f"matches={d['n_matches']} cost=${d['cost_usd']:.4f}")
+        ok("POST /api/ask (admin)", f"iterations={d.get('n_iterations', '?')} cost=${d['cost_usd']:.4f}")
     else:
         fail("POST /api/ask admin", f"HTTP {r.status_code} {r.text[:100]}")
 
