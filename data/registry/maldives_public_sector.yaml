@@ -1,0 +1,32 @@
+country: Maldives
+generated: 2026-05-21
+coverage: starter_public_sector_registry
+verification_basis:
+  - official directories
+  - official government domains
+entities:
+  - {entity_id: presidency, official_name: "The President's Office", domain: "presidency.gov.mv", entity_type: constitutional_executive}
+  - {entity_id: onegov, official_name: "oneGov", domain: "one.gov.mv", entity_type: digital_service_portal}
+  - {entity_id: efaas, official_name: "eFaas", domain: "efaas.egov.mv", entity_type: identity_authentication}
+  - {entity_id: finance, official_name: "Ministry of Finance and Public Enterprises", domain: "finance.gov.mv", entity_type: ministry}
+  - {entity_id: foreign, official_name: "Ministry of Foreign Affairs", domain: "foreign.gov.mv", entity_type: ministry}
+  - {entity_id: defence, official_name: "Ministry of Defence", domain: "defence.gov.mv", entity_type: ministry}
+  - {entity_id: immigration, official_name: "Maldives Immigration", domain: "immigration.gov.mv", entity_type: agency}
+  - {entity_id: police, official_name: "Maldives Police Service", domain: "police.gov.mv", entity_type: law_enforcement}
+  - {entity_id: customs, official_name: "Maldives Customs Service", domain: "customs.gov.mv", entity_type: customs}
+  - {entity_id: mira, official_name: "Maldives Inland Revenue Authority", domain: "mira.gov.mv", entity_type: tax_authority}
+  - {entity_id: majlis, official_name: "People's Majlis", domain: "majlis.gov.mv", entity_type: legislature}
+  - {entity_id: judiciary, official_name: "Maldives Judiciary", domain: "judiciary.gov.mv", entity_type: judiciary}
+  - {entity_id: acc, official_name: "Anti-Corruption Commission", domain: "acc.gov.mv", entity_type: independent_commission}
+  - {entity_id: elections, official_name: "Elections Commission", domain: "elections.gov.mv", entity_type: independent_commission}
+  - {entity_id: csc, official_name: "Civil Service Commission", domain: "csc.gov.mv", entity_type: independent_commission}
+  - {entity_id: hrcm, official_name: "Human Rights Commission of the Maldives", domain: "hrcm.org.mv", entity_type: independent_commission}
+  - {entity_id: hpa, official_name: "Health Protection Agency", entity_type: regulator}
+  - {entity_id: mfda, official_name: "Maldives Food and Drug Authority", entity_type: regulator}
+  - {entity_id: sto, official_name: "State Trading Organization", domain: "sto.mv", entity_type: state_owned_enterprise}
+  - {entity_id: stelco, official_name: "STELCO", domain: "stelco.com.mv", entity_type: utility}
+  - {entity_id: fenaka, official_name: "Fenaka Corporation", domain: "fenaka.com.mv", entity_type: utility}
+  - {entity_id: mwsc, official_name: "Male Water and Sewerage Company", domain: "mwsc.com.mv", entity_type: utility}
+  - {entity_id: macl, official_name: "Maldives Airports Company Limited", domain: "macl.aero", entity_type: airport_operator}
+  - {entity_id: mtcc, official_name: "Maldives Transport and Contracting Company", domain: "mtcc.mv", entity_type: infrastructure_corporation}
+  - {entity_id: hdc, official_name: "Housing Development Corporation", domain: "hdc.com.mv", entity_type: development_corporation}

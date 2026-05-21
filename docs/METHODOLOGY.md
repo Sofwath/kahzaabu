@@ -189,6 +189,29 @@ web UI's `/api/factchecks/{id}/jsonld` and
 *[ClaimReview](https://schema.org/ClaimReview)* and Google's
 *[Fact Check Markup Tool guidelines](https://developers.google.com/search/docs/appearance/structured-data/factcheck)*.
 
+## Cross-cutting: authoritative external-reference registry
+
+Verifier evidence carries one of two trust tiers:
+
+- **Primary-source** — the evidence URL is on a domain in
+  `data/registry/maldives_public_sector.yaml` (25 entities: the
+  Presidency, ministries, regulators, independent commissions,
+  utilities, SOEs). Auto-tagged with the registry's `entity_id` on
+  `fact_check_evidence.authoritative_entity_id`.
+- **Secondary** — any other URL. Still ingested as evidence; just not
+  tagged.
+
+The registry is the project's explicit answer to "which sources count
+as authoritative for a Maldives Presidency fact-check?" Documented in
+[ADR 0011](adr/0011-public-sector-registry.md). Contributors can extend
+the registry by editing the YAML (the JSON twin is kept in sync via
+the `tests/test_registry.py::TestRegistryParity` test).
+
+The match rule is hostname-based: exact match or strict subdomain,
+case-insensitive, `www.` stripped. The registry is a **trust signal,
+not a filter** — non-registered URLs continue to flow through the
+pipeline and the web UI.
+
 ## Cross-cutting: quality evaluation
 
 Every LLM-call stage has a held-out golden set

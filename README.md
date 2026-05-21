@@ -191,6 +191,7 @@ The DB is the source of truth. Every consumer is read-only over it except the pi
 | `kahzaabu enrich-factchecks` | `fact_check_enricher.py` — deterministic V2-label backfill: `verdict_label` + `truth_score` + `truth_score_label` + `reasoning_chain` for every fact-check. | [0005](docs/adr/0005-dual-labeling-averitec-politifact.md) | $0 |
 | `kahzaabu export-claimreview` | `claimreview.py` — schema.org ClaimReview JSON-LD generation + caching to `fact_checks.claimreview_jsonld`. | [0006](docs/adr/0006-claimreview-jsonld.md) | $0 |
 | `kahzaabu eval` | `eval.py` — golden-set evaluation across all five LLM-call stages. Produces verified-subset + drift-detector metrics. | [0008](docs/adr/0008-quality-evaluation.md) | $0 |
+| *(registry)* | `registry.py` — public-sector entity registry (25 Maldives entities); auto-tags `fact_check_evidence.authoritative_entity_id` when a URL is on a registered .gov.mv / .com.mv domain. Source of truth in `data/registry/maldives_public_sector.yaml`. | [0011](docs/adr/0011-public-sector-registry.md) | $0 |
 
 Defaults: cycle runs every **12h** via launchd (`scripts/com.kahzaabu.pipeline.plist`). Budget cap defaults to **$1.00 per cycle**. Total V2-build spend: **~$16.50**. Total project spend to-date: ~$75.
 
@@ -228,7 +229,10 @@ fact_checks         -- curated contradictions / broken deadlines / etc.
 fact_check_evidence -- web-search hits backing each fact-check.
                     -- cols: fact_check_id (FK), url, title, snippet, relevance
                     --       ('confirms'|'contradicts'|'context'|'unclear'|
-                    --       'not_found'), summary, retrieved_at
+                    --       'not_found'), summary, retrieved_at,
+                    --       authoritative_entity_id (V2: ADR 0011, nullable
+                    --       pointer into the public-sector registry under
+                    --       data/registry/)
 article_fact_cards  -- per-article inspector output.
                     -- cols: article_id, language, summary, key_claims_json,
                     --       history_check, severity, visualization_spec_json,
@@ -537,6 +541,7 @@ kahzaabu/                   The Python package
 ├── fact_check_enricher.py  Slice 5 — V2-label backfill for fact_checks
 ├── claimreview.py          Slice 6 — schema.org ClaimReview JSON-LD generator
 ├── eval.py                 Slice 10 — golden-set quality evaluation framework
+├── registry.py             Slice 11.5 — public-sector entity registry / trust anchor
 │
 └── web/                    FastAPI app
     ├── app.py
@@ -578,6 +583,10 @@ docs/                       Project documentation
 ├── ISSUE_TEMPLATE/         Bug report + feature request templates (Slice 11)
 └── PULL_REQUEST_TEMPLATE.md
 data/                       SQLite DB + manifesto/ (other contents gitignored)
+├── registry/               Public-sector entity registry (ADR 0011)
+│   ├── maldives_public_sector.yaml   ← source of truth (human-edit here)
+│   └── maldives_public_sector.json   ← machine-loaded twin
+└── backups/                Local-only sqlite3 dumps (gitignored)
 LICENSE                     Apache-2.0
 SECURITY.md                 Vulnerability disclosure (90-day window)
 CONTRIBUTING.md             Slice discipline, ADR process, test gates

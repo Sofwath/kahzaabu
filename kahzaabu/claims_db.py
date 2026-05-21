@@ -425,6 +425,18 @@ V2_SLICE6_MIGRATIONS = [
     "ALTER TABLE fact_checks ADD COLUMN claimreview_jsonld TEXT",
 ]
 
+# V2 Slice 11.5 — Authoritative external-reference registry (ADR 0011).
+# When a fact_check_evidence row's URL hostname matches a registered
+# .gov.mv (or similar) domain in data/registry/, we tag it with the
+# entity_id here. Used by the verifier to weight evidence and by the
+# web UI to render a trust badge. Nullable: evidence on non-registered
+# domains remains unaffected.
+V2_SLICE_REGISTRY_MIGRATIONS = [
+    "ALTER TABLE fact_check_evidence ADD COLUMN authoritative_entity_id TEXT",
+    "CREATE INDEX IF NOT EXISTS idx_fce_auth_entity "
+        "ON fact_check_evidence(authoritative_entity_id)",
+]
+
 VALID_VERDICT_LABELS = frozenset({
     "SUPPORTED", "REFUTED", "NOT_ENOUGH_EVIDENCE", "CONFLICTING_EVIDENCE",
 })
@@ -486,7 +498,7 @@ def init_claims_schema(conn: sqlite3.Connection) -> None:
     # Apply phase-3 ALTERs + V2 migrations idempotently
     for sql in (PUBLISH_MIGRATIONS + V2_SLICE1_MIGRATIONS
                 + V2_SLICE3_MIGRATIONS + V2_SLICE5_MIGRATIONS
-                + V2_SLICE6_MIGRATIONS):
+                + V2_SLICE6_MIGRATIONS + V2_SLICE_REGISTRY_MIGRATIONS):
         try:
             conn.execute(sql)
         except sqlite3.OperationalError:
@@ -977,13 +989,25 @@ def insert_evidence(conn: sqlite3.Connection, fact_check_id: int, *,
                     title: Optional[str] = None, snippet: Optional[str] = None,
                     relevance: str = "unclear", summary: Optional[str] = None,
                     verification_run_id: Optional[int] = None) -> int:
+    # ADR 0011: auto-tag evidence whose URL is on a registered
+    # public-sector domain. Lazy import keeps the DB module
+    # standalone for tests that don't need the registry.
+    authoritative_entity_id: Optional[str] = None
+    if url:
+        try:
+            from kahzaabu.registry import entity_for_url
+            ent = entity_for_url(url)
+            if ent:
+                authoritative_entity_id = ent["entity_id"]
+        except Exception:
+            authoritative_entity_id = None
     cur = conn.execute(
         """INSERT INTO fact_check_evidence
            (fact_check_id, source_type, url, title, snippet, relevance, summary,
-            retrieved_at, verification_run_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            retrieved_at, verification_run_id, authoritative_entity_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (fact_check_id, source_type, url, title, snippet, relevance, summary,
-         now_iso(), verification_run_id),
+         now_iso(), verification_run_id, authoritative_entity_id),
     )
     conn.commit()
     return cur.lastrowid

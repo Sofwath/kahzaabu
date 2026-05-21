@@ -74,13 +74,35 @@ is traceable to a run, a model version, and a cost.
 - **No image data**: HTML and text only. Photos linked from press
   releases are not scraped.
 
+## External-reference registry (ADR 0011)
+
+The corpus includes an explicit registry of authoritative external
+references — the Maldives public-sector entities whose domains count
+as primary sources when cited as evidence.
+
+- Source of truth: `data/registry/maldives_public_sector.yaml` (human-
+  editable, the format used for community contribution).
+- Machine twin: `data/registry/maldives_public_sector.json` (loaded by
+  `kahzaabu/registry.py`; YAML↔JSON parity-tested).
+- Coverage: 25 entities — the President's Office, 3 ministries, the
+  legislature (Majlis), the judiciary, 4 independent commissions
+  (ACC, Elections, CSC, HRCM), 2 regulators (HPA, MFDA), 5 utilities
+  (STELCO, Fenaka, MWSC, HDC, MTCC), 1 airport operator (MACL), 1
+  SOE (STO), plus revenue/customs/immigration/police agencies and
+  oneGov/eFaas digital-service portals.
+- Used by: `verifier.py` auto-tags
+  `fact_check_evidence.authoritative_entity_id` on insert; future
+  Slice 12 transparency-report aggregates by entity_type.
+- Extension policy: contributors edit the YAML; the JSON twin must be
+  regenerated and the parity test must pass.
+
 ## Schema
 
 The canonical schema is in `kahzaabu/claims_db.py` and rendered in
 the README's "Data model" section (drift-tested by
 `tests/test_readme_schema_drift.py`).
 
-V2 additions over the V1 baseline (per ADRs 0002–0006):
+V2 additions over the V1 baseline (per ADRs 0002–0006, 0011):
 
 - `claims` gains `polarity`, `subject_normalized`, `is_checkable`,
   `canonical_claim_id`.
@@ -90,6 +112,8 @@ V2 additions over the V1 baseline (per ADRs 0002–0006):
 - `fact_checks` gains `verdict_label`, `truth_score`,
   `truth_score_label`, `reasoning_chain`, `contradiction_pair_id`,
   `speaker`, `canonical_url`, `claimreview_jsonld`.
+- `fact_check_evidence` gains `authoritative_entity_id` (nullable
+  pointer to registry `entity_id` — ADR 0011).
 
 Migrations are idempotent ALTER-COLUMN style. WAL mode is on. The
 schema is single-tenant; no multi-customer separation.

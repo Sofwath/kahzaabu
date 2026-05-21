@@ -225,6 +225,14 @@ truth_score_label)`.
 high-severity fact-checks. Output cached in `fact_check_evidence` table
 with the search snippet, relevance label, and a short rationale.
 
+**Trust tier auto-tagging** ([ADR 0011](adr/0011-public-sector-registry.md)).
+Every evidence row's URL is matched against the public-sector entity
+registry (`data/registry/maldives_public_sector.yaml`). Hostnames on a
+registered domain (presidency.gov.mv, foreign.gov.mv, mira.gov.mv, …)
+get tagged with the registry's `entity_id` in
+`fact_check_evidence.authoritative_entity_id`. Backfill of pre-Slice-11.5
+rows tagged 48 of 300 existing evidence rows as primary-source.
+
 **Known limitations.**
 
 - Web search respects publisher `robots.txt` (Anthropic's server tool
@@ -233,6 +241,8 @@ with the search snippet, relevance label, and a short rationale.
   search engine returned, which may itself be biased or outdated.
 - No paid-source access (Maldives Independent paywall, etc.). Public
   sources only.
+- The trust tier is binary (authoritative / not). A weighted score is
+  out of scope for V2; deferred until eval data supports calibration.
 
 **Eval coverage.** No golden fixtures yet; the stage runs only on the
 small set of high-severity fact-checks and is reviewed manually before
