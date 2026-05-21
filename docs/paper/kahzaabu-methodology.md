@@ -659,6 +659,59 @@ The full ADR list is committed under `docs/adr/`:
 10. **0010** Reproducibility, observability, audit CLIs
 11. **0011** Public-sector entity registry
 12. **0012** mvlaw.gov.mv: link-out, not scrape
+13. **0013** No in-app authentication; web UI is read-only public
+
+---
+
+## Appendix C — Hermes plugin agent-tool surface
+
+Kahzaabu ships a native Hermes Agent plugin (`hermes-plugin/`, v0.2)
+that exposes nine in-process tools, a `hermes kahzaabu` CLI
+subcommand, and a `/kahzaabu` slash command. The slash command
+works inside any Hermes chat session including chats routed
+through the messaging gateway (Telegram, WhatsApp, Slack, Discord).
+The same `ask_agentic()` entry point services all three integration
+surfaces, so session memory, narrative-tricks layer, budget cap,
+and cost accounting behave identically.
+
+### Tool inventory
+
+| Tool | Schema-declared parameters | Purpose |
+|---|---|---|
+| `kahzaabu_stats` | — | Archive counts + freshness; call first for "recent" questions |
+| `kahzaabu_ask` | `question` (req.), `session_id`, `enable_web`, `max_iterations` | Preferred entry — internal agent loop with web search + narrative-tricks |
+| `kahzaabu_list_lies` | `category`, `topic`, `date_from`, `date_to`, `limit` | Filter the fact-check catalog |
+| `kahzaabu_get_factcheck` | `id` (req.) | Full fact-check + web evidence + linked source articles |
+| `kahzaabu_manifesto` | `category`, `status`, `q`, `limit` | 2023 promise registry with delivery status |
+| `kahzaabu_get_article` | `article_id` (req.), `include_factcards` | Full press release + claims + linked fact-checks |
+| `kahzaabu_recent_activity` | `days`, `limit` | Articles within window — good for "what's happening this week" |
+| `kahzaabu_constitution_lookup` | `query` (req.), `limit` | BM25 search over the 301 Constitution articles (ADR 0001 + ADR 0011) |
+| `kahzaabu_pipeline_run` | `budget_usd` | Trigger pipeline; gated by `KAHZAABU_ALLOW_PIPELINE=1` (legacy: `KAHZAABU_MCP_ALLOW_PIPELINE=1` still honoured) |
+
+### Return contract
+
+Every handler returns a JSON-encoded string. Successful calls
+include a payload; failures return `{"error": "<message>"}` with
+no `ok`/`success` flag. This contract is verified by
+`tests/test_hermes_plugin.py::ErrorContractTests`.
+
+### Discovery + bootstrap
+
+The plugin's `register(ctx)` follows a four-layer discovery cascade
+(env var → `~/.hermes/.env` → 5 conventional dev-tree layouts →
+`sys.path` injection → `.pth` self-heal in Hermes' venv). This
+survives Hermes venv recreations and works on any host without
+the user pre-configuring paths.
+
+### Trust model
+
+Following ADR 0013, the plugin has no authentication surface of
+its own. Hermes' own session-isolation model is the boundary;
+within that, plugin tools are gated only by the
+`KAHZAABU_ALLOW_PIPELINE` env-var convention for the pipeline-
+trigger tool (which costs LLM budget) and by `ANTHROPIC_API_KEY`
+presence for the `ask` tool (which makes LLM calls). All other
+tools are read-only against the local SQLite corpus.
 
 ---
 

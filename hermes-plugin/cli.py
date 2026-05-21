@@ -303,7 +303,10 @@ def _cmd_doctor(_args) -> int:
     check("hermes env file present", HERMES_ENV.exists())
 
     provider, model = _hermes_provider()
-    print(f"\n  hermes default model : {provider}/{model}")
+    if model.startswith(f"{provider}/"):
+        print(f"\n  hermes default model : {model}")
+    else:
+        print(f"\n  hermes default model : {provider}/{model}")
 
     pipeline_allowed = os.environ.get("KAHZAABU_MCP_ALLOW_PIPELINE") == "1"
     print(f"  pipeline gated      : {'OPEN (agent can trigger)' if pipeline_allowed else 'closed'}")

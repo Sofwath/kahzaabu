@@ -299,6 +299,19 @@ class PipelineGateEnvVarTests(unittest.TestCase):
             os.environ.pop("KAHZAABU_MCP_ALLOW_PIPELINE", None)
         self.assertEqual(r.get("error"), "ANTHROPIC_API_KEY not set")
 
+    @patch("plugins.kahzaabu.tools._has_anthropic_key", return_value=True)
+    @patch("kahzaabu.pipeline.run_pipeline")
+    def test_handle_pipeline_run_success(self, mock_run_pipeline, mock_has_key):
+        from plugins.kahzaabu.tools import handle_pipeline_run, db_path
+        os.environ["KAHZAABU_ALLOW_PIPELINE"] = "1"
+        try:
+            mock_run_pipeline.return_value = {"success": True}
+            r = json.loads(handle_pipeline_run({"budget_usd": 2.5}))
+            self.assertEqual(r, {"result": {"success": True}})
+            mock_run_pipeline.assert_called_once_with(db_path(), daily_budget_usd=2.5)
+        finally:
+            os.environ.pop("KAHZAABU_ALLOW_PIPELINE", None)
+
 
 # ───────────────────────────────────────────────────────────────────
 # Discovery + requirements check

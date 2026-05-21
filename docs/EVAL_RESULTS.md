@@ -1,6 +1,6 @@
 # Kahzaabu — quality evaluation results
 
-Generated: 2026-05-21T13:32:24.679269+00:00
+Generated: 2026-05-21T14:18:38.640981+00:00
 
 Per-stage metrics against the golden set under `tests/golden/`. Methodology: ADR 0008.
 

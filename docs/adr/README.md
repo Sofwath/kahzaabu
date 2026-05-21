@@ -23,3 +23,6 @@ Each file is numbered chronologically (`NNNN-short-name.md`). Once accepted, ADR
 | 0008 | Quality evaluation methodology | Accepted |
 | 0009 | OSS readiness, methodology cards, backup | Accepted |
 | 0010 | Reproducibility manifest, observability, audit CLIs | Accepted |
+| 0011 | Public-sector entity registry — external-reference trust anchor | Accepted |
+| 0012 | mvlaw.gov.mv: link-out, not scrape | Accepted |
+| 0013 | No in-app authentication; web UI is read-only public | Accepted |

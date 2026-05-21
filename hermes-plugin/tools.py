@@ -574,7 +574,7 @@ def handle_pipeline_run(args: Dict[str, Any], **_kw) -> str:
     from kahzaabu.pipeline import run_pipeline
     budget = float(args.get("budget_usd", 1.0))
     try:
-        return _result({"result": run_pipeline(budget_usd=budget)})
+        return _result({"result": run_pipeline(db_path(), daily_budget_usd=budget)})
     except Exception as e:
         # Standardised error shape — `{"error": ...}` only, no ok flag.
         # Matches every other handler in this module.
