@@ -1,6 +1,14 @@
 {
   "id": "broken-deadline-auto",
-  "input": {"category": "BROKEN DEADLINE", "confidence": "auto"},
-  "expected": {"verdict_label": "REFUTED", "truth_score": 3, "truth_score_label": "MOSTLY_FALSE"},
-  "notes": "BROKEN DEADLINE → REFUTED. confidence 'auto'=0.65 < 0.70 → MOSTLY_FALSE/3."
+  "input": {
+    "category": "BROKEN DEADLINE",
+    "confidence": "auto"
+  },
+  "expected": {
+    "verdict_label": "REFUTED",
+    "truth_score": 3,
+    "truth_score_label": "MOSTLY_FALSE"
+  },
+  "notes": "BROKEN DEADLINE \u2192 REFUTED. confidence 'auto'=0.65 < 0.70 \u2192 MOSTLY_FALSE/3.",
+  "verified": true
 }

@@ -55,5 +55,6 @@
       }
     ]
   },
-  "notes": "Live decomposer output for claim 8576. Pins the (answer_type, source_medium) set."
+  "notes": "Live decomposer output for claim 8576. Pins the (answer_type, source_medium) set.",
+  "verified": false
 }

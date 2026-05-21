@@ -95,6 +95,7 @@ class FixtureLoaderTests(unittest.TestCase):
             self.assertIn("id", fx)
             self.assertIn("input", fx)
             self.assertIn("expected", fx)
+            self.assertIn("verified", fx)  # default-applied if missing
 
     def test_load_unknown_stage_returns_empty(self):
         self.assertEqual(ev.load_fixtures("bogus_stage_does_not_exist"), [])
@@ -102,6 +103,39 @@ class FixtureLoaderTests(unittest.TestCase):
     def test_limit_respected(self):
         fixtures = ev.load_fixtures("truth_score", limit=2)
         self.assertLessEqual(len(fixtures), 2)
+
+    def test_truth_score_all_verified(self):
+        """truth_score is deterministic per ADR 0005 — every fixture
+        must be marked verified (ground truth)."""
+        fixtures = ev.load_fixtures("truth_score")
+        self.assertTrue(all(fx.get("verified") for fx in fixtures))
+
+    def test_matcher_all_verified(self):
+        """Matcher fixtures are structural ground truth."""
+        fixtures = ev.load_fixtures("matcher")
+        self.assertTrue(all(fx.get("verified") for fx in fixtures))
+
+    def test_llm_stages_pinned_by_default(self):
+        """Extractor/decomposer/contradictions are pinned baselines
+        until a human reviews and promotes them to verified."""
+        for stage in ("extractor", "decomposer", "contradictions"):
+            fixtures = ev.load_fixtures(stage)
+            self.assertTrue(
+                all(not fx.get("verified") for fx in fixtures),
+                f"{stage} fixtures should default to unverified")
+
+    def test_verified_defaults_to_false_when_missing(self):
+        """A fixture file without an explicit `verified` field loads as
+        unverified — honest default."""
+        with tempfile.TemporaryDirectory() as tmp:
+            stage_dir = Path(tmp) / "golden" / "bogus"
+            stage_dir.mkdir(parents=True)
+            (stage_dir / "01.json").write_text(json.dumps(
+                {"id": "x", "input": {}, "expected": {}}))
+            with patch.object(ev, "GOLDEN_DIR", Path(tmp) / "golden"):
+                fixtures = ev.load_fixtures("bogus")
+            self.assertEqual(len(fixtures), 1)
+            self.assertFalse(fixtures[0]["verified"])
 
 
 class TruthScoreRunnerTests(unittest.TestCase):
@@ -114,6 +148,11 @@ class TruthScoreRunnerTests(unittest.TestCase):
         self.assertEqual(result["score_accuracy"], 1.0)
         self.assertEqual(result["verdict_metrics"]["accuracy"], 1.0)
         self.assertEqual(result["misses"], [])
+        # All 6 truth_score fixtures are verified → verified subset
+        # metrics should also be 1.0
+        self.assertEqual(result["n_verified"], 6)
+        self.assertEqual(result["verdict_metrics_verified"]["accuracy"], 1.0)
+        self.assertEqual(result["score_accuracy_verified"], 1.0)
 
     def test_detects_a_planted_miss(self):
         # Inject a fixture with a wrong expectation
@@ -135,21 +174,51 @@ class RenderMarkdownReportTests(unittest.TestCase):
                        "stages_run": ["truth_score"]},
             "truth_score": {
                 "n": 6,
+                "n_verified": 6,
                 "verdict_metrics": {"accuracy": 1.0, "macro_f1": 1.0,
                                      "per_class": {
                                          "REFUTED": {"precision": 1.0, "recall": 1.0,
                                                       "f1": 1.0, "support": 4},
                                      }, "n": 6},
+                "verdict_metrics_verified": {"accuracy": 1.0, "macro_f1": 1.0,
+                                              "per_class": {
+                                                  "REFUTED": {"precision": 1.0, "recall": 1.0,
+                                                               "f1": 1.0, "support": 4},
+                                              }, "n": 6},
                 "score_accuracy": 1.0,
+                "score_accuracy_verified": 1.0,
                 "misses": [],
             }
         }
         md = ev.render_markdown_report(results)
         self.assertIn("# Kahzaabu — quality evaluation results", md)
         self.assertIn("## truth_score", md)
-        # truth_score renders nested verdict_metrics
-        self.assertIn("Verdict accuracy", md)
+        # Honesty preamble must be present
+        self.assertIn("Reading the numbers", md)
+        self.assertIn("Verified-subset", md)
+        self.assertIn("All fixtures (drift detector)", md)
+        # truth_score renders per-class table in verified subset
         self.assertIn("REFUTED", md)
+
+    def test_pinned_only_stage_omits_verified_block(self):
+        """When a stage has zero verified fixtures, the report should
+        NOT render a 'Verified-subset' block (we don't want to imply
+        ground truth that isn't there)."""
+        results = {
+            "_meta": {"timestamp": "2026-05-21T00:00:00Z", "small": False,
+                       "stages_run": ["extractor"]},
+            "extractor": {
+                "n": 4,
+                "n_verified": 0,
+                "precision": 1.0, "recall": 1.0, "f1": 1.0,
+                "misses": [],
+            }
+        }
+        md = ev.render_markdown_report(results)
+        self.assertIn("## extractor", md)
+        self.assertIn("(verified: **0**, pinned: **4**)", md)
+        self.assertNotIn("### Verified-subset", md)
+        self.assertIn("### All fixtures (drift detector)", md)
 
 
 class RunEvalTests(unittest.TestCase):

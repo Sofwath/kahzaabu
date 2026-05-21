@@ -20,5 +20,6 @@
   "predicted": {
     "verdict": "CONTRADICTION"
   },
-  "notes": "Real CONTRADICTION from live corpus (contradiction_pair #2, conf=0.78)."
+  "notes": "Real CONTRADICTION from live corpus (contradiction_pair #2, conf=0.78).",
+  "verified": false
 }

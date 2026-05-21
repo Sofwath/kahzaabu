@@ -43,5 +43,6 @@
       }
     ]
   },
-  "notes": "Live extraction output from article 33168 (President appoints a Member to the Judicial Service Commissi\u2026). Pins the (type, polarity, quote-prefix) tuple set as the current correct extraction."
+  "notes": "Live extraction output from article 33168 (President appoints a Member to the Judicial Service Commissi\u2026). Pins the (type, polarity, quote-prefix) tuple set as the current correct extraction.",
+  "verified": false
 }

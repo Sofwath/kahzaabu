@@ -10,5 +10,6 @@
   "predicted": {
     "label": "SAME"
   },
-  "notes": "Canonical pair from live matcher run \u2014 high cosine + entity overlap."
+  "notes": "Canonical pair from live matcher run \u2014 high cosine + entity overlap.",
+  "verified": true
 }

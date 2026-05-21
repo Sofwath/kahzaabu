@@ -290,24 +290,50 @@ def eval_cmd(ctx, stages, small, no_report, no_history):
         append_history(results)
     if not no_report:
         write_report(results)
-    # Brief stdout summary
+    # Brief stdout summary — verified subset vs all fixtures both shown.
     click.echo("\n──── Eval summary ────")
+    click.echo("  (V = verified-subset, A = all fixtures incl. pinned baselines)")
     for stage, r in results.items():
         if stage.startswith("_"):
             continue
         if r.get("note") == "no fixtures yet":
             click.echo(f"  {stage:<18} (no fixtures)")
             continue
-        if "macro_f1" in r:
-            click.echo(f"  {stage:<18}  n={r.get('n','?'):<3}  "
-                        f"acc={r.get('accuracy',0):.3f}  "
-                        f"macro_f1={r.get('macro_f1',0):.3f}")
+        n = r.get("n", "?")
+        nv = r.get("n_verified", 0)
+        # truth_score / matcher / contradictions report classification
+        if "macro_f1" in r or r.get("verdict_metrics"):
+            vm = r.get("verdict_metrics") or r
+            click.echo(
+                f"  {stage:<18}  n={n}  V={nv}  "
+                f"acc={vm.get('accuracy', 0):.3f}  "
+                f"macro_f1={vm.get('macro_f1', 0):.3f}"
+            )
+            vm_v = (r.get("verdict_metrics_verified")
+                    or r.get("verified_metrics"))
+            if vm_v:
+                click.echo(
+                    f"  {'  └─ verified':<18}        "
+                    f"acc={vm_v.get('accuracy', 0):.3f}  "
+                    f"macro_f1={vm_v.get('macro_f1', 0):.3f}"
+                )
         elif "f1" in r:
-            click.echo(f"  {stage:<18}  n={r.get('n','?'):<3}  "
-                        f"P={r.get('precision',0):.3f}  "
-                        f"R={r.get('recall',0):.3f}  "
-                        f"F1={r.get('f1',0):.3f}")
-    click.echo(f"\nReport: docs/EVAL_RESULTS.md  (history: data/eval_history.jsonl)")
+            click.echo(
+                f"  {stage:<18}  n={n}  V={nv}  "
+                f"P={r.get('precision', 0):.3f}  "
+                f"R={r.get('recall', 0):.3f}  "
+                f"F1={r.get('f1', 0):.3f}"
+            )
+            if "f1_verified" in r:
+                click.echo(
+                    f"  {'  └─ verified':<18}        "
+                    f"P={r['precision_verified']:.3f}  "
+                    f"R={r['recall_verified']:.3f}  "
+                    f"F1={r['f1_verified']:.3f}"
+                )
+    click.echo(
+        f"\nReport: docs/EVAL_RESULTS.md  "
+        f"(history: data/eval_history.jsonl)")
 
 
 @main.command(name="export-claimreview")

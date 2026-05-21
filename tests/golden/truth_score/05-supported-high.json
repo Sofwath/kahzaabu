@@ -1,6 +1,14 @@
 {
   "id": "supported-high-conf",
-  "input": {"category": null, "confidence": 0.95},
-  "expected": {"verdict_label": "NOT_ENOUGH_EVIDENCE", "truth_score": 4, "truth_score_label": "HALF_TRUE"},
-  "notes": "No category + any confidence → NOT_ENOUGH_EVIDENCE → HALF_TRUE (the epistemic middle)."
+  "input": {
+    "category": null,
+    "confidence": 0.95
+  },
+  "expected": {
+    "verdict_label": "NOT_ENOUGH_EVIDENCE",
+    "truth_score": 4,
+    "truth_score_label": "HALF_TRUE"
+  },
+  "notes": "No category + any confidence \u2192 NOT_ENOUGH_EVIDENCE \u2192 HALF_TRUE (the epistemic middle).",
+  "verified": true
 }

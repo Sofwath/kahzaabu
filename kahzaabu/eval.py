@@ -24,11 +24,30 @@ data/eval_history.jsonl (append-only) and docs/EVAL_RESULTS.md (rendered).
 
 Fixtures live under tests/golden/<stage>/*.json — each file is:
   {
-    "id":      "human-friendly slug",
-    "input":   <stage-specific input>,
+    "id":       "human-friendly slug",
+    "input":    <stage-specific input>,
     "expected": <stage-specific expected output>,
-    "notes":   "why this fixture, what it pins"
+    "verified": true | false,   // see "verified vs pinned" below
+    "notes":    "why this fixture, what it pins"
   }
+
+**Verified vs pinned**
+
+A fixture is `verified: true` when its `expected` is hand-confirmed
+ground truth (e.g. the truth_score mapping is mathematically defined
+by ADR 0005, or a matcher pair is structurally obvious). It is
+`verified: false` when `expected` was seeded from current pipeline
+output to act as a *drift detector* — a non-1.0 score after a prompt
+change means the LLM diverged from its previous behavior, but says
+nothing about which version is "correct."
+
+The eval report shows both subsets:
+  - **Verified-subset metric** = real quality measurement
+  - **All-fixture metric**     = drift detector (regression to prior)
+
+Adding hand-verified fixtures over time is how the verified subset
+grows. Default is `false` so a new fixture is honestly a drift
+baseline until reviewed.
 
 Per ADR 0008 §3, CI runs the SMALL eval (`--small` = first 3 fixtures
 per stage) on every PR. The full eval runs nightly. Add new fixtures
@@ -97,7 +116,9 @@ def classification_metrics(pairs: list[tuple[str, str]]) -> dict:
 
 def load_fixtures(stage: str, limit: Optional[int] = None) -> list[dict]:
     """Load JSON fixtures under tests/golden/<stage>/. Returns a list of
-    {id, input, expected, notes} dicts."""
+    {id, input, expected, verified, notes} dicts. Missing `verified`
+    defaults to False (honest: untouched fixtures are drift baselines,
+    not ground truth)."""
     stage_dir = GOLDEN_DIR / stage
     if not stage_dir.exists():
         return []
@@ -110,6 +131,7 @@ def load_fixtures(stage: str, limit: Optional[int] = None) -> list[dict]:
             continue
         if "id" not in data:
             data["id"] = path.stem
+        data.setdefault("verified", False)
         fixtures.append(data)
     if limit:
         fixtures = fixtures[:limit]
@@ -126,6 +148,8 @@ def _run_truth_score(fixtures: list[dict]) -> dict:
     from . import truth_score as ts
     pred_pairs: list[tuple[str, str]] = []
     score_pairs: list[tuple[int, int]] = []
+    pred_pairs_v: list[tuple[str, str]] = []
+    score_pairs_v: list[tuple[int, int]] = []
     misses: list[dict] = []
     for fx in fixtures:
         inp = fx["input"]
@@ -133,17 +157,28 @@ def _run_truth_score(fixtures: list[dict]) -> dict:
         d = ts.derive_all(inp.get("category"), inp.get("confidence"))
         pred_pairs.append((d["verdict_label"], exp["verdict_label"]))
         score_pairs.append((int(d["truth_score"]), int(exp["truth_score"])))
+        if fx.get("verified"):
+            pred_pairs_v.append((d["verdict_label"], exp["verdict_label"]))
+            score_pairs_v.append(
+                (int(d["truth_score"]), int(exp["truth_score"])))
         if d["verdict_label"] != exp["verdict_label"] or \
            int(d["truth_score"]) != int(exp["truth_score"]):
             misses.append({"id": fx["id"], "input": inp,
                             "expected": exp, "got": d})
-    return {
+    out = {
         "n": len(fixtures),
+        "n_verified": sum(1 for fx in fixtures if fx.get("verified")),
         "verdict_metrics": classification_metrics(pred_pairs),
         "score_accuracy": (sum(1 for p, e in score_pairs if p == e)
                            / max(1, len(score_pairs))),
         "misses": misses,
     }
+    if pred_pairs_v:
+        out["verdict_metrics_verified"] = classification_metrics(pred_pairs_v)
+        out["score_accuracy_verified"] = (
+            sum(1 for p, e in score_pairs_v if p == e)
+            / max(1, len(score_pairs_v)))
+    return out
 
 
 def _run_extractor(fixtures: list[dict]) -> dict:
@@ -153,6 +188,7 @@ def _run_extractor(fixtures: list[dict]) -> dict:
     matters for downstream pipeline stages."""
     misses: list[dict] = []
     p_list, r_list, f_list = [], [], []
+    p_v, r_v, f_v = [], [], []
     for fx in fixtures:
         expected_set = {
             (c.get("type"), c.get("polarity"),
@@ -163,24 +199,28 @@ def _run_extractor(fixtures: list[dict]) -> dict:
             (c.get("type"), c.get("polarity"),
              (c.get("quote") or "")[:50])
             for c in fx.get("predicted", {}).get("claims", [])
-            # `predicted` is set when the fixture was previously seen by
-            # the live pipeline (manually backfilled). If absent, scoring
-            # treats it as 0/0/0 — explicit signal that the fixture
-            # needs a refresh.
         }
         p, r, f = jaccard_f1(predicted_set, expected_set)
         p_list.append(p); r_list.append(r); f_list.append(f)
+        if fx.get("verified"):
+            p_v.append(p); r_v.append(r); f_v.append(f)
         if f < 1.0:
             misses.append({"id": fx["id"], "f1": f,
                             "expected": sorted(expected_set),
                             "predicted": sorted(predicted_set)})
-    return {
+    out = {
         "n": len(fixtures),
+        "n_verified": sum(1 for fx in fixtures if fx.get("verified")),
         "precision": sum(p_list) / max(1, len(p_list)),
         "recall":    sum(r_list) / max(1, len(r_list)),
         "f1":        sum(f_list) / max(1, len(f_list)),
         "misses":    misses,
     }
+    if p_v:
+        out["precision_verified"] = sum(p_v) / len(p_v)
+        out["recall_verified"]    = sum(r_v) / len(r_v)
+        out["f1_verified"]        = sum(f_v) / len(f_v)
+    return out
 
 
 def _run_contradictions(fixtures: list[dict]) -> dict:
@@ -190,6 +230,7 @@ def _run_contradictions(fixtures: list[dict]) -> dict:
     A future iteration could re-run the LLM verifier; for V2 we pin
     the human-labeled expectations."""
     pairs: list[tuple[str, str]] = []
+    pairs_v: list[tuple[str, str]] = []
     misses: list[dict] = []
     for fx in fixtures:
         exp = fx["expected"].get("verdict")
@@ -197,10 +238,15 @@ def _run_contradictions(fixtures: list[dict]) -> dict:
         if exp is None:
             continue
         pairs.append((got or "MISSING", exp))
+        if fx.get("verified"):
+            pairs_v.append((got or "MISSING", exp))
         if got != exp:
             misses.append({"id": fx["id"], "expected": exp, "got": got})
     metrics = classification_metrics(pairs)
     metrics["misses"] = misses
+    metrics["n_verified"] = sum(1 for fx in fixtures if fx.get("verified"))
+    if pairs_v:
+        metrics["verified_metrics"] = classification_metrics(pairs_v)
     return metrics
 
 
@@ -208,6 +254,7 @@ def _run_decomposer(fixtures: list[dict]) -> dict:
     """Q&A decomposition — score by Jaccard on (answer_type, source_medium)
     of the questions produced."""
     p_list, r_list, f_list = [], [], []
+    p_v, r_v, f_v = [], [], []
     misses: list[dict] = []
     for fx in fixtures:
         expected_set = {
@@ -220,21 +267,30 @@ def _run_decomposer(fixtures: list[dict]) -> dict:
         }
         p, r, f = jaccard_f1(predicted_set, expected_set)
         p_list.append(p); r_list.append(r); f_list.append(f)
+        if fx.get("verified"):
+            p_v.append(p); r_v.append(r); f_v.append(f)
         if f < 1.0:
             misses.append({"id": fx["id"], "f1": f})
-    return {
+    out = {
         "n": len(fixtures),
+        "n_verified": sum(1 for fx in fixtures if fx.get("verified")),
         "precision": sum(p_list) / max(1, len(p_list)),
         "recall":    sum(r_list) / max(1, len(r_list)),
         "f1":        sum(f_list) / max(1, len(f_list)),
         "misses":    misses,
     }
+    if p_v:
+        out["precision_verified"] = sum(p_v) / len(p_v)
+        out["recall_verified"]    = sum(r_v) / len(r_v)
+        out["f1_verified"]        = sum(f_v) / len(f_v)
+    return out
 
 
 def _run_matcher(fixtures: list[dict]) -> dict:
     """Claim-matching — binary SAME/DIFFERENT. fixture['predicted']
     has the matcher's actual call ('SAME' or 'DIFFERENT')."""
     pairs: list[tuple[str, str]] = []
+    pairs_v: list[tuple[str, str]] = []
     misses: list[dict] = []
     for fx in fixtures:
         exp = fx["expected"].get("label")
@@ -242,10 +298,15 @@ def _run_matcher(fixtures: list[dict]) -> dict:
         if exp is None:
             continue
         pairs.append((got or "MISSING", exp))
+        if fx.get("verified"):
+            pairs_v.append((got or "MISSING", exp))
         if got != exp:
             misses.append({"id": fx["id"], "expected": exp, "got": got})
     metrics = classification_metrics(pairs)
     metrics["misses"] = misses
+    metrics["n_verified"] = sum(1 for fx in fixtures if fx.get("verified"))
+    if pairs_v:
+        metrics["verified_metrics"] = classification_metrics(pairs_v)
     return metrics
 
 
@@ -297,7 +358,12 @@ def append_history(results: dict) -> None:
 
 
 def render_markdown_report(results: dict) -> str:
-    """Render a human-readable EVAL_RESULTS.md from the results dict."""
+    """Render a human-readable EVAL_RESULTS.md from the results dict.
+
+    Each stage block emits TWO metric rows when verified fixtures exist:
+      - **Verified subset** — hand-confirmed ground truth (real quality)
+      - **All fixtures**    — includes pinned baselines (drift detector)
+    """
     lines: list[str] = []
     lines.append("# Kahzaabu — quality evaluation results")
     lines.append("")
@@ -305,8 +371,26 @@ def render_markdown_report(results: dict) -> str:
     if results["_meta"].get("small"):
         lines.append("Mode: **--small** (CI-fast; first 3 fixtures per stage)")
     lines.append("")
-    lines.append("Per-stage metrics against the hand-labeled golden set under "
+    lines.append("Per-stage metrics against the golden set under "
                  "`tests/golden/`. Methodology: ADR 0008.")
+    lines.append("")
+    lines.append("## Reading the numbers")
+    lines.append("")
+    lines.append(
+        "Fixtures are tagged `verified: true|false`. **Verified** "
+        "means the `expected` value is hand-confirmed ground truth "
+        "(e.g. a deterministic mapping, a structurally obvious case). "
+        "**Pinned** (`verified: false`) means `expected` was seeded "
+        "from current pipeline output to act as a *drift detector* — "
+        "a non-1.000 score after a prompt edit means the LLM diverged "
+        "from its previous behavior, but says nothing about which "
+        "version is \"correct.\""
+    )
+    lines.append("")
+    lines.append(
+        "Each stage reports **Verified-subset** metrics (real quality) "
+        "and **All-fixture** metrics (drift detector) separately."
+    )
     lines.append("")
     for stage in STAGE_RUNNERS.keys():
         if stage not in results:
@@ -319,45 +403,60 @@ def render_markdown_report(results: dict) -> str:
                           f"`tests/golden/{stage}/`.*")
             lines.append("")
             continue
-        # truth_score is special: it has a nested `verdict_metrics`
-        # dict that itself carries accuracy + per_class.
+        n_total = r.get("n", "?")
+        n_verified = r.get("n_verified", 0)
+        lines.append(
+            f"- Fixtures: **{n_total}** "
+            f"(verified: **{n_verified}**, pinned: **{n_total - n_verified}**)"
+        )
+
+        # ── Verified subset (real quality) ──
+        if n_verified > 0:
+            lines.append("")
+            lines.append("### Verified-subset (ground truth)")
+            lines.append("")
+            vm_v = r.get("verdict_metrics_verified") or r.get("verified_metrics")
+            if vm_v and "macro_f1" in vm_v:
+                lines.append(f"- Accuracy: **{vm_v.get('accuracy', 0):.3f}**")
+                lines.append(f"- Macro-F1: **{vm_v.get('macro_f1', 0):.3f}**")
+                if vm_v.get("per_class"):
+                    lines.append("")
+                    lines.append("| Class | Precision | Recall | F1 | Support |")
+                    lines.append("|---|---|---|---|---|")
+                    for cls, m in vm_v["per_class"].items():
+                        lines.append(
+                            f"| {cls} | {m['precision']:.3f} | "
+                            f"{m['recall']:.3f} | {m['f1']:.3f} | "
+                            f"{m['support']} |"
+                        )
+            elif "f1_verified" in r:
+                lines.append(f"- Precision: **{r['precision_verified']:.3f}**")
+                lines.append(f"- Recall:    **{r['recall_verified']:.3f}**")
+                lines.append(f"- F1:        **{r['f1_verified']:.3f}**")
+            if r.get("score_accuracy_verified") is not None:
+                lines.append(
+                    f"- Truth-score exact-match: "
+                    f"**{r['score_accuracy_verified']:.3f}**")
+
+        # ── All-fixture (drift detector) ──
+        lines.append("")
+        lines.append("### All fixtures (drift detector)")
+        lines.append("")
         vm = r.get("verdict_metrics")
         if vm and "macro_f1" in vm:
-            lines.append(f"- Fixtures: **{r.get('n', vm.get('n', '?'))}**")
-            lines.append(f"- Verdict accuracy: **{vm.get('accuracy', 0):.3f}**")
-            lines.append(f"- Verdict macro-F1: **{vm.get('macro_f1', 0):.3f}**")
-            if vm.get("per_class"):
-                lines.append("")
-                lines.append("| Class | Precision | Recall | F1 | Support |")
-                lines.append("|---|---|---|---|---|")
-                for cls, m in vm["per_class"].items():
-                    lines.append(
-                        f"| {cls} | {m['precision']:.3f} | "
-                        f"{m['recall']:.3f} | {m['f1']:.3f} | "
-                        f"{m['support']} |"
-                    )
+            lines.append(f"- Accuracy: **{vm.get('accuracy', 0):.3f}**")
+            lines.append(f"- Macro-F1: **{vm.get('macro_f1', 0):.3f}**")
         elif "macro_f1" in r:
-            lines.append(f"- Fixtures: **{r.get('n', '?')}**")
             lines.append(f"- Accuracy: **{r.get('accuracy', 0):.3f}**")
             lines.append(f"- Macro-F1: **{r.get('macro_f1', 0):.3f}**")
-            if r.get("per_class"):
-                lines.append("")
-                lines.append("| Class | Precision | Recall | F1 | Support |")
-                lines.append("|---|---|---|---|---|")
-                for cls, m in r["per_class"].items():
-                    lines.append(
-                        f"| {cls} | {m['precision']:.3f} | "
-                        f"{m['recall']:.3f} | {m['f1']:.3f} | "
-                        f"{m['support']} |"
-                    )
         elif "f1" in r:
-            lines.append(f"- Fixtures: **{r.get('n', '?')}**")
             lines.append(f"- Precision: **{r.get('precision', 0):.3f}**")
             lines.append(f"- Recall:    **{r.get('recall', 0):.3f}**")
             lines.append(f"- F1:        **{r.get('f1', 0):.3f}**")
         if r.get("score_accuracy") is not None:
             lines.append(
                 f"- Truth-score exact-match: **{r['score_accuracy']:.3f}**")
+
         misses = r.get("misses") or []
         if misses:
             lines.append("")
@@ -373,10 +472,12 @@ def render_markdown_report(results: dict) -> str:
         lines.append("")
     lines.append("---")
     lines.append("")
-    lines.append("**How to grow the golden set**: see ADR 0008. Add new "
-                 "`tests/golden/<stage>/<id>.json` files with shape "
-                 "`{id, input, expected, notes}`. Re-run "
-                 "`kahzaabu eval` to refresh this report.")
+    lines.append(
+        "**How to grow the verified subset**: review a pinned fixture, "
+        "confirm the `expected` field is correct, set `verified: true`. "
+        "The verified-subset count grows; the system's real quality "
+        "measurement grows with it. See ADR 0008."
+    )
     return "\n".join(lines)
 
 

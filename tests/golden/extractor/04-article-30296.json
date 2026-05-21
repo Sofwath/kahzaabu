@@ -85,5 +85,6 @@
       }
     ]
   },
-  "notes": "Live extraction output from article 30296 (The President officially announces the inclusion of Maaddoo \u2026). Pins the (type, polarity, quote-prefix) tuple set as the current correct extraction."
+  "notes": "Live extraction output from article 30296 (The President officially announces the inclusion of Maaddoo \u2026). Pins the (type, polarity, quote-prefix) tuple set as the current correct extraction.",
+  "verified": false
 }

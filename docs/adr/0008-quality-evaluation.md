@@ -29,7 +29,16 @@ tests/golden/
   verifier/            20-30 fact-checks with expected verdict_label
 ```
 
-Each fixture is a small JSON file: `{input, expected, notes}`. Notes carry the reasoning so a future maintainer can re-judge the label if the data shifts.
+Each fixture is a small JSON file: `{id, input, expected, verified, notes}`. Notes carry the reasoning so a future maintainer can re-judge the label if the data shifts.
+
+**Verified vs pinned (added 2026-05-21)**
+
+A fixture's `verified` field carries the crucial semantic distinction:
+
+- `verified: true` — `expected` is hand-confirmed ground truth. Either it's mathematically determined (e.g. the truth_score mapping is fully specified in ADR 0005), structurally obvious (a matcher pair where both quotes share the same canonical_claim_id), or human-reviewed. A non-1.000 score here is a real quality problem.
+- `verified: false` — `expected` was seeded from current pipeline output to act as a *drift detector*. A non-1.000 score after a prompt change means the LLM diverged from its previous behavior, but says nothing about which version is "correct." Promoting a fixture from pinned to verified is how the verified subset grows over time.
+
+The `kahzaabu eval` report and CLI output show **verified-subset** metrics and **all-fixture** metrics side-by-side. Don't claim a quality number from a stage whose verified subset is empty — the "1.000" there is only "no drift," not "high quality."
 
 **`kahzaabu eval` CLI** runs each pipeline stage against its golden set, producing:
 

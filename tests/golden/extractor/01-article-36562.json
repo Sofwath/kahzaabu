@@ -43,5 +43,6 @@
       }
     ]
   },
-  "notes": "Live extraction output from article 36562 (Minister of Foreign Affairs, Foreign Employment and Tourism \u2026). Pins the (type, polarity, quote-prefix) tuple set as the current correct extraction."
+  "notes": "Live extraction output from article 36562 (Minister of Foreign Affairs, Foreign Employment and Tourism \u2026). Pins the (type, polarity, quote-prefix) tuple set as the current correct extraction.",
+  "verified": false
 }

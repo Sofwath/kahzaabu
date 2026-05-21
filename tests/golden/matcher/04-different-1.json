@@ -10,5 +10,6 @@
   "predicted": {
     "label": "DIFFERENT"
   },
-  "notes": "Different subject_normalized \u2014 should not be matched."
+  "notes": "Different subject_normalized \u2014 should not be matched.",
+  "verified": true
 }
