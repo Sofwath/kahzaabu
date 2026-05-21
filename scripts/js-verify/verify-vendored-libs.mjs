@@ -9,10 +9,31 @@
 //
 // Exit 0 = both libs work end-to-end with kahzaabu's APIs.
 // Exit 1 = a call site is broken; commit blocked.
+// Exit 2 = environment problem (wrong Node version, missing jsdom).
 //
 // jsdom is a one-shot devtime dependency (~50 MB installed). It's
 // NOT in package.json at the repo root because the project has no
 // other Node runtime needs. Keep it scoped to this script directory.
+
+// Node 20+ required: global `fetch` (used by Chart.js's resource
+// loading and by any future page-render variant of this verifier).
+// On older Node, fetch is undefined and Chart.js can throw a
+// confusing ReferenceError mid-test. Fail loud + early instead.
+const NODE_MAJOR = parseInt(process.versions.node.split(".")[0], 10);
+if (NODE_MAJOR < 20) {
+    console.error(
+        `❌ This verifier requires Node 20+ (you're on ${process.versions.node}).\n` +
+        `   Node 20 ships global fetch; older Node leaves it undefined and\n` +
+        `   the verifier produces confusing ReferenceError traces. Upgrade Node\n` +
+        `   or use nvm:  nvm install 20 && nvm use 20`);
+    process.exit(2);
+}
+if (typeof globalThis.fetch !== "function") {
+    console.error(
+        `❌ globalThis.fetch is not a function on Node ${process.versions.node}.\n` +
+        `   This shouldn't happen on Node 20+; check your Node install.`);
+    process.exit(2);
+}
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";

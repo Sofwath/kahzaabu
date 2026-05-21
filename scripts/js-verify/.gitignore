@@ -1,2 +1,5 @@
 node_modules/
-package-lock.json
+# package-lock.json IS committed — pins jsdom transitively so the
+# verifier produces the same result on every machine. Removing it
+# would mean a future maintainer running `npm install` could get
+# a different jsdom that subtly changes the test surface.
