@@ -113,12 +113,19 @@ def parse_constitution(txt_path: Path = DEFAULT_TXT) -> list[dict]:
             # Reject TOC-style lines (they have `..........` runs of dots)
             if "....." in raw:
                 continue
-            # Sequential check: articles in the Constitution go 1, 2, …,
-            # 301 in order. Sub-clauses like `1. citizens of the Maldives`
-            # inside article 9's body look identical to my article-number
-            # regex — reject them by requiring forward progress. The very
-            # first article (current_no is None) and chapter transitions
-            # (next article jumps to a higher number) are still accepted.
+            # Sequential check: articles in the 2008 Constitution go 1, 2,
+            # …, 301 strictly increasing. Sub-clauses like `1. citizens of
+            # the Maldives` inside article 9's body look identical to my
+            # article-number regex — reject them by requiring forward
+            # progress. The very first article (current_no is None) and
+            # chapter transitions (next article jumps to a higher number)
+            # are still accepted.
+            #
+            # KNOWN LIMITATION: if a future amendment renumbers articles
+            # non-monotonically (e.g. inserts art 50A or removes art 60
+            # leaving a gap), this guard would skip the renumbered/recovery
+            # article. Rare in real constitutions but possible. Verify the
+            # parser against any amended text before relying on it.
             is_sequential = current_no is None or new_no > current_no
             if 1 <= new_no <= 320 and is_sequential:
                 _close_current()
@@ -253,10 +260,19 @@ CREATE TABLE IF NOT EXISTS constitution_articles (
 CREATE INDEX IF NOT EXISTS idx_const_chapter ON constitution_articles(chapter);
 """
 
+# FTS5 schema. Column order is LOAD-BEARING: the bm25() call in lookup()
+# weights columns positionally. If you reorder these, update _BM25_WEIGHTS
+# below AND the bm25(…) call in lookup().
+#   col 0: article_no  (UNINDEXED — not tokenised, not weighted)
+#   col 1: title       (weight 10.0 — title hits dominate)
+#   col 2: body        (weight 1.0  — body provides fallback evidence)
 FTS_SQL = """
 CREATE VIRTUAL TABLE IF NOT EXISTS constitution_articles_fts
 USING fts5(article_no UNINDEXED, title, body);
 """
+_FTS_COLUMNS = ("article_no", "title", "body")
+_BM25_WEIGHTS = (10.0, 1.0)   # title, body — must match FTS_SQL column order
+                              # MINUS the leading UNINDEXED column
 
 
 def init_constitution_schema(conn: sqlite3.Connection) -> bool:
@@ -314,21 +330,23 @@ def lookup(conn: sqlite3.Connection, query: str, limit: int = 5) -> list[dict]:
     if not query or not query.strip():
         return []
 
-    # Try FTS5 first
+    # Try FTS5 first. The bm25() weights are passed positionally — keep
+    # _BM25_WEIGHTS aligned with FTS_SQL's column order.
+    weights_sql = ", ".join(str(w) for w in _BM25_WEIGHTS)
     try:
         rows = conn.execute(
-            """SELECT a.article_no, a.chapter, a.title, a.body, a.source_version
+            f"""SELECT a.article_no, a.chapter, a.title, a.body,
+                       a.source_version
                FROM constitution_articles_fts f
                JOIN constitution_articles a ON a.article_no = f.article_no
                WHERE constitution_articles_fts MATCH ?
-               ORDER BY bm25(constitution_articles_fts, 10.0, 1.0)
+               ORDER BY bm25(constitution_articles_fts, {weights_sql})
                LIMIT ?""",
             (_fts_sanitize(query), limit),
         ).fetchall()
         if rows:
             return [dict(r) for r in rows]
-        # Zero hits via FTS — might be a phrase no token matches; fall through
-        # to LIKE below.
+        # Zero hits via FTS — fall through to LIKE.
     except sqlite3.OperationalError:
         pass
 

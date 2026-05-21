@@ -173,6 +173,47 @@ class ConstitutionLookupTests(unittest.TestCase):
             self.assertIn("chapter", h)
             self.assertIn("source_version", h)
 
+    def test_fts_columns_match_bm25_weights(self):
+        """C3 guard: bm25() weights are positional. If FTS_SQL column
+        order ever changes without _BM25_WEIGHTS being updated, the
+        ranking silently breaks. Pin both."""
+        # _FTS_COLUMNS starts with article_no (UNINDEXED, not weighted);
+        # _BM25_WEIGHTS covers the indexed columns that follow.
+        self.assertEqual(constitution._FTS_COLUMNS[0], "article_no")
+        self.assertEqual(constitution._FTS_COLUMNS[1:], ("title", "body"))
+        self.assertEqual(len(constitution._BM25_WEIGHTS),
+                          len(constitution._FTS_COLUMNS) - 1)
+        # Title weight must be >= body weight (the whole point of weighting).
+        self.assertGreaterEqual(constitution._BM25_WEIGHTS[0],
+                                  constitution._BM25_WEIGHTS[1])
+
+    def test_bm25_quality_known_queries(self):
+        """Eight queries with a known-correct top hit. If BM25 weights or
+        the FTS5 schema regress, the top-1 ordering shifts and this fires.
+        The 10:1 title-vs-body weighting is tuned to keep these stable."""
+        expected_top1 = {
+            "religion":              10,   # State Religion
+            "non-Muslim citizen":     9,   # Citizens (clause d)
+            "judicial independence":141,   # Judiciary
+            "presidential election":108,   # Manner of Presidential election
+            "freedom of expression": 27,   # Freedom of expression
+            "tenets of Islam":       16,   # Guarantee of Rights
+            "removal of president": 122,   # Vacancy / removal procedures
+            "emergency":            267,   # No amendment during emergency
+        }
+        for query, expected in expected_top1.items():
+            with self.subTest(query=query):
+                hits = constitution.lookup(self.conn, query, limit=3)
+                self.assertGreater(len(hits), 0,
+                                    f"{query!r} returned no hits")
+                self.assertEqual(
+                    hits[0]["article_no"], expected,
+                    f"{query!r} expected Art. {expected} as top hit, "
+                    f"got Art. {hits[0]['article_no']} "
+                    f"({hits[0]['title']!r}). Top-3: "
+                    f"{[h['article_no'] for h in hits]}",
+                )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

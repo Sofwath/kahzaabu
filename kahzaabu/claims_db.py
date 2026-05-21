@@ -282,6 +282,17 @@ def init_claims_schema(conn: sqlite3.Connection) -> None:
         except sqlite3.OperationalError:
             pass  # column/index already exists
     conn.commit()
+    # Ensure the constitution_articles table (+ FTS5 index if available)
+    # exists. Bootstrap is idempotent; empty table is fine. Lazy import to
+    # avoid a top-of-module cycle with kahzaabu.constitution.
+    try:
+        from kahzaabu.constitution import init_constitution_schema
+        init_constitution_schema(conn)
+    except Exception as e:
+        # Constitution module is optional — log and continue.
+        import logging
+        logging.getLogger(__name__).debug(
+            "constitution schema init skipped: %s", e)
 
 
 def now_iso() -> str:
