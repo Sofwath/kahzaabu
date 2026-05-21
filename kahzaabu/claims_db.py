@@ -523,6 +523,26 @@ def init_claims_schema(conn: sqlite3.Connection) -> None:
             "constitution schema init skipped: %s", e)
 
 
+def init_full_schema(conn: sqlite3.Connection) -> None:
+    """Single entry point that brings up the entire kahzaabu schema —
+    V1 tables (articles, scrape/extraction/curation/verification/
+    inspection runs, manifesto, web users, corrections, etc.) plus
+    every V2 enrichment table and migration plus the constitution.
+
+    Consolidates `kahzaabu.db.init_db(conn)` + `init_claims_schema(conn)`
+    into one call so tests, scripts, and new modules can bring up a
+    complete schema without remembering the historical split.
+
+    Both sub-functions are idempotent. Existing callers of either
+    legacy entry point continue to work.
+    """
+    # Lazy import: kahzaabu.db imports this module, so a top-level
+    # import would create a cycle.
+    from kahzaabu import db as _db
+    _db.init_db(conn)
+    init_claims_schema(conn)
+
+
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 

@@ -26,6 +26,7 @@ from typing import Optional
 import anthropic
 
 from . import claims_db
+from . import metrics
 
 logger = logging.getLogger("kahzaabu")
 
@@ -118,6 +119,7 @@ def _compare_one(client: anthropic.Anthropic, en_body: str, dv_body: str,
 _SEV_RANK = {"minor": 1, "moderate": 2, "serious": 3}
 
 
+@metrics.tracked_stage("dv_compare", model="claude-sonnet-4-6")
 def run_dv_compare(conn: sqlite3.Connection, *, limit: int = 20,
                    since_date: str = "2024-01-01", require_claims: bool = True,
                    concurrency: int = 3, daily_budget_usd: float = 1.0,

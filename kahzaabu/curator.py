@@ -15,6 +15,7 @@ from typing import Optional
 import anthropic
 
 from . import claims_db
+from . import metrics
 
 logger = logging.getLogger("kahzaabu")
 
@@ -132,6 +133,7 @@ def _curate_chunk(client: anthropic.Anthropic, topic: str, chunk_idx: int,
             time.sleep(2 ** attempt)
 
 
+@metrics.tracked_stage("curator", model="claude-sonnet-4-6")
 def run_curation(conn, *, days_back: int = 7, max_chunk_claims: int = 200,
                  concurrency: int = 4, daily_budget_usd: float = 1.0,
                  force_full: bool = False, progress_cb=None) -> dict:

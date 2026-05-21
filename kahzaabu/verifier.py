@@ -18,6 +18,7 @@ from typing import Optional
 import anthropic
 
 from . import claims_db
+from . import metrics
 
 logger = logging.getLogger("kahzaabu")
 
@@ -131,6 +132,7 @@ def _verify_one(client: anthropic.Anthropic, fc: dict, max_searches: int = DEFAU
             time.sleep(2 ** attempt * 2)
 
 
+@metrics.tracked_stage("verifier", model="claude-haiku-4-5")
 def run_verification(conn, *, limit: Optional[int] = None,
                      categories: tuple[str, ...] = ("LIE", "CONTRADICTION", "SHIFTING NUMBERS", "CREDIT THEFT"),
                      concurrency: int = 3, daily_budget_usd: float = 1.0,

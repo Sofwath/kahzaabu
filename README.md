@@ -4,7 +4,7 @@
 > *"Kahzaabu"* (ކަޒާބު) is Dhivehi for *falsehood* — and the street nickname for Mohamed Muizzu.
 > The two names refer to the same person; the project treats them as synonyms.
 
-**License:** Apache-2.0 · **Tests:** 240 passing · **V2 status:** Slices 0–12 done (see [V2 build plan](docs/V2_BUILD_PLAN.md))
+**License:** Apache-2.0 · **Tests:** 248 passing · **V2 status:** Slices 0–12 done (see [V2 build plan](docs/V2_BUILD_PLAN.md))
 
 This is a **research / educational project**: it scrapes public press releases from `presidency.gov.mv`, extracts factual claims with an LLM, curates contradictions across time, verifies them against the open web, and stores the result in a queryable SQLite archive. A native [Hermes Agent](https://github.com/NousResearch/hermes-agent) plugin exposes the archive to a chat agent so you can ask questions in plain English (or through Telegram / WhatsApp / Slack via the hermes gateway).
 
@@ -548,6 +548,8 @@ kahzaabu/                   The Python package
 ├── reproducibility.py      Slice 12 — provenance manifest assembly (ADR 0010)
 ├── audit.py                Slice 12 — bias/fairness audit with chi-squared
 ├── transparency.py         Slice 12 — public-facing transparency report
+├── metrics.py              Slice 12 — prometheus_client + @tracked_stage
+│                            decorator (wraps all 8 pipeline run_*)
 │
 └── web/                    FastAPI app
     ├── app.py
@@ -561,7 +563,6 @@ kahzaabu/                   The Python package
     ├── static/             HTML / CSS / JS (no SPA)
     │   └── contradictions.html                   # V2 — 4-way verdict browser
     ├── db_dep.py           FastAPI Depends() for DB
-    ├── metrics.py          Slice 12 — prometheus_client + /metrics
     └── limits.py           Rate-limiter + LRU cache for /api/ask
 
 hermes-plugin/              Hermes plugin source (symlinked from ~/.hermes/...)

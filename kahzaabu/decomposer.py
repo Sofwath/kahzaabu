@@ -26,6 +26,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 from . import claims_db
+from . import metrics
 
 logger = logging.getLogger("kahzaabu")
 
@@ -141,6 +142,7 @@ def _decompose_one(client, claim: dict, retries: int = 3) -> dict:
     return {"_error": "exhausted retries"}
 
 
+@metrics.tracked_stage("decomposer", model="claude-haiku-4-5")
 def run_decomposition(conn, *, limit: Optional[int] = None,
                        budget_usd: float = 1.0,
                        concurrency: int = 6,

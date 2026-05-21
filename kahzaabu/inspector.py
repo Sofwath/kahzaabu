@@ -26,6 +26,7 @@ from typing import Optional
 import anthropic
 
 from . import claims_db
+from . import metrics
 
 logger = logging.getLogger("kahzaabu")
 
@@ -269,6 +270,7 @@ Only include URLs you actually retrieved."""
     return citations, usage
 
 
+@metrics.tracked_stage("inspector", model="claude-sonnet-4-6")
 def run_inspection(conn: sqlite3.Connection, *, limit: Optional[int] = 20,
                    concurrency: int = 4, daily_budget_usd: float = 1.0,
                    web_verify_flagged: bool = True,

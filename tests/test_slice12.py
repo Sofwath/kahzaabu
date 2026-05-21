@@ -19,7 +19,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from kahzaabu import audit, claims_db, db as db_module, reproducibility, transparency
+from kahzaabu import audit, claims_db, reproducibility, transparency
 
 
 # ───────────────────────────────────────────────────────────────────
@@ -29,8 +29,8 @@ from kahzaabu import audit, claims_db, db as db_module, reproducibility, transpa
 def _seed_db() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     conn.execute("PRAGMA foreign_keys=ON")
-    db_module.init_db(conn)        # articles + scrape_runs + extraction_runs
-    claims_db.init_claims_schema(conn)  # V2 enrichment tables + migrations
+    # Single entry point covering V1 + V2 tables (ADR 0010 cleanup).
+    claims_db.init_full_schema(conn)
     # Seed a couple of articles, claims, runs, fact_checks.
     conn.execute(
         "INSERT INTO articles (id, language, title, body_text, published_date,"
@@ -279,11 +279,11 @@ class TransparencyReportTests(unittest.TestCase):
 
 class MetricsTests(unittest.TestCase):
     def test_module_imports(self):
-        from kahzaabu.web import metrics
+        from kahzaabu import metrics
         self.assertTrue(metrics.prometheus_available())
 
     def test_helpers_dont_crash(self):
-        from kahzaabu.web import metrics
+        from kahzaabu import metrics
         metrics.record_api_request(
             path="/test", method="GET", status=200, duration_s=0.1)
         metrics.record_pipeline_run(
@@ -295,17 +295,137 @@ class MetricsTests(unittest.TestCase):
             category="LIE", verdict_label="REFUTED")
 
     def test_payload_is_text_prometheus(self):
-        from kahzaabu.web import metrics
+        from kahzaabu import metrics
         body, ctype = metrics.render_metrics_payload()
         self.assertIn("text/plain", ctype)
         # Should include at least one of our defined metric names
         body_str = body.decode("utf-8")
         self.assertIn("kahzaabu_", body_str)
 
+    def test_tracked_stage_decorator_completed(self):
+        """Decorator emits pipeline_run + llm_call for a fake run_* that
+        returns the standard {cost_usd, tokens_in, tokens_out} shape."""
+        from kahzaabu import metrics
+        # Snapshot counter value before
+        before = metrics.pipeline_runs.labels(
+            stage="_dec_test", status="completed")._value.get()
+
+        @metrics.tracked_stage("_dec_test", model="m-test")
+        def fake_run():
+            return {"cost_usd": 0.05, "tokens_in": 100, "tokens_out": 50}
+
+        result = fake_run()
+        self.assertEqual(result["cost_usd"], 0.05)
+
+        after = metrics.pipeline_runs.labels(
+            stage="_dec_test", status="completed")._value.get()
+        self.assertEqual(after - before, 1)
+
+    def test_tracked_stage_decorator_skipped(self):
+        from kahzaabu import metrics
+        before = metrics.pipeline_runs.labels(
+            stage="_dec_skip_test", status="skipped")._value.get()
+
+        @metrics.tracked_stage("_dec_skip_test", model="m-test")
+        def fake_run():
+            return {"skipped": True, "reason": "budget"}
+
+        fake_run()
+        after = metrics.pipeline_runs.labels(
+            stage="_dec_skip_test", status="skipped")._value.get()
+        self.assertEqual(after - before, 1)
+
+    def test_tracked_stage_decorator_error_status(self):
+        from kahzaabu import metrics
+        before = metrics.pipeline_runs.labels(
+            stage="_dec_err_test", status="error")._value.get()
+
+        @metrics.tracked_stage("_dec_err_test", model="m-test")
+        def fake_run():
+            raise RuntimeError("boom")
+
+        with self.assertRaises(RuntimeError):
+            fake_run()
+        after = metrics.pipeline_runs.labels(
+            stage="_dec_err_test", status="error")._value.get()
+        self.assertEqual(after - before, 1)
+
+    def test_all_v2_stages_instrumented(self):
+        """Smoke test: every run_* in our V2 stages should be wrapped
+        with metrics.tracked_stage. Surface drift if someone reverts
+        the decorator on a refactor."""
+        import inspect
+        from kahzaabu import (extractor, decomposer, matcher,
+                                contradictions, verifier, inspector,
+                                dv_compare, curator)
+        targets = [
+            (extractor,      "run_extraction"),
+            (decomposer,     "run_decomposition"),
+            (matcher,        "run_matching"),
+            (contradictions, "run_finder"),
+            (verifier,       "run_verification"),
+            (inspector,      "run_inspection"),
+            (dv_compare,     "run_dv_compare"),
+            (curator,        "run_curation"),
+        ]
+        for mod, fn_name in targets:
+            fn = getattr(mod, fn_name)
+            # tracked_stage wraps with functools.wraps, so unwrap to
+            # verify the decorator actually fired.
+            self.assertTrue(
+                hasattr(fn, "__wrapped__"),
+                f"{mod.__name__}.{fn_name} not decorated",
+            )
+
 
 # ───────────────────────────────────────────────────────────────────
 # Schema migration check
 # ───────────────────────────────────────────────────────────────────
+
+class InitFullSchemaTests(unittest.TestCase):
+    """init_full_schema is the consolidated entry point — must bring up
+    both V1 (articles, scrape_runs, ...) and V2 (claims, fact_checks
+    with V2 columns, contradiction_pairs, claim_questions, ...) tables
+    in one call."""
+
+    def test_v1_tables_present(self):
+        conn = sqlite3.connect(":memory:")
+        claims_db.init_full_schema(conn)
+        names = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+        for t in ("articles", "scrape_runs", "extraction_runs",
+                   "curation_runs", "verification_runs",
+                   "inspection_runs"):
+            self.assertIn(t, names, f"V1 table missing: {t}")
+
+    def test_v2_tables_present(self):
+        conn = sqlite3.connect(":memory:")
+        claims_db.init_full_schema(conn)
+        names = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+        for t in ("claims", "fact_checks", "fact_check_evidence",
+                   "contradiction_pairs", "claim_questions",
+                   "claim_embeddings"):
+            self.assertIn(t, names, f"V2 table missing: {t}")
+
+    def test_v2_columns_present(self):
+        conn = sqlite3.connect(":memory:")
+        claims_db.init_full_schema(conn)
+        fc_cols = {r[1] for r in conn.execute(
+            "PRAGMA table_info(fact_checks)").fetchall()}
+        for c in ("verdict_label", "truth_score", "truth_score_label",
+                   "claimreview_jsonld", "git_sha_at_publication"):
+            self.assertIn(c, fc_cols, f"V2 column missing: {c}")
+        ev_cols = {r[1] for r in conn.execute(
+            "PRAGMA table_info(fact_check_evidence)").fetchall()}
+        self.assertIn("authoritative_entity_id", ev_cols)
+
+    def test_idempotent(self):
+        conn = sqlite3.connect(":memory:")
+        claims_db.init_full_schema(conn)
+        claims_db.init_full_schema(conn)  # second call: no-op
+        claims_db.init_full_schema(conn)  # third call: still no-op
+
 
 class GitShaColumnTests(unittest.TestCase):
     def test_column_added(self):

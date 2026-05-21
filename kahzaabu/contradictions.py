@@ -46,6 +46,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 from . import claims_db
+from . import metrics
 
 logger = logging.getLogger("kahzaabu")
 
@@ -368,6 +369,7 @@ def _persist_pair(conn, run_id: int, claim_a_id: int, claim_b_id: int,
     conn.commit()
 
 
+@metrics.tracked_stage("contradictions", model="claude-sonnet-4-6")
 def run_finder(conn, *, limit: Optional[int] = None,
                 budget_usd: float = 5.0,
                 concurrency: int = 4,

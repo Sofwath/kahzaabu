@@ -34,7 +34,7 @@ from .api import (admin, articles, ask, auth, claimreview, contradictions,
                   corrections, factchecks, freshness, inspect, manifesto,
                   reproducibility, stats, viz)
 from .limits import limiter
-from . import metrics
+from .. import metrics
 
 # Quiet noisy logs
 for name in ("httpx", "httpcore", "anthropic"):
