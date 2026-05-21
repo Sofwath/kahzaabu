@@ -193,9 +193,10 @@ def prometheus_available() -> bool:
 # Stage context manager — the canonical wrapper for instrumented
 # pipeline stages. Use as:
 #
+#   from kahzaabu import pricing
 #   with metrics.track_stage("extractor") as t:
 #       ... do work ...
-#       t.record_llm(model="claude-sonnet-4-6",
+#       t.record_llm(model=pricing.MODELS["sonnet"].id,
 #                    tokens_in=t_in, tokens_out=t_out, cost_usd=cost)
 #
 # On exit it records pipeline_runs + pipeline_duration with status
@@ -252,8 +253,9 @@ def tracked_stage(stage: str, *,
     On exception:
       - status="error", exception re-raised
 
-    Usage:
-        @metrics.tracked_stage("extractor", model="claude-sonnet-4-6")
+    Usage (model arg comes from kahzaabu.pricing — the stage module's
+    own MODEL constant is the canonical source):
+        @metrics.tracked_stage("extractor", model=MODEL)
         def run_extraction(conn, ...) -> dict:
             ...
             return {"cost_usd": cost, "tokens_in": ..., ...}

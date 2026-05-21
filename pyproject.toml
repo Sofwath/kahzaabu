@@ -32,7 +32,7 @@ tui = [
     "prompt_toolkit>=3.0",
 ]
 mcp = [
-    "mcp>=0.9",               # only needed for the legacy standalone MCP server (kahzaabu.mcp_server). The native hermes plugin uses no MCP SDK.
+    "mcp>=0.9",               # legacy standalone stdio MCP server under kahzaabu/legacy/mcp_server.py. Superseded by the hermes plugin (hermes-plugin/); kept for reference. The native hermes plugin uses no MCP SDK.
 ]
 # V2 Slice 3 — embedding-provider extras. ADR 0007 mandates that no single
 # proprietary API is required; users pick the backend they want and install

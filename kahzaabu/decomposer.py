@@ -26,6 +26,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 from . import claims_db
+from . import pricing
 from . import metrics
 
 logger = logging.getLogger("kahzaabu")
@@ -33,9 +34,9 @@ logger = logging.getLogger("kahzaabu")
 # Haiku 4.5 is more than capable of structured-decomposition tasks and
 # is ~6× cheaper than Sonnet. Switch to Sonnet only if the dry-run
 # shows quality issues.
-MODEL = "claude-haiku-4-5"
-PRICE_IN_PER_M = 1.0
-PRICE_OUT_PER_M = 5.0
+MODEL = pricing.MODELS["haiku"].id
+PRICE_IN_PER_M = pricing.MODELS["haiku"].in_per_m
+PRICE_OUT_PER_M = pricing.MODELS["haiku"].out_per_m
 
 SYSTEM = """You are a fact-checking research planner.
 
@@ -142,7 +143,7 @@ def _decompose_one(client, claim: dict, retries: int = 3) -> dict:
     return {"_error": "exhausted retries"}
 
 
-@metrics.tracked_stage("decomposer", model="claude-haiku-4-5")
+@metrics.tracked_stage("decomposer", model=MODEL)
 def run_decomposition(conn, *, limit: Optional[int] = None,
                        budget_usd: float = 1.0,
                        concurrency: int = 6,

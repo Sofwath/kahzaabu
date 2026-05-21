@@ -32,6 +32,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 from . import claims_db
+from . import pricing
 from . import metrics
 from .embeddings import get_provider, EmbeddingProvider
 
@@ -47,7 +48,7 @@ DEFAULT_EMBED_DIM = 384
 EMBED_MODEL = DEFAULT_EMBED_MODEL
 EMBED_DIM = DEFAULT_EMBED_DIM
 
-LLM_MODEL = "claude-haiku-4-5"
+LLM_MODEL = pricing.MODELS["haiku"].id
 LLM_PRICE_IN_PER_M = 1.0
 LLM_PRICE_OUT_PER_M = 5.0
 
@@ -317,7 +318,7 @@ def find_match(conn, claim) -> tuple[Optional[int], str]:
     return claim["id"], "self"
 
 
-@metrics.tracked_stage("matcher", model="claude-haiku-4-5", cost_key="llm_cost_usd")
+@metrics.tracked_stage("matcher", model=LLM_MODEL, cost_key="llm_cost_usd")
 def run_matching(conn, *, limit: Optional[int] = None,
                   budget_usd: float = 5.0,
                   progress_cb=None) -> dict:

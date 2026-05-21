@@ -29,6 +29,8 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+from . import pricing
+
 logger = logging.getLogger("kahzaabu")
 
 
@@ -108,7 +110,7 @@ def get_manifest(conn: sqlite3.Connection,
                 "tokens_out":      crow["tokens_out"],
                 "cost_usd":        crow["cost_usd"],
                 "status":          crow["status"],
-                "curator_model":   "claude-sonnet-4-6",  # current stage default
+                "curator_model":   pricing.MODELS["sonnet"].id,  # stage default
             }
 
     # ── supporting_claims: parse the JSON article-id list, then join
@@ -179,7 +181,7 @@ def get_manifest(conn: sqlite3.Connection,
             "retrieved_at":            r["retrieved_at"],
             "verification_run_id":     r["verification_run_id"],
             "authoritative_entity_id": r["authoritative_entity_id"],
-            "verifier_model":          "claude-haiku-4-5",
+            "verifier_model":          pricing.MODELS["haiku"].id,
             "verification_cost_usd":   r["verification_cost_usd"],
         }
         for r in evidence_rows

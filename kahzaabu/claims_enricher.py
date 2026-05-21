@@ -24,12 +24,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 from . import claims_db
+from . import pricing
 
 logger = logging.getLogger("kahzaabu")
 
-MODEL = "claude-haiku-4-5"
-PRICE_IN_PER_M = 1.0
-PRICE_OUT_PER_M = 5.0
+MODEL = pricing.MODELS["haiku"].id
+PRICE_IN_PER_M = pricing.MODELS["haiku"].in_per_m
+PRICE_OUT_PER_M = pricing.MODELS["haiku"].out_per_m
 
 SYSTEM = """You enrich political claims with structured labels for downstream
 contradiction-detection. For each input claim, output three fields:

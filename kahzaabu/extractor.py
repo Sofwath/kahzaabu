@@ -14,15 +14,16 @@ from typing import Optional
 import anthropic
 
 from . import claims_db
+from . import pricing
 from . import metrics
 
 logger = logging.getLogger("kahzaabu")
 
-MODEL = "claude-sonnet-4-6"
+MODEL = pricing.MODELS["sonnet"].id
 TRUNC_PR = 4000
 TRUNC_SPEECH = 8000
-PRICE_IN_PER_M = 3.0
-PRICE_OUT_PER_M = 15.0
+PRICE_IN_PER_M = pricing.MODELS["sonnet"].in_per_m
+PRICE_OUT_PER_M = pricing.MODELS["sonnet"].out_per_m
 
 SYSTEM = """You are a forensic fact-extraction analyst working on Maldives Presidency press releases.
 
@@ -140,7 +141,7 @@ def _extract_one(client: anthropic.Anthropic, article: dict, retries: int = 3) -
     return {"claims": [], "_error": "exhausted retries"}
 
 
-@metrics.tracked_stage("extractor", model="claude-sonnet-4-6")
+@metrics.tracked_stage("extractor", model=MODEL)
 def run_extraction(conn, *, since_date: Optional[str] = "2023-11-17",
                    limit: Optional[int] = None, concurrency: int = 6,
                    daily_budget_usd: float = 1.0,

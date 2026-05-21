@@ -27,12 +27,13 @@ from typing import Optional
 import anthropic
 
 from . import claims_db
+from . import pricing
 
 logger = logging.getLogger("kahzaabu")
 
-MODEL = "claude-sonnet-4-6"
-PRICE_IN_PER_M = 3.0
-PRICE_OUT_PER_M = 15.0
+MODEL = pricing.MODELS["sonnet"].id
+PRICE_IN_PER_M = pricing.MODELS["sonnet"].in_per_m
+PRICE_OUT_PER_M = pricing.MODELS["sonnet"].out_per_m
 
 CHUNK_SIZE_CHARS = 6000     # comfortable for Sonnet, leaves headroom
 CHUNK_OVERLAP_CHARS = 400   # so promises straddling chunks don't get cut

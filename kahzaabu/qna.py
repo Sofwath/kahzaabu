@@ -21,14 +21,17 @@ from typing import Any, Optional
 
 import anthropic
 
+from . import pricing
+
 logger = logging.getLogger("kahzaabu")
 
-PARSER_MODEL = "claude-haiku-4-5-20251001"  # cheap, structured-output
-ANSWER_MODEL = "claude-sonnet-4-6"           # better synthesis
-PRICE_HAIKU_IN = 1.0
-PRICE_HAIKU_OUT = 5.0
-PRICE_SONNET_IN = 3.0
-PRICE_SONNET_OUT = 15.0
+# Pricing + model IDs centralised in kahzaabu.pricing (single source).
+PARSER_MODEL = pricing.MODELS["haiku"].id    # cheap, structured-output
+ANSWER_MODEL = pricing.MODELS["sonnet"].id   # better synthesis
+PRICE_HAIKU_IN  = pricing.MODELS["haiku"].in_per_m
+PRICE_HAIKU_OUT = pricing.MODELS["haiku"].out_per_m
+PRICE_SONNET_IN  = pricing.MODELS["sonnet"].in_per_m
+PRICE_SONNET_OUT = pricing.MODELS["sonnet"].out_per_m
 
 TODAY_ISO = date.today().isoformat()
 

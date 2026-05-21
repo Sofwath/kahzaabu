@@ -94,7 +94,17 @@ def _fetch_distribution(conn: sqlite3.Connection,
                          row_sql: str,
                          col_sql: str) -> dict[str, dict[str, int]]:
     """Build a contingency table by querying (row, col, COUNT(*)) and
-    bucketing into a nested dict."""
+    bucketing into a nested dict.
+
+    .. warning::
+       ``row_sql`` and ``col_sql`` are interpolated directly into the
+       query string — **caller MUST pass code-controlled literals**,
+       never values derived from user input. Today the only callers
+       (``category_by_year``, ``category_by_topic``) pass static
+       strings; if you add a new caller, keep that invariant. If you
+       ever need user-driven row/col selection, switch to a
+       whitelist + parameter binding.
+    """
     out: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     sql = (f"SELECT {row_sql} AS row_v, {col_sql} AS col_v, COUNT(*) AS n "
            f"FROM fact_checks WHERE published = 1 "

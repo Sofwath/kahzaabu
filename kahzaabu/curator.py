@@ -15,13 +15,14 @@ from typing import Optional
 import anthropic
 
 from . import claims_db
+from . import pricing
 from . import metrics
 
 logger = logging.getLogger("kahzaabu")
 
-MODEL = "claude-sonnet-4-6"
-PRICE_IN_PER_M = 3.0
-PRICE_OUT_PER_M = 15.0
+MODEL = pricing.MODELS["sonnet"].id
+PRICE_IN_PER_M = pricing.MODELS["sonnet"].in_per_m
+PRICE_OUT_PER_M = pricing.MODELS["sonnet"].out_per_m
 TODAY = date.today().isoformat()
 
 # Reuse the topic taxonomy from phase4
@@ -133,7 +134,7 @@ def _curate_chunk(client: anthropic.Anthropic, topic: str, chunk_idx: int,
             time.sleep(2 ** attempt)
 
 
-@metrics.tracked_stage("curator", model="claude-sonnet-4-6")
+@metrics.tracked_stage("curator", model=MODEL)
 def run_curation(conn, *, days_back: int = 7, max_chunk_claims: int = 200,
                  concurrency: int = 4, daily_budget_usd: float = 1.0,
                  force_full: bool = False, progress_cb=None) -> dict:

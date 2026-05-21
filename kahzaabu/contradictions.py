@@ -46,15 +46,16 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 from . import claims_db
+from . import pricing
 from . import metrics
 
 logger = logging.getLogger("kahzaabu")
 
 # Sonnet 4.6 for the verdict — this is the most consequential LLM call
 # in V2 and quality here directly affects published fact-checks.
-MODEL = "claude-sonnet-4-6"
-PRICE_IN_PER_M = 3.0
-PRICE_OUT_PER_M = 15.0
+MODEL = pricing.MODELS["sonnet"].id
+PRICE_IN_PER_M = pricing.MODELS["sonnet"].in_per_m
+PRICE_OUT_PER_M = pricing.MODELS["sonnet"].out_per_m
 
 # Bias the SQL shortlist toward the polarity pairings the ADR calls out.
 OPPOSITE_POLARITIES = {
@@ -369,7 +370,7 @@ def _persist_pair(conn, run_id: int, claim_a_id: int, claim_b_id: int,
     conn.commit()
 
 
-@metrics.tracked_stage("contradictions", model="claude-sonnet-4-6")
+@metrics.tracked_stage("contradictions", model=MODEL)
 def run_finder(conn, *, limit: Optional[int] = None,
                 budget_usd: float = 5.0,
                 concurrency: int = 4,

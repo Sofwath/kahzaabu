@@ -18,14 +18,15 @@ from typing import Optional
 import anthropic
 
 from . import claims_db
+from . import pricing
 from . import metrics
 
 logger = logging.getLogger("kahzaabu")
 
-MODEL = "claude-haiku-4-5-20251001"  # Haiku for cheap web-search synthesis
-PRICE_IN_PER_M = 1.0   # Haiku 4.5 input
-PRICE_OUT_PER_M = 5.0  # Haiku 4.5 output
-WEB_SEARCH_PRICE_PER_SEARCH = 0.01  # $10/1000
+MODEL = pricing.MODELS["haiku-ws"].id  # Haiku + web_search server tool
+PRICE_IN_PER_M = pricing.MODELS["haiku-ws"].in_per_m
+PRICE_OUT_PER_M = pricing.MODELS["haiku-ws"].out_per_m
+WEB_SEARCH_PRICE_PER_SEARCH = pricing.MODELS["haiku-ws"].web_search_per_call
 DEFAULT_MAX_SEARCHES = 2  # halve from 4; cuts result-token volume too
 
 SYSTEM = """You are a fact-checking researcher.
@@ -132,7 +133,7 @@ def _verify_one(client: anthropic.Anthropic, fc: dict, max_searches: int = DEFAU
             time.sleep(2 ** attempt * 2)
 
 
-@metrics.tracked_stage("verifier", model="claude-haiku-4-5")
+@metrics.tracked_stage("verifier", model=MODEL)
 def run_verification(conn, *, limit: Optional[int] = None,
                      categories: tuple[str, ...] = ("LIE", "CONTRADICTION", "SHIFTING NUMBERS", "CREDIT THEFT"),
                      concurrency: int = 3, daily_budget_usd: float = 1.0,

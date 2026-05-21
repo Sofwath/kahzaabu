@@ -29,19 +29,20 @@ from typing import Any, Optional
 # module without the anthropic SDK being installed.
 
 from . import claims_db
+from . import pricing
 
 logger = logging.getLogger("kahzaabu")
 
-MODEL = "claude-sonnet-4-6"
-PRICE_IN_PER_M = 3.0
-PRICE_OUT_PER_M = 15.0
-WEB_SEARCH_PRICE_PER_SEARCH = 0.01
+MODEL = pricing.MODELS["sonnet"].id
+PRICE_IN_PER_M = pricing.MODELS["sonnet"].in_per_m
+PRICE_OUT_PER_M = pricing.MODELS["sonnet"].out_per_m
+WEB_SEARCH_PRICE_PER_SEARCH = pricing.MODELS["haiku-ws"].web_search_per_call
 
 # Cheaper model used only for the narrative-tricks guarantee-pass.
 # Haiku 4.5 handles structured-output-from-existing-context well.
-HAIKU_MODEL = "claude-haiku-4-5"
-HAIKU_IN_PER_M = 1.0
-HAIKU_OUT_PER_M = 5.0
+HAIKU_MODEL = pricing.MODELS["haiku"].id
+HAIKU_IN_PER_M = pricing.MODELS["haiku"].in_per_m
+HAIKU_OUT_PER_M = pricing.MODELS["haiku"].out_per_m
 
 # Bump when SYSTEM_PROMPT or output format changes — invalidates LRU cache.
 PROMPT_VERSION = "v2-narrative-tricks"

@@ -26,17 +26,18 @@ from typing import Optional
 import anthropic
 
 from . import claims_db
+from . import pricing
 from . import metrics
 
 logger = logging.getLogger("kahzaabu")
 
-MODEL = "claude-sonnet-4-6"
-PRICE_IN_PER_M = 3.0
-PRICE_OUT_PER_M = 15.0
-WEB_MODEL = "claude-haiku-4-5-20251001"
-WEB_IN = 1.0
-WEB_OUT = 5.0
-WEB_SEARCH_PRICE = 0.01
+MODEL = pricing.MODELS["sonnet"].id
+PRICE_IN_PER_M = pricing.MODELS["sonnet"].in_per_m
+PRICE_OUT_PER_M = pricing.MODELS["sonnet"].out_per_m
+WEB_MODEL = pricing.MODELS["haiku-ws"].id
+WEB_IN  = pricing.MODELS["haiku-ws"].in_per_m
+WEB_OUT = pricing.MODELS["haiku-ws"].out_per_m
+WEB_SEARCH_PRICE = pricing.MODELS["haiku-ws"].web_search_per_call
 
 TRUNC_PR = 4000
 TRUNC_SPEECH = 8000
@@ -270,7 +271,7 @@ Only include URLs you actually retrieved."""
     return citations, usage
 
 
-@metrics.tracked_stage("inspector", model="claude-sonnet-4-6")
+@metrics.tracked_stage("inspector", model=MODEL)
 def run_inspection(conn: sqlite3.Connection, *, limit: Optional[int] = 20,
                    concurrency: int = 4, daily_budget_usd: float = 1.0,
                    web_verify_flagged: bool = True,

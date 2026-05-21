@@ -1,5 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Kahzaabu MCP server — exposes the corpus as tools for any MCP-compatible agent.
+"""**DEPRECATED — kept for reference only, not imported by any active code path.**
+
+Superseded by the hermes plugin (`hermes-plugin/`) per ADR 0001. This standalone stdio MCP server was the V1 integration surface; V2 ships the in-process hermes plugin instead. Kept here so historical issue reports + the ADR have a referenceable source.
+
+Will be removed when `legacy/` is pruned in a future cleanup.
+
+--- ORIGINAL DOCSTRING ---
+
+Kahzaabu MCP server — exposes the corpus as tools for any MCP-compatible agent.
 
 Run standalone:
     .venv-mcp/bin/python -m kahzaabu.mcp_server                # stdio
