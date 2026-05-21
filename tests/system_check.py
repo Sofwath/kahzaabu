@@ -1,4 +1,14 @@
-"""End-to-end system test for the kahzaabu web stack.
+"""End-to-end integration check for the kahzaabu web stack.
+
+NOT a pytest suite — runs as a standalone script with its own pass/fail
+counters. Named `system_check.py` (not `test_*`) so pytest discovery in
+`tests/` does not collect it. Run it explicitly:
+
+    .venv/bin/python tests/system_check.py
+
+Requires:
+- A live kahzaabu web server at $KAHZAABU_BASE (default http://127.0.0.1:8765)
+- An admin user with credentials matching ADMIN_USER / ADMIN_PASS below
 
 Verifies:
 - Every HTML page renders (200)
@@ -9,8 +19,6 @@ Verifies:
 - Q&A works for anonymous (under budget) and admin (always)
 - CLI side-effects: pipeline trigger, publish/unpublish
 - DB consistency: counts match between /api/stats and direct queries
-
-Run: python test_system.py
 """
 from __future__ import annotations
 

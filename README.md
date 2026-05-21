@@ -120,10 +120,9 @@ The hermes plugin source lives at `hermes-plugin/` in this repo and is symlinked
    ┌──────────────────────────────────────────────────────────────────────┐
    │                     SQLite (data/kahzaabu.db, WAL)                   │
    │                                                                       │
-   │   articles ── claims ── fact_checks ── fact_check_evidence            │
-   │       │         │           │                                        │
-   │       │         │           └── fact_check_claims (join)             │
-   │       │         │                                                    │
+   │   articles ── claims    fact_checks ── fact_check_evidence           │
+   │       │         │           │  (source_article_ids JSON array → articles.id)
+   │       │                                                              │
    │       ├── article_fact_cards (per-article inspector output)          │
    │       └── dv_en_inconsistencies (translation diffs)                  │
    │                                                                       │
@@ -179,19 +178,39 @@ A separate `manifesto-extract` + `manifesto-crossref` flow extracts ~717 promise
 The interesting tables:
 
 ```sql
-articles            -- one row per (article_id, language); paired EN ↔ DV via shared id
-claims              -- (article_id, type, text, value, unit, target_date, location, persons)
-fact_checks         -- (id, title, category, severity, topic, summary, contradiction, published)
-fact_check_claims   -- join: which claims supports each fact-check
-fact_check_evidence -- web search hits with agrees/disagrees per fact-check
-article_fact_cards  -- per-article inspector output (summary, severity, viz spec)
-dv_en_inconsistencies -- (en_article_id, dv_article_id, severity, category, en_quote, dv_quote)
-manifesto_promises  -- (id, category, promise, delivery_status, evidence_note)
+articles            -- PK (id, language). EN ↔ DV pairs via shared id + paired_id.
+                    -- cols: title, category, body_text, body_html, published_date,
+                    --       reference, scraped_at, raw_page_html
+claims              -- extracted from article body_text by the LLM.
+                    -- cols: article_id+language (FK), type, subject, value,
+                    --       deadline, actor_credited, quote, extraction_run_id
+fact_checks         -- curated contradictions / broken deadlines / etc.
+                    -- cols: category, claim_date, claim, what_actually_happened,
+                    --       topic, confidence, source_article_ids (JSON array
+                    --       of articles.id), evidence_quotes (JSON), published,
+                    --       public_summary, fingerprint (dedupe key)
+fact_check_evidence -- web-search hits backing each fact-check.
+                    -- cols: fact_check_id (FK), url, title, snippet, relevance
+                    --       ('confirms'|'contradicts'|'context'|'unclear'|
+                    --       'not_found'), summary, retrieved_at
+article_fact_cards  -- per-article inspector output.
+                    -- cols: article_id+language (FK), summary, key_claims_json,
+                    --       history_check, severity, viz_spec_json, cost_usd
+dv_en_inconsistencies -- EN/DV translation diffs.
+                    -- cols: en_article_id, dv_article_id (FKs), severity,
+                    --       category, en_quote, dv_quote, dv_translation_to_en
+manifesto_promises  -- 2023 campaign promises.
+                    -- cols: category, promise, delivery_status, evidence_note,
+                    --       published
 manifesto_evidence  -- which articles support each promise's delivery status
-qna_sessions        -- agentic-ask multi-turn memory (messages JSON, cost_usd)
+qna_sessions        -- agentic-ask multi-turn memory.
+                    -- cols: id (uuid), messages_json (full message history),
+                    --       total_cost_usd, n_turns, created_at, last_used_at
 scrape_runs         -- audit log of pipeline cycles (used for freshness)
 web_users           -- admin/editor accounts for the web UI's publish workflow
 ```
+
+**Article ↔ fact-check linkage** is via the JSON column `fact_checks.source_article_ids` — a list of `articles.id` values. Use SQLite's `json_each()` to traverse it (or `LIKE` on the serialized form as a fallback).
 
 Migrations are idempotent ALTER-COLUMN style in `claims_db.py:init_claims_schema()`. WAL mode is on; `check_same_thread=False` for the FastAPI threadpool.
 

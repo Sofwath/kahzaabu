@@ -410,17 +410,30 @@ def handle_get_article(args: Dict[str, Any], **_kw) -> str:
             "FROM claims WHERE article_id = ? AND language = 'EN'", (aid,)
         ).fetchall()
         # fact-checks are linked via fact_checks.source_article_ids (JSON array).
-        # SQLite has no JSON1 guarantee here — use a LIKE on the serialized id.
-        factchecks = conn.execute(
-            """SELECT id, category, claim, topic, claim_date, confidence
-               FROM fact_checks
-               WHERE published = 1
-                 AND ( source_article_ids = ?
-                       OR source_article_ids LIKE ?
-                       OR source_article_ids LIKE ?
-                       OR source_article_ids LIKE ? )""",
-            (f"[{aid}]", f"[{aid},%", f"%, {aid},%", f"%, {aid}]"),
-        ).fetchall()
+        # Use SQLite's JSON1 json_each() — robust to formatting (whitespace
+        # changes, integer vs string element types). JSON1 is built into the
+        # SQLite shipped with macOS and most Linux distros; if it's missing
+        # we fall back to a LIKE chain that matches the canonical
+        # `json.dumps([…])` output.
+        try:
+            factchecks = conn.execute(
+                """SELECT fc.id, fc.category, fc.claim, fc.topic,
+                          fc.claim_date, fc.confidence
+                   FROM fact_checks fc, json_each(fc.source_article_ids) AS j
+                   WHERE fc.published = 1 AND j.value = ?""",
+                (aid,),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            factchecks = conn.execute(
+                """SELECT id, category, claim, topic, claim_date, confidence
+                   FROM fact_checks
+                   WHERE published = 1
+                     AND ( source_article_ids = ?
+                           OR source_article_ids LIKE ?
+                           OR source_article_ids LIKE ?
+                           OR source_article_ids LIKE ? )""",
+                (f"[{aid}]", f"[{aid},%", f"%, {aid},%", f"%, {aid}]"),
+            ).fetchall()
         out: Dict[str, Any] = {
             "article": dict(art),
             "claims": [dict(r) for r in claims],
