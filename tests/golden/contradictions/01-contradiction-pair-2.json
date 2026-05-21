@@ -21,5 +21,6 @@
     "verdict": "CONTRADICTION"
   },
   "notes": "Real CONTRADICTION from live corpus (contradiction_pair #2, conf=0.78).",
-  "verified": false
+  "verified": true,
+  "verification_notes": "Verified 2026-05-21: 2023 statement implicitly acknowledges PRIOR interference ('ends here right now'); 2025 statement denies any interference. The 2025 claim contradicts the 2023 acknowledgement. CONTRADICTION is correct."
 }

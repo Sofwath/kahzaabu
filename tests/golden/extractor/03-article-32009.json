@@ -72,5 +72,6 @@
     ]
   },
   "notes": "Live extraction output from article 32009 (The President inaugurates the 'Nasruge Dhuvahuge Sifainge Ma\u2026). Pins the (type, polarity, quote-prefix) tuple set as the current correct extraction.",
-  "verified": false
+  "verified": false,
+  "verification_notes": "Reviewed 2026-05-21 \u2014 NOT promoted: claim 2 tags exhibition opening hours (9AM-12PM, 2PM-6PM, etc.) as deadline_promise. An exhibition's daily schedule is an event timetable, not a political deadline commitment. Type taxonomy needs project-owner clarification before this fixture becomes ground truth."
 }

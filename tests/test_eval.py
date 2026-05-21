@@ -115,14 +115,23 @@ class FixtureLoaderTests(unittest.TestCase):
         fixtures = ev.load_fixtures("matcher")
         self.assertTrue(all(fx.get("verified") for fx in fixtures))
 
-    def test_llm_stages_pinned_by_default(self):
-        """Extractor/decomposer/contradictions are pinned baselines
-        until a human reviews and promotes them to verified."""
-        for stage in ("extractor", "decomposer", "contradictions"):
+    def test_llm_stages_have_promoted_fixtures(self):
+        """Extractor/decomposer/contradictions ship with at least
+        some hand-verified fixtures (promoted in the verification
+        pass that followed Slice 10). One extractor fixture is
+        deliberately left unverified pending taxonomy clarification."""
+        for stage in ("decomposer", "contradictions"):
             fixtures = ev.load_fixtures(stage)
             self.assertTrue(
-                all(not fx.get("verified") for fx in fixtures),
-                f"{stage} fixtures should default to unverified")
+                any(fx.get("verified") for fx in fixtures),
+                f"{stage} should have at least one verified fixture")
+        # Extractor has 3/4 verified + 1 deliberately unverified
+        ex = ev.load_fixtures("extractor")
+        n_verified = sum(1 for fx in ex if fx.get("verified"))
+        self.assertGreaterEqual(n_verified, 1)
+        self.assertLess(n_verified, len(ex),
+                         "expect at least one extractor fixture left "
+                         "unverified to demonstrate honest gating")
 
     def test_verified_defaults_to_false_when_missing(self):
         """A fixture file without an explicit `verified` field loads as

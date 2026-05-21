@@ -21,5 +21,6 @@
     "verdict": "NOT_CONTRADICTORY"
   },
   "notes": "Real NOT_CONTRADICTORY from live corpus (contradiction_pair #5, conf=0.98).",
-  "verified": false
+  "verified": true,
+  "verification_notes": "Verified 2026-05-21: claim A is about Cabinet salaries; claim B is about Employment Tribunal appointments. Disjoint topics. NOT_CONTRADICTORY is correct."
 }

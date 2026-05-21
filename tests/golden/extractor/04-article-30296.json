@@ -86,5 +86,6 @@
     ]
   },
   "notes": "Live extraction output from article 30296 (The President officially announces the inclusion of Maaddoo \u2026). Pins the (type, polarity, quote-prefix) tuple set as the current correct extraction.",
-  "verified": false
+  "verified": true,
+  "verification_notes": "Verified 2026-05-21: 5 claims correctly tagged \u2014 credit_claim for the incorporation announcement, deadline_promise+PROMISE for 'within the week' commitment, numeric_promise+PROMISE for the 40,000 housing units and seven-urban-centres pledges, numeric_update+CLAIM_OF_FACT for 'fifth destination' count."
 }

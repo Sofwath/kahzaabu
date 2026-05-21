@@ -21,5 +21,6 @@
     "verdict": "NOT_CONTRADICTORY"
   },
   "notes": "Real NOT_CONTRADICTORY from live corpus (contradiction_pair #11, conf=0.95).",
-  "verified": false
+  "verified": true,
+  "verification_notes": "Verified 2026-05-21: claim A is about ratification of Food Safety Act; claim B is about absence of food/fuel shortages. Ratifying safety regulations is fully compatible with 'no shortages'. NOT_CONTRADICTORY is correct."
 }

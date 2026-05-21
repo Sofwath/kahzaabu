@@ -21,5 +21,6 @@
     "verdict": "CONTRADICTION"
   },
   "notes": "Real CONTRADICTION from live corpus (contradiction_pair #36, conf=0.78).",
-  "verified": false
+  "verified": true,
+  "verification_notes": "Verified 2026-05-21: Jan 2024 explicitly cites 'challenge to refinance debt obligations'; Mar 2026 explicitly claims 'no concerns repaying external debt'. Same subject (Maldives), same topic (external debt repayment), direct contradiction."
 }

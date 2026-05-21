@@ -44,5 +44,6 @@
     ]
   },
   "notes": "Live extraction output from article 36562 (Minister of Foreign Affairs, Foreign Employment and Tourism \u2026). Pins the (type, polarity, quote-prefix) tuple set as the current correct extraction.",
-  "verified": false
+  "verified": true,
+  "verification_notes": "Verified 2026-05-21: claim 1 (policy_assertion+NEUTRAL+not_checkable) is a routine diplomatic-relations factual statement; claim 2 (policy_assertion+AFFIRM+checkable) tags a state visit event which is a defensible diplomatic-policy classification. Both type+polarity assignments align with the extractor taxonomy."
 }

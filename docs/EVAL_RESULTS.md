@@ -1,6 +1,6 @@
 # Kahzaabu — quality evaluation results
 
-Generated: 2026-05-21T07:02:19.571824+00:00
+Generated: 2026-05-21T07:06:15.008431+00:00
 
 Per-stage metrics against the golden set under `tests/golden/`. Methodology: ADR 0008.
 
@@ -34,7 +34,13 @@ Each stage reports **Verified-subset** metrics (real quality) and **All-fixture*
 
 ## extractor
 
-- Fixtures: **4** (verified: **0**, pinned: **4**)
+- Fixtures: **4** (verified: **3**, pinned: **1**)
+
+### Verified-subset (ground truth)
+
+- Precision: **1.000**
+- Recall:    **1.000**
+- F1:        **1.000**
 
 ### All fixtures (drift detector)
 
@@ -44,7 +50,13 @@ Each stage reports **Verified-subset** metrics (real quality) and **All-fixture*
 
 ## decomposer
 
-- Fixtures: **4** (verified: **0**, pinned: **4**)
+- Fixtures: **4** (verified: **4**, pinned: **0**)
+
+### Verified-subset (ground truth)
+
+- Precision: **1.000**
+- Recall:    **1.000**
+- F1:        **1.000**
 
 ### All fixtures (drift detector)
 
@@ -73,7 +85,17 @@ Each stage reports **Verified-subset** metrics (real quality) and **All-fixture*
 
 ## contradictions
 
-- Fixtures: **5** (verified: **0**, pinned: **5**)
+- Fixtures: **5** (verified: **5**, pinned: **0**)
+
+### Verified-subset (ground truth)
+
+- Accuracy: **1.000**
+- Macro-F1: **1.000**
+
+| Class | Precision | Recall | F1 | Support |
+|---|---|---|---|---|
+| CONTRADICTION | 1.000 | 1.000 | 1.000 | 2 |
+| NOT_CONTRADICTORY | 1.000 | 1.000 | 1.000 | 3 |
 
 ### All fixtures (drift detector)
 

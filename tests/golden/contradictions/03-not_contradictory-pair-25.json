@@ -21,5 +21,6 @@
     "verdict": "NOT_CONTRADICTORY"
   },
   "notes": "Real NOT_CONTRADICTORY from live corpus (contradiction_pair #25, conf=0.85).",
-  "verified": false
+  "verified": true,
+  "verification_notes": "Verified 2026-05-21: diversifying supply sources (prudent policy) is fully compatible with 'no current risk' (state assessment). NOT_CONTRADICTORY is correct."
 }

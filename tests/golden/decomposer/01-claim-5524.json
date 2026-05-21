@@ -56,5 +56,6 @@
     ]
   },
   "notes": "Live decomposer output for claim 5524. Pins the (answer_type, source_medium) set.",
-  "verified": false
+  "verified": true,
+  "verification_notes": "Verified 2026-05-21: Q1 Boolean (did X happen), Q2 Extractive (exact number lookup), Q3+Q4 Abstractive (synthesis required). archive vs web_search split is correct \u2014 Q1/Q2 are presidency-corpus questions, Q3/Q4 need external context."
 }

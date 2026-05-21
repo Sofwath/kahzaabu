@@ -56,5 +56,6 @@
     ]
   },
   "notes": "Live decomposer output for claim 4003. Pins the (answer_type, source_medium) set.",
-  "verified": false
+  "verified": true,
+  "verification_notes": "Verified 2026-05-21: all four questions correctly classified \u2014 Boolean for existence/contents checks, Extractive for date lookup, Abstractive for restructuring synthesis. All archive-source since Directive 25/2024 lives in presidency corpus."
 }

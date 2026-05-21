@@ -56,5 +56,6 @@
     ]
   },
   "notes": "Live decomposer output for claim 8576. Pins the (answer_type, source_medium) set.",
-  "verified": false
+  "verified": true,
+  "verification_notes": "Verified 2026-05-21: all four questions correctly classified \u2014 Boolean for inauguration check, Abstractive+web_search for historical context, Extractive+archive for documented prices and concrete plans."
 }

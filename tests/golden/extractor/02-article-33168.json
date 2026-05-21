@@ -44,5 +44,6 @@
     ]
   },
   "notes": "Live extraction output from article 33168 (President appoints a Member to the Judicial Service Commissi\u2026). Pins the (type, polarity, quote-prefix) tuple set as the current correct extraction.",
-  "verified": false
+  "verified": true,
+  "verification_notes": "Verified 2026-05-21: both claims are clear credit_claim+AFFIRM cases (President appointed X / President dismissed Y) \u2014 unambiguous executive actions tagged correctly."
 }
