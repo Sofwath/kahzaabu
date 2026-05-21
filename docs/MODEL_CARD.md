@@ -244,9 +244,16 @@ rows tagged 48 of 300 existing evidence rows as primary-source.
 - The trust tier is binary (authoritative / not). A weighted score is
   out of scope for V2; deferred until eval data supports calibration.
 
-**Eval coverage.** No golden fixtures yet; the stage runs only on the
-small set of high-severity fact-checks and is reviewed manually before
-publication. Future Slice may add evidence-classification fixtures.
+**Eval coverage.** `tests/golden/verifier/` — 8 fixtures pulled from
+live `fact_check_evidence` rows, spanning all 5 relevance labels
+(`confirms`/`contradicts`/`context`/`unclear`/`no_relevant_info`).
+Scoring: Jaccard F1 over (url_prefix, relevance) tuples per
+fact-check. All fixtures currently PINNED (`verified: false`)
+because relevance classifications on third-party news are subjective
+— promoting to verified requires hand-review. The drift detector
+catches prompt edits that shift the relevance distribution; the
+verified subset is the path to a real quality metric as fixtures
+get hand-reviewed.
 
 ---
 

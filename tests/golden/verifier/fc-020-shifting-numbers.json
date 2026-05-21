@@ -1,0 +1,61 @@
+{
+  "id": "fc-20",
+  "input": {
+    "fact_check_id": 20,
+    "category": "SHIFTING NUMBERS",
+    "claim": "Debt as % of GDP",
+    "claim_date": "2024\u21922025",
+    "what_actually_happened": "2024: '115.9% of GDP.' 2025: not stated. 2026: claims 'fiscal sustainability restored' \u2014 no % given. Stopped reporting the metric.",
+    "confidence": "auto"
+  },
+  "expected": {
+    "rows": [
+      {
+        "url_prefix": "https://www.worldbank.org/en/country/maldives/publication/ma",
+        "relevance": "contradicts"
+      },
+      {
+        "url_prefix": "https://en.sun.mv/100318",
+        "relevance": "contradicts"
+      },
+      {
+        "url_prefix": "https://countryeconomy.com/national-debt/maldivas",
+        "relevance": "context"
+      },
+      {
+        "url_prefix": "https://publicfinance.lk/en/topics/maldives-debt-continue-to",
+        "relevance": "context"
+      }
+    ],
+    "relevance_distribution": {
+      "contradicts": 2,
+      "context": 2
+    }
+  },
+  "predicted": {
+    "rows": [
+      {
+        "url_prefix": "https://www.worldbank.org/en/country/maldives/publication/ma",
+        "relevance": "contradicts"
+      },
+      {
+        "url_prefix": "https://en.sun.mv/100318",
+        "relevance": "contradicts"
+      },
+      {
+        "url_prefix": "https://countryeconomy.com/national-debt/maldivas",
+        "relevance": "context"
+      },
+      {
+        "url_prefix": "https://publicfinance.lk/en/topics/maldives-debt-continue-to",
+        "relevance": "context"
+      }
+    ],
+    "relevance_distribution": {
+      "contradicts": 2,
+      "context": 2
+    }
+  },
+  "verified": false,
+  "notes": "Live verifier output for fact_check #20 (SHIFTING NUMBERS). 4 evidence rows; distribution: {'contradicts': 2, 'context': 2}. PINNED \u2014 relevance classifications on third-party news are subjective; hand-review before promoting."
+}

@@ -1,0 +1,77 @@
+{
+  "id": "fc-19",
+  "input": {
+    "fact_check_id": 19,
+    "category": "SHIFTING NUMBERS",
+    "claim": "Reclamation hectares (various islands)",
+    "claim_date": "2024\u21922025",
+    "what_actually_happened": "Numbers change constantly: 1,100\u219245\u219230\u219215\u219213\u219227\u2192150\u2192125\u2192200\u219212 hectares across different speeches for different islands. No consistency.",
+    "confidence": "auto"
+  },
+  "expected": {
+    "rows": [
+      {
+        "url_prefix": "https://presidency.gov.mv/Press/Article/30549",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://maldivesindependent.com/environement/half-of-maldive",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://www.dredgingtoday.com/2024/04/12/the-maldives-presid",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://www.dredgingtoday.com/2025/11/13/exclusive-rasmale-l",
+        "relevance": "context"
+      },
+      {
+        "url_prefix": "https://www.dredgingtoday.com/2024/04/22/boskalis-completes-",
+        "relevance": "context"
+      },
+      {
+        "url_prefix": "https://corporatemaldives.com/president-muizzu-announces-lan",
+        "relevance": "confirms"
+      }
+    ],
+    "relevance_distribution": {
+      "confirms": 4,
+      "context": 2
+    }
+  },
+  "predicted": {
+    "rows": [
+      {
+        "url_prefix": "https://presidency.gov.mv/Press/Article/30549",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://maldivesindependent.com/environement/half-of-maldive",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://www.dredgingtoday.com/2024/04/12/the-maldives-presid",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://www.dredgingtoday.com/2025/11/13/exclusive-rasmale-l",
+        "relevance": "context"
+      },
+      {
+        "url_prefix": "https://www.dredgingtoday.com/2024/04/22/boskalis-completes-",
+        "relevance": "context"
+      },
+      {
+        "url_prefix": "https://corporatemaldives.com/president-muizzu-announces-lan",
+        "relevance": "confirms"
+      }
+    ],
+    "relevance_distribution": {
+      "confirms": 4,
+      "context": 2
+    }
+  },
+  "verified": false,
+  "notes": "Live verifier output for fact_check #19 (SHIFTING NUMBERS). 6 evidence rows; distribution: {'confirms': 4, 'context': 2}. PINNED \u2014 relevance classifications on third-party news are subjective; hand-review before promoting."
+}

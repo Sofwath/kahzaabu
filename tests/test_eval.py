@@ -116,6 +116,16 @@ class FixtureLoaderTests(unittest.TestCase):
         fixtures = ev.load_fixtures("matcher")
         self.assertTrue(all(fx.get("verified") for fx in fixtures))
 
+    def test_verifier_fixtures_loadable(self):
+        """The verifier stage has 5+ fixtures pulled from live evidence
+        rows. They start pinned (verified=false); promote-to-verified
+        is a hand-review task per the contradictions pattern."""
+        fixtures = ev.load_fixtures("verifier")
+        self.assertGreaterEqual(len(fixtures), 5)
+        for fx in fixtures:
+            self.assertIn("rows", fx["expected"])
+            self.assertIn("relevance_distribution", fx["expected"])
+
     def test_llm_stages_have_promoted_fixtures(self):
         """Extractor/decomposer/contradictions ship with at least
         some hand-verified fixtures (promoted in the verification
@@ -146,6 +156,36 @@ class FixtureLoaderTests(unittest.TestCase):
                 fixtures = ev.load_fixtures("bogus")
             self.assertEqual(len(fixtures), 1)
             self.assertFalse(fixtures[0]["verified"])
+
+
+class VerifierRunnerTests(unittest.TestCase):
+    def test_runs_against_real_fixtures(self):
+        """Pinned baseline: predicted == expected on every fixture, so
+        F1 == 1.0 across the suite. A prompt edit shifts this away from
+        1.0 and exposes drift."""
+        fixtures = ev.load_fixtures("verifier")
+        if not fixtures:
+            self.skipTest("verifier fixtures not authored yet")
+        result = ev._run_verifier(fixtures)
+        self.assertEqual(result["f1"], 1.0)
+        self.assertEqual(result["misses"], [])
+
+    def test_detects_drift(self):
+        """Plant a fixture whose 'predicted' diverges from 'expected'
+        — the runner must catch it."""
+        bad = [{
+            "id": "planted",
+            "input": {"fact_check_id": 999, "claim": "x"},
+            "expected": {"rows": [
+                {"url_prefix": "https://example.com/a", "relevance": "confirms"},
+            ], "relevance_distribution": {"confirms": 1}},
+            "predicted": {"rows": [
+                {"url_prefix": "https://example.com/a", "relevance": "contradicts"},
+            ]},
+        }]
+        result = ev._run_verifier(bad)
+        self.assertLess(result["f1"], 1.0)
+        self.assertEqual(len(result["misses"]), 1)
 
 
 class TruthScoreRunnerTests(unittest.TestCase):

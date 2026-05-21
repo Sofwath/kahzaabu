@@ -311,12 +311,65 @@ def _run_matcher(fixtures: list[dict]) -> dict:
     return metrics
 
 
+def _run_verifier(fixtures: list[dict]) -> dict:
+    """Verifier — web-search evidence classifier (ADR 0001 stage 6).
+
+    Each fixture pins the relevance distribution + per-row
+    (url_prefix, relevance) set for a fact-check that already went
+    through the verifier. Scoring: Jaccard F1 on the row set.
+
+    Like the contradictions runner this is a STATIC eval against
+    captured pipeline output — re-running the verifier live would
+    cost LLM calls + Anthropic web-search credits. A prompt change
+    that shifts the relevance balance fails the test; the maintainer
+    decides whether the shift is an improvement (update the fixtures)
+    or a regression (revert the prompt).
+    """
+    p_list, r_list, f_list = [], [], []
+    p_v, r_v, f_v = [], [], []
+    misses: list[dict] = []
+    for fx in fixtures:
+        expected_set = {
+            (r.get("url_prefix"), r.get("relevance"))
+            for r in fx["expected"].get("rows", [])
+        }
+        predicted_set = {
+            (r.get("url_prefix"), r.get("relevance"))
+            for r in fx.get("predicted", {}).get("rows", [])
+        }
+        p, r, f = jaccard_f1(predicted_set, expected_set)
+        p_list.append(p); r_list.append(r); f_list.append(f)
+        if fx.get("verified"):
+            p_v.append(p); r_v.append(r); f_v.append(f)
+        if f < 1.0:
+            misses.append({
+                "id":   fx["id"],
+                "f1":   f,
+                "expected_dist":  fx["expected"].get("relevance_distribution"),
+                "predicted_dist": (fx.get("predicted") or {}).get("relevance_distribution"),
+            })
+    out = {
+        "n": len(fixtures),
+        "n_verified": sum(1 for fx in fixtures if fx.get("verified")),
+        "precision": sum(p_list) / max(1, len(p_list)),
+        "recall":    sum(r_list) / max(1, len(r_list)),
+        "f1":        sum(f_list) / max(1, len(f_list)),
+        "misses":    misses,
+    }
+    if p_v:
+        out["precision_verified"] = sum(p_v) / len(p_v)
+        out["recall_verified"]    = sum(r_v) / len(r_v)
+        out["f1_verified"]        = sum(f_v) / len(f_v)
+    return out
+
+
 STAGE_RUNNERS: dict[str, Callable[[list[dict]], dict]] = {
     "truth_score":    _run_truth_score,
     "extractor":      _run_extractor,
     "decomposer":     _run_decomposer,
     "matcher":        _run_matcher,
     "contradictions": _run_contradictions,
+    "verifier":       _run_verifier,
 }
 
 

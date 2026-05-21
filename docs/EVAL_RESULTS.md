@@ -1,6 +1,6 @@
 # Kahzaabu — quality evaluation results
 
-Generated: 2026-05-21T07:06:15.008431+00:00
+Generated: 2026-05-21T12:00:32.626063+00:00
 
 Per-stage metrics against the golden set under `tests/golden/`. Methodology: ADR 0008.
 
@@ -101,6 +101,16 @@ Each stage reports **Verified-subset** metrics (real quality) and **All-fixture*
 
 - Accuracy: **1.000**
 - Macro-F1: **1.000**
+
+## verifier
+
+- Fixtures: **8** (verified: **0**, pinned: **8**)
+
+### All fixtures (drift detector)
+
+- Precision: **1.000**
+- Recall:    **1.000**
+- F1:        **1.000**
 
 ---
 

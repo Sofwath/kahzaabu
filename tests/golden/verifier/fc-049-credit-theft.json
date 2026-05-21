@@ -1,0 +1,53 @@
+{
+  "id": "fc-49",
+  "input": {
+    "fact_check_id": 49,
+    "category": "CREDIT THEFT",
+    "claim": "Muizzu administration announces decision to establish a dedicated mental health hospital in the Greater Mal\u00e9 Area as its own funded initiative, while an inherited mental health hospital project in L. Gan with external financial assistance has stalled.",
+    "claim_date": "2026-04-27",
+    "what_actually_happened": "Article 36525 (2026-04-27) acknowledges that 'a mental health hospital project is currently underway in L. Gan with external financial assistance, progress has been slow.' Rather than accelerating the inherited project, the Muizzu administration announced a brand-new hospital in the Greater Mal\u00e9 Area 'funded by the Administration under a revised policy initiative.' This frames a new government-credit initiative while the pre-existing (pre-November 2023) externally-funded project \u2014 which the current government inherited \u2014 is being sidelined due to slow progress, a hallmark pattern of credit repositioning.",
+    "confidence": "auto"
+  },
+  "expected": {
+    "rows": [
+      {
+        "url_prefix": "https://maldivesindependent.com/news-in-brief/adhadhu-raid-m",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://edition.mv/news/50410",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://edition.mv/news/50410",
+        "relevance": "context"
+      }
+    ],
+    "relevance_distribution": {
+      "confirms": 2,
+      "context": 1
+    }
+  },
+  "predicted": {
+    "rows": [
+      {
+        "url_prefix": "https://maldivesindependent.com/news-in-brief/adhadhu-raid-m",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://edition.mv/news/50410",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://edition.mv/news/50410",
+        "relevance": "context"
+      }
+    ],
+    "relevance_distribution": {
+      "confirms": 2,
+      "context": 1
+    }
+  },
+  "verified": false,
+  "notes": "Live verifier output for fact_check #49 (CREDIT THEFT). 3 evidence rows; distribution: {'confirms': 2, 'context': 1}. PINNED \u2014 relevance classifications on third-party news are subjective; hand-review before promoting."
+}

@@ -1,0 +1,53 @@
+{
+  "id": "fc-61",
+  "input": {
+    "fact_check_id": 61,
+    "category": "CONTRADICTION",
+    "claim": "The May 14 session is described as the 'fourth edition' of the 'Presser with the Spox' series, but the series only launched on April 30 and runs every Thursday, making May 14 only the third possible Thursday session.",
+    "claim_date": "2026-05-14",
+    "what_actually_happened": "Article 36543 (April 30, 2026) states the 'Presser with the Spox' series is held every Thursday and that April 30 was the inaugural session. If every Thursday is a session: Session 1 = April 30, Session 2 = May 7, Session 3 = May 14. Article 36669 (May 14) instead calls the May 14 session the 'fourth edition,' which is inconsistent with the weekly Thursday schedule starting April 30.",
+    "confidence": "auto"
+  },
+  "expected": {
+    "rows": [
+      {
+        "url_prefix": "https://presidency.gov.mv/PO/FormerPresidents/10",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://mfr.mv/",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://www.plus.mv/photo-stories/163743/",
+        "relevance": "context"
+      }
+    ],
+    "relevance_distribution": {
+      "confirms": 2,
+      "context": 1
+    }
+  },
+  "predicted": {
+    "rows": [
+      {
+        "url_prefix": "https://presidency.gov.mv/PO/FormerPresidents/10",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://mfr.mv/",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://www.plus.mv/photo-stories/163743/",
+        "relevance": "context"
+      }
+    ],
+    "relevance_distribution": {
+      "confirms": 2,
+      "context": 1
+    }
+  },
+  "verified": false,
+  "notes": "Live verifier output for fact_check #61 (CONTRADICTION). 3 evidence rows; distribution: {'confirms': 2, 'context': 1}. PINNED \u2014 relevance classifications on third-party news are subjective; hand-review before promoting."
+}

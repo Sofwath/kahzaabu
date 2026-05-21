@@ -1,0 +1,61 @@
+{
+  "id": "fc-15",
+  "input": {
+    "fact_check_id": 15,
+    "category": "CREDIT THEFT",
+    "claim": "Reduced rent on Hiya housing \u2014 deducted MVR 200,000 finishing cost",
+    "claim_date": "2024-02-05",
+    "what_actually_happened": "Yameen built all 7,000 units with Chinese loans. Solih distributed them. Muizzu adjusted rent.",
+    "confidence": "auto"
+  },
+  "expected": {
+    "rows": [
+      {
+        "url_prefix": "https://presidency.gov.mv/Press/Article/29280?term=0",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://maldivesindependent.com/news-in-brief/hiya-waiver-li",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://atolltimes.mv/post/business/6759",
+        "relevance": "context"
+      },
+      {
+        "url_prefix": "https://atolltimes.mv/post/business/6759",
+        "relevance": "context"
+      }
+    ],
+    "relevance_distribution": {
+      "confirms": 2,
+      "context": 2
+    }
+  },
+  "predicted": {
+    "rows": [
+      {
+        "url_prefix": "https://presidency.gov.mv/Press/Article/29280?term=0",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://maldivesindependent.com/news-in-brief/hiya-waiver-li",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://atolltimes.mv/post/business/6759",
+        "relevance": "context"
+      },
+      {
+        "url_prefix": "https://atolltimes.mv/post/business/6759",
+        "relevance": "context"
+      }
+    ],
+    "relevance_distribution": {
+      "confirms": 2,
+      "context": 2
+    }
+  },
+  "verified": false,
+  "notes": "Live verifier output for fact_check #15 (CREDIT THEFT). 4 evidence rows; distribution: {'confirms': 2, 'context': 2}. PINNED \u2014 relevance classifications on third-party news are subjective; hand-review before promoting."
+}

@@ -1,0 +1,61 @@
+{
+  "id": "fc-2",
+  "input": {
+    "fact_check_id": 2,
+    "category": "LIE",
+    "claim": "I will ensure this country has no foreign military presence on its soil",
+    "claim_date": "2023-11-17",
+    "what_actually_happened": "By 2025, his budget depends on Indian EXIM Bank loans, $400M swap, INR 30B support. 8+ categories of Indian-funded projects in 2025 Address.",
+    "confidence": "auto"
+  },
+  "expected": {
+    "rows": [
+      {
+        "url_prefix": "https://www.voanews.com/a/president-muizzu-maldives-will-hav",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://thediplomat.com/2024/05/india-completes-drawdown-of-",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://www.vifindia.org/article/2025/january/22/Reflections",
+        "relevance": "context"
+      },
+      {
+        "url_prefix": "https://www.vifindia.org/article/2025/january/22/Reflections",
+        "relevance": "context"
+      }
+    ],
+    "relevance_distribution": {
+      "confirms": 2,
+      "context": 2
+    }
+  },
+  "predicted": {
+    "rows": [
+      {
+        "url_prefix": "https://www.voanews.com/a/president-muizzu-maldives-will-hav",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://thediplomat.com/2024/05/india-completes-drawdown-of-",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://www.vifindia.org/article/2025/january/22/Reflections",
+        "relevance": "context"
+      },
+      {
+        "url_prefix": "https://www.vifindia.org/article/2025/january/22/Reflections",
+        "relevance": "context"
+      }
+    ],
+    "relevance_distribution": {
+      "confirms": 2,
+      "context": 2
+    }
+  },
+  "verified": false,
+  "notes": "Live verifier output for fact_check #2 (LIE). 4 evidence rows; distribution: {'confirms': 2, 'context': 2}. PINNED \u2014 relevance classifications on third-party news are subjective; hand-review before promoting."
+}

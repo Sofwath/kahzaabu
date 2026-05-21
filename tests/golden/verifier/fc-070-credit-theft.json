@@ -1,0 +1,93 @@
+{
+  "id": "fc-70",
+  "input": {
+    "fact_check_id": 70,
+    "category": "CREDIT THEFT",
+    "claim": "Muizzu admin takes credit for 'resuming stalled social housing projects' as part of its housing achievements",
+    "claim_date": "2026-05-14",
+    "what_actually_happened": "The explicit use of the word 'stalled' in article 36677 confirms these projects were inherited from a previous government. The Muizzu administration is presenting the resumption of pre-existing, stalled projects as its own housing delivery achievement, without acknowledging that these projects were initiated and/or funded by prior administrations.",
+    "confidence": "auto"
+  },
+  "expected": {
+    "rows": [
+      {
+        "url_prefix": "https://www.psmnews.mv/en/145371",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://presidency.gov.mv/Press/Article/33992",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://maldivesindependent.com/politics/former-government-b",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://standard.mv/maldives-embarks-on-ambitious-infrastruc",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://www.businesstoday.in/world/story/maldives-economy-in",
+        "relevance": "context"
+      },
+      {
+        "url_prefix": "https://edition.mv/news/41970",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://maldivesvoice.com/2024/11/18/one-year-of-muizzu-brok",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://maldivesindependent.com/explainer/two-tiers-22900-ho",
+        "relevance": "context"
+      }
+    ],
+    "relevance_distribution": {
+      "confirms": 6,
+      "context": 2
+    }
+  },
+  "predicted": {
+    "rows": [
+      {
+        "url_prefix": "https://www.psmnews.mv/en/145371",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://presidency.gov.mv/Press/Article/33992",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://maldivesindependent.com/politics/former-government-b",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://standard.mv/maldives-embarks-on-ambitious-infrastruc",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://www.businesstoday.in/world/story/maldives-economy-in",
+        "relevance": "context"
+      },
+      {
+        "url_prefix": "https://edition.mv/news/41970",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://maldivesvoice.com/2024/11/18/one-year-of-muizzu-brok",
+        "relevance": "confirms"
+      },
+      {
+        "url_prefix": "https://maldivesindependent.com/explainer/two-tiers-22900-ho",
+        "relevance": "context"
+      }
+    ],
+    "relevance_distribution": {
+      "confirms": 6,
+      "context": 2
+    }
+  },
+  "verified": false,
+  "notes": "Live verifier output for fact_check #70 (CREDIT THEFT). 8 evidence rows; distribution: {'confirms': 6, 'context': 2}. PINNED \u2014 relevance classifications on third-party news are subjective; hand-review before promoting."
+}
