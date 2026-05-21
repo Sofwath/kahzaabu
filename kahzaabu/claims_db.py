@@ -884,6 +884,48 @@ def pairs_missing_dv_compare(conn: sqlite3.Connection, *,
     return conn.execute(sql, params).fetchall()
 
 
+def last_scrape_time(conn: sqlite3.Connection) -> Optional[str]:
+    """Most recent successful scrape's finished_at, or fall back to articles.scraped_at."""
+    r = conn.execute(
+        """SELECT MAX(finished_at) FROM scrape_runs
+           WHERE status = 'completed' AND finished_at IS NOT NULL"""
+    ).fetchone()
+    if r and r[0]:
+        return r[0]
+    # Fallback: latest article scraped_at
+    r = conn.execute(
+        "SELECT MAX(scraped_at) FROM articles WHERE scraped_at IS NOT NULL"
+    ).fetchone()
+    return r[0] if r and r[0] else None
+
+
+def freshness(conn: sqlite3.Connection, stale_hours: float = 24.0) -> dict:
+    """Returns last-scrape timestamp + hours-since + is_stale flag."""
+    last = last_scrape_time(conn)
+    out = {
+        "last_scrape_at": last,
+        "hours_since": None,
+        "is_stale": False,
+        "threshold_hours": stale_hours,
+    }
+    if not last:
+        out["is_stale"] = True
+        return out
+    try:
+        # Tolerate Z, +00:00, fractional seconds
+        s = last.replace("Z", "+00:00")
+        ts = datetime.fromisoformat(s)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        hours = (now - ts).total_seconds() / 3600
+        out["hours_since"] = round(hours, 2)
+        out["is_stale"] = hours >= stale_hours
+    except Exception:
+        out["is_stale"] = True
+    return out
+
+
 def stats(conn: sqlite3.Connection) -> dict:
     n_claims = conn.execute("SELECT COUNT(*) FROM claims").fetchone()[0]
     n_fc = conn.execute("SELECT COUNT(*) FROM fact_checks").fetchone()[0]

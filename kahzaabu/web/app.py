@@ -27,7 +27,7 @@ from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from .api import admin, articles, ask, auth, corrections, factchecks, inspect, manifesto, stats, viz
+from .api import admin, articles, ask, auth, corrections, factchecks, freshness, inspect, manifesto, stats, viz
 from .limits import limiter
 
 # Quiet noisy logs
@@ -58,6 +58,7 @@ app.include_router(auth.router, prefix="/api", tags=["auth"])
 app.include_router(admin.router, prefix="/api", tags=["admin"])
 app.include_router(corrections.router, prefix="/api", tags=["corrections"])
 app.include_router(manifesto.router, prefix="/api", tags=["manifesto"])
+app.include_router(freshness.router, prefix="/api", tags=["freshness"])
 
 
 @app.get("/robots.txt", include_in_schema=False)

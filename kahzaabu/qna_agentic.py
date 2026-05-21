@@ -61,6 +61,8 @@ Tool-use strategy:
 
 Don't just dump tool results. Synthesize. If you find a conflict between manifesto promise and a fact-check, surface it. If the archive is silent on something, say so before using web_search.
 
+DATA FRESHNESS: When the question is about "recent" or "this week" or "what's happening now", call `archive_stats` first and check the `freshness` field. If `is_stale` is true (>24h since last scrape), warn the user at the end of your answer that the data may be missing very recent items, and suggest they run the pipeline to refresh. Do NOT trigger the pipeline yourself — only report.
+
 Output: well-structured Markdown. Use headings, bullet points, and inline article-id citations. End with a one-line confidence/gap note when appropriate."""
 
 
@@ -262,7 +264,8 @@ def _tool_archive_stats(conn) -> dict:
     return {"articles": n_a, "fact_checks": n_fc,
             "fact_checks_by_category": by_cat,
             "manifesto_promises": n_m,
-            "manifesto_by_status": by_status}
+            "manifesto_by_status": by_status,
+            "freshness": claims_db.freshness(conn)}
 
 
 TOOL_HANDLERS = {

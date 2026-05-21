@@ -32,6 +32,10 @@ for name in ("httpx", "httpcore", "anthropic", "kahzaabu"):
 
 DB_PATH = ROOT / "data" / "kahzaabu.db"
 
+# Module-level imports of kahzaabu modules used inside tool handlers.
+# (Functions inside the file rely on `claims_db` being globally available.)
+from kahzaabu import claims_db  # noqa: E402
+
 mcp = FastMCP(
     "kahzaabu",
     instructions=(
@@ -86,6 +90,7 @@ def stats() -> dict:
             "SELECT delivery_status, COUNT(*) FROM manifesto_promises WHERE published=1 "
             "GROUP BY delivery_status"
         ).fetchall()}
+        fresh = claims_db.freshness(conn)
         return {
             "articles_muizzu_era": n_articles,
             "claims_extracted": n_claims,
@@ -93,6 +98,7 @@ def stats() -> dict:
             "web_evidence_rows": n_ev,
             "manifesto_promises": n_mfs,
             "manifesto_by_delivery_status": by_status,
+            "freshness": fresh,  # {last_scrape_at, hours_since, is_stale, threshold_hours}
             "db_path": str(DB_PATH),
         }
     finally:

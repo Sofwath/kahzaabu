@@ -83,4 +83,9 @@ def get_stats(
     except Exception:
         s["n_manifesto_promises"] = 0
         s["manifesto_by_status"] = {}
+
+    # Freshness — for the dashboard banner
+    import os as _os
+    s["freshness"] = claims_db.freshness(conn,
+        stale_hours=float(_os.environ.get("KAHZAABU_STALE_HOURS", "24")))
     return s

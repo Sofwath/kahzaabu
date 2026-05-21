@@ -46,6 +46,8 @@
     <h1>Dashboard</h1>
     <p class="muted">Live overview. Click any card, slice, or bar to drill into the underlying records.</p>
 
+    <section id="freshness-banner"></section>
+
     <section>
         <div class="cards" id="stats-cards"></div>
     </section>
@@ -127,6 +129,80 @@
 <script>
 setNavActive("dashboard");
 
+// ─── Freshness banner ──────────────────────────────────────────────────
+function fmtHours(h) {
+    if (h == null) return "(unknown)";
+    if (h < 1) return `${Math.round(h * 60)} min ago`;
+    if (h < 24) return `${h.toFixed(1)} h ago`;
+    return `${(h / 24).toFixed(1)} days ago`;
+}
+
+async function renderFreshness(stats, isAdmin) {
+    const banner = document.getElementById("freshness-banner");
+    banner.innerHTML = "";
+    const f = stats.freshness || {};
+    if (!f.last_scrape_at) {
+        return;
+    }
+    const stale = !!f.is_stale;
+    const bg = stale ? "rgba(233, 160, 69, 0.15)" : "rgba(46, 204, 113, 0.08)";
+    const bd = stale ? "var(--deadline)" : "var(--good)";
+    const icon = stale ? "⚠️" : "✅";
+    const card = el("div", {
+        class: "card",
+        style: `background: ${bg}; border-left: 4px solid ${bd}; display: flex; align-items: center; justify-content: space-between; gap: 16px;`,
+    });
+    const left = el("div", null,
+        el("div", { style: "font-size: 14px;" },
+            `${icon} Archive last updated `,
+            el("strong", null, fmtHours(f.hours_since)),
+            ` · ${f.last_scrape_at?.substring(0, 19).replace("T", " ")} UTC`,
+        ),
+        stale
+            ? el("div", { class: "dim mt8", style: "font-size: 12px;" },
+                  `Data is older than ${f.threshold_hours}h. ` +
+                  (isAdmin ? "Click Update to scrape now." : "An admin can refresh it."))
+            : null,
+    );
+    card.appendChild(left);
+    if (isAdmin) {
+        const btn = el("button", {
+            class: "ask-button",
+            style: "padding: 8px 18px; font-size: 13px; white-space: nowrap;",
+            onclick: () => triggerUpdate(btn),
+        }, "Update now");
+        card.appendChild(btn);
+    }
+    banner.appendChild(card);
+}
+
+async function triggerUpdate(btn) {
+    if (!confirm("Run pipeline now? This scrapes + extracts + curates (~$0-2).")) return;
+    btn.disabled = true; btn.textContent = "Updating…";
+    try {
+        const data = await fetchJSON("/api/admin/pipeline/run?budget=2.0", { method: "POST" });
+        const r = data.result || {};
+        const summary = [
+            r.scrape ? `scrape: ${r.scrape.new_articles ?? "?"} new` : null,
+            r.extract && !r.extract.skipped ? `extract: ${r.extract.articles_processed} articles` : null,
+            r.inspect && !r.inspect.skipped ? `inspect: ${r.inspect.cards_generated} cards` : null,
+            r.curate && !r.curate.skipped ? `curate: ${r.curate.inserted} new fact-checks` : null,
+            r.verify && !r.verify.skipped ? `verify: ${r.verify.items_processed} items` : null,
+        ].filter(Boolean).join("  ·  ");
+        btn.textContent = "Done";
+        alert("Pipeline complete: " + (summary || "no work needed (caught up)"));
+        // Reload to refresh banner + stats
+        setTimeout(() => window.location.reload(), 600);
+    } catch (e) {
+        btn.disabled = false; btn.textContent = "Update now";
+        if (e.message.includes("401")) {
+            window.location.href = "/login?next=/";
+        } else {
+            alert("Update failed: " + e.message);
+        }
+    }
+}
+
 function monthDateRange(label) {
     // label is "YYYY-MM"; return [first, last] day-of-month ISO strings.
     if (!label || !label.match(/^\d{4}-\d{2}$/)) return [null, null];
@@ -169,6 +245,11 @@ async function loadDashboard() {
         if (href) c.onclick = () => window.location.href = href;
         return c;
     }
+    // Render freshness banner (uses stats.freshness + /api/me for admin check)
+    fetchJSON("/api/me").then(me => {
+        renderFreshness(stats, me.authenticated && (me.role === "admin" || me.role === "editor"));
+    }).catch(() => renderFreshness(stats, false));
+
     cards.appendChild(card(stats.n_articles_muizzu_total, "Articles",
         "Muizzu era, EN, with body", "/browse"));
     cards.appendChild(card(stats.n_claims, "Claims",

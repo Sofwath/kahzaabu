@@ -41,7 +41,7 @@ HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
 SLASH_COMMANDS = [
     "/help", "/stats", "/lies", "/promises", "/credit", "/recent",
     "/date", "/location", "/topic", "/filters", "/clear",
-    "/cost", "/pipeline", "/new", "/exit", "/quit", "/q",
+    "/cost", "/pipeline", "/refresh", "/new", "/exit", "/quit", "/q",
 ]
 
 
@@ -217,6 +217,30 @@ def cmd_new(sess: Session, args: list[str]):
     console.print("[green]conversation reset[/green] — next question starts a new thread")
 
 
+def cmd_refresh(sess: Session, args: list[str]):
+    """Run the pipeline now to refresh the archive."""
+    if "ANTHROPIC_API_KEY" not in os.environ:
+        console.print("[red]ANTHROPIC_API_KEY not set — extraction/curate stages will skip.[/red]")
+    fresh_before = claims_db.freshness(sess.conn)
+    console.print(f"[dim]before: last scrape {fresh_before.get('hours_since')}h ago[/dim]")
+    from .pipeline import run_pipeline
+    with console.status("[bold green]running pipeline (scrape → extract → inspect → curate → verify → dv-compare)..."):
+        res = run_pipeline(sess.db_path, daily_budget_usd=2.0)
+    fresh_after = claims_db.freshness(sess.conn)
+    summary = []
+    if res.get("scrape"): summary.append(f"scrape: {res['scrape'].get('new_articles', '?')} new")
+    if res.get("extract") and not res["extract"].get("skipped"):
+        summary.append(f"extract: {res['extract'].get('articles_processed', 0)} articles")
+    if res.get("inspect") and not res["inspect"].get("skipped"):
+        summary.append(f"inspect: {res['inspect'].get('cards_generated', 0)} cards")
+    if res.get("curate") and not res["curate"].get("skipped"):
+        summary.append(f"curate: {res['curate'].get('inserted', 0)} new fact-checks")
+    if res.get("verify") and not res["verify"].get("skipped"):
+        summary.append(f"verify: {res['verify'].get('items_processed', 0)} items")
+    console.print(f"[green]✓ pipeline complete[/green]  ·  " + "  ·  ".join(summary or ["(no work — caught up)"]))
+    console.print(f"[dim]after: last scrape {fresh_after.get('hours_since')}h ago  ·  today_spend ${res.get('today_spend_usd', 0):.2f}[/dim]")
+
+
 def cmd_filters(sess: Session, args: list[str]):
     t = Table(box=None)
     t.add_column("Filter")
@@ -296,6 +320,7 @@ SLASH_HANDLERS = {
     "/clear": cmd_clear,
     "/cost": cmd_cost,
     "/pipeline": cmd_pipeline,
+    "/refresh": cmd_refresh,
     "/new": cmd_new,
 }
 
@@ -309,16 +334,42 @@ def run_tui(db_path: Path):
 
     # Banner
     s = claims_db.stats(conn)
+    fresh = claims_db.freshness(conn)
+    if fresh.get("last_scrape_at"):
+        h = fresh.get("hours_since") or 0
+        if h < 1:
+            fresh_str = f"{int(h * 60)}m ago"
+        elif h < 24:
+            fresh_str = f"{h:.1f}h ago"
+        else:
+            fresh_str = f"{h/24:.1f}d ago"
+        stale = fresh.get("is_stale")
+        fresh_line = (
+            f"[yellow]⚠ scraped {fresh_str} (stale — run [cyan]/refresh[/cyan])[/yellow]"
+            if stale
+            else f"[dim]scraped {fresh_str}[/dim]"
+        )
+    else:
+        fresh_line = "[yellow]⚠ archive empty — run [cyan]/refresh[/cyan][/yellow]"
     console.print(Panel(
         Text.from_markup(
             "[bold]kahzaabu[/bold]  —  Maldives Presidency archive\n"
             f"{s['n_articles_muizzu_total']} articles  •  "
             f"{s['n_claims']} claims  •  "
-            f"{s['n_fact_checks']} fact-checks\n\n"
+            f"{s['n_fact_checks']} fact-checks  •  "
+            f"{fresh_line}\n\n"
             "[dim]Type a question, or [/dim][cyan]/help[/cyan][dim] for commands.[/dim]"
         ),
         border_style="cyan",
     ))
+    # If stale, offer the refresh prompt
+    if fresh.get("is_stale"):
+        try:
+            from prompt_toolkit.shortcuts import confirm
+            if confirm(f"Archive last scraped {fresh.get('hours_since')}h ago. Run pipeline now? (y/N) "):
+                cmd_refresh(sess, [])
+        except Exception:
+            pass
 
     completer = WordCompleter(SLASH_COMMANDS, ignore_case=True, match_middle=False)
     style = Style.from_dict({"prompt": "ansicyan bold"})
