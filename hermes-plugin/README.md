@@ -1,6 +1,6 @@
 # kahzaabu hermes plugin
 
-Native plugin that wires the [kahzaabu fact-checking archive](https://example.invalid) into Hermes Agent. Replaces the legacy stdio MCP server in `~/.hermes/config.yaml mcp_servers.kahzaabu` with an in-process plugin: same 8 tools, plus a `hermes kahzaabu` CLI subcommand.
+Native plugin that wires the kahzaabu fact-checking archive into Hermes Agent. Replaces the legacy stdio MCP server (moved to `kahzaabu/legacy/mcp_server.py`) with an in-process plugin: 9 agent tools, a `hermes kahzaabu` CLI subcommand, and a `/kahzaabu` slash command that works inside any hermes chat — including chats routed through the messaging gateway (Telegram / WhatsApp / Slack / Discord).
 
 This README is for **someone reading the plugin source**. For an overview of the kahzaabu project itself, see `<dev tree>/README.md`.
 
@@ -12,7 +12,7 @@ This README is for **someone reading the plugin source**. For an overview of the
 |---|---|
 | `plugin.yaml` | Manifest — name, version, provides_tools, supported platforms |
 | `__init__.py` | `register(ctx)` entry. Three jobs: env hydration, import bootstrap, tool/CLI registration. |
-| `tools.py` | 8 agent-facing tools wrapping `kahzaabu.qna_agentic` and `kahzaabu.claims_db` |
+| `tools.py` | 9 agent-facing tools wrapping `kahzaabu.qna_agentic`, `kahzaabu.claims_db`, and `kahzaabu.constitution` |
 | `cli.py` | `hermes kahzaabu {setup,status,update,ask,doctor,web}` subcommand |
 | `SKILL.md` | Agent-facing usage guide (when to use which tool) |
 
@@ -49,7 +49,7 @@ KAHZAABU_HOME=/path/to/your/dev/tree
 | `update` | Shells out to `<dev>/.venv/bin/kahzaabu pipeline` |
 | `web` | Shells out to `<dev>/.venv/bin/kahzaabu web` |
 
-The pipeline + web UI need scikit-learn, FastAPI, slowapi, bs4, lxml, passlib, bcrypt, etc. — none of which live in hermes' lean venv. Rather than bloat hermes' venv, the plugin shells out. The dev tree's full-deps venv is created normally with `python3 -m venv .venv && .venv/bin/pip install -e .`.
+The pipeline + web UI need scikit-learn, FastAPI, slowapi, bs4, lxml, etc. — none of which live in hermes' lean venv. Rather than bloat hermes' venv, the plugin shells out. The dev tree's full-deps venv is created normally with `python3 -m venv .venv && .venv/bin/pip install -e .`.
 
 `doctor` explicitly checks the dev venv exists AND `kahzaabu --help` returns 0. If either fails, it prints remediation steps.
 
@@ -57,7 +57,7 @@ The pipeline + web UI need scikit-learn, FastAPI, slowapi, bs4, lxml, passlib, b
 
 ## Tool schemas
 
-All 8 tools are in `tools.py` as `*_SCHEMA` dicts following the OpenAI shape (`{name, description, parameters}`) — the same shape hermes' tool registry expects. Handlers take `(args: dict, **_kw) -> str` and return JSON-encoded strings (hermes' tool-result contract).
+All 9 tools are in `tools.py` as `*_SCHEMA` dicts following the OpenAI shape (`{name, description, parameters}`) — the same shape hermes' tool registry expects. Handlers take `(args: dict, **_kw) -> str` and return JSON-encoded strings (hermes' tool-result contract).
 
 Tool names are prefixed `kahzaabu_` to avoid collisions with built-in tools. All belong to the `"kahzaabu"` toolset.
 
@@ -125,7 +125,7 @@ kahzaabu:
 
 ## Status
 
-- ✅ All 8 tools wired and tested via `hermes chat`
+- ✅ All 9 tools wired and tested via `hermes chat`
 - ✅ CLI subcommand `hermes kahzaabu {setup,status,update,ask,doctor,web}` works
 - ✅ Self-healing `.pth` (proven: delete it, next invocation rewrites it)
 - ✅ Hardcoded paths removed (derived from `Path(kahzaabu.__file__).parents[1]`)

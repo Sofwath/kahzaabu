@@ -457,10 +457,11 @@ ADRs 0001-0011 in `docs/adr/` document every architectural choice with explicit 
 Until a paper / DOI exists:
 
 ```bibtex
-@software{kahzaabu_2025,
-  title = {Kahzaabu: Automated Political Fact-Checking for the Maldives Presidency},
-  author = {Chopey, S.},
-  year = {2025},
+@software{kahzaabu_2026,
+  title = {Kahzaabu: An Open-Source Pipeline for Automated Fact-Checking
+           of a Single-Speaker Political Corpus},
+  author = {Mohamed, Sofwathullah and contributors},
+  year = {2026},
   url = {https://github.com/<TBD>},
   note = {Open-source civic-tech project. Apache-2.0 licensed.}
 }

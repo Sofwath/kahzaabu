@@ -5,11 +5,11 @@ description: Search and reason over the Maldives Presidency fact-checking archiv
 
 # kahzaabu — fact-check archive
 
-You have 8 in-process tools for querying a curated SQLite archive of Maldives Presidency communications. **"Kahzaabu" and "Muizzu" refer to the same person** — translate freely between the two names.
+You have 9 in-process tools for querying a curated SQLite archive of Maldives Presidency communications + the 301-article Constitution of the Republic of Maldives. **"Kahzaabu" and "Muizzu" refer to the same person** — translate freely between the two names.
 
 ## When to use which tool
 
-**Default: call `kahzaabu_ask` for any natural-language question.** It's an internal agent loop with 8 DB tools + web_search and produces better answers than chaining the low-level tools yourself. Only call the low-level tools when you need a *specific* row by id, or to compose data the user explicitly asked you to compose (e.g. "make a CSV of all BROKEN DEADLINE entries").
+**Default: call `kahzaabu_ask` for any natural-language question.** It's an internal agent loop with 9 DB tools + web_search and produces better answers than chaining the low-level tools yourself. Only call the low-level tools when you need a *specific* row by id, or to compose data the user explicitly asked you to compose (e.g. "make a CSV of all BROKEN DEADLINE entries").
 
 | User asks… | Tool |
 |---|---|

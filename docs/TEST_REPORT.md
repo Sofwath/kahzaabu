@@ -1,6 +1,6 @@
 # kahzaabu — full test report
 
-Generated: 2026-05-21 (V2 Slices 0–10 done, Slice 11 OSS readiness in flight).
+Generated: 2026-05-21 (V2 slices 0–12 done; password-based admin auth removed).
 
 This document captures the result of running the full test stack
 end-to-end against the working tree. Reproduce with:
@@ -9,40 +9,54 @@ end-to-end against the working tree. Reproduce with:
 .venv/bin/python -m unittest discover tests/    # unit suite
 ./scripts/test.sh                                # local CI parity
 ./scripts/ci-dry-run.sh                          # validate workflow in fresh worktree
-.venv/bin/python tests/system_check.py           # live web stack (needs server running)
 .venv/bin/kahzaabu eval                          # golden-set quality eval (ADR 0008)
+# JS/UI verification of vendored libs:
+cd scripts/js-verify && npm run verify
 ```
 
 ---
 
-## 1. Unit suite — 197 tests across 14 modules, all green
+## 1. Unit suite — 327 tests across 20 modules, all green
 
 | Module | Tests | Domain |
 |---|---|---|
-| `test_truth_score.py` | 27 | Slice 5: deterministic AVeriTeC + Truth-O-Meter mapping (ADR 0005); `derive_all()` + per-rung coverage |
-| `test_eval.py` | 23 | Slice 10: golden-set framework (jaccard_f1, classification_metrics, fixture loader, per-stage runners, report renderer, verified vs pinned semantics) |
-| `test_matcher.py` | 21 | Slice 3: vector pack/unpack, cosine, entity extraction (Unicode), jaccard, `find_match` flows |
-| `test_claims_enrichment.py` | 18 | Slice 1: schema, backward-compat insert, polarity validation, is_checkable coercion |
-| `test_contradictions.py` | 17 | Slice 4: schema, polarity-pair shortlist SQL, ordering normalisation, 4-way verdict enum guards |
+| `test_constitution_api.py` | 32 | Constitution browser + per-fact-check page + cache headers + Laws link-out + JS-shadow guards + page-data-load smokes + no-CDN-script guard |
+| `test_slice12.py` | 30 | Reproducibility manifest + audit + transparency + metrics decorator + schema init full |
+| `test_truth_score.py` | 27 | Deterministic AVeriTeC + Truth-O-Meter mapping (ADR 0005) |
+| `test_eval.py` | 26 | Golden-set framework — Jaccard F1, classification metrics, verified-vs-pinned fixtures, per-stage runners |
+| `test_matcher.py` | 21 | Slice 3: vector pack/unpack, cosine, entity extraction, jaccard, find_match flows |
+| `test_registry.py` | 21 | ADR 0011: registry shape, URL matching, YAML↔JSON parity, schema migration |
+| `test_hermes_plugin.py` | 19 | Plugin manifest↔code parity, 9-tool surface, error contract, pipeline gate, discovery |
+| `test_claims_enrichment.py` | 18 | Slice 1: schema, polarity validation, is_checkable coercion |
+| `test_contradictions.py` | 17 | Slice 4: schema, polarity-pair shortlist, 4-way verdict enum guards |
+| `test_pricing.py` | 17 | Centralised pricing: frozen Model dataclass, registry parity, cost helper, no-stage-redeclares guard |
+| `test_claimreview.py` | 16 | Slice 6: schema.org JSON-LD shape, Truth-O-Meter rendering, disclaimer always present |
 | `test_embedding_providers.py` | 16 | ADR 0007: 3-provider abstraction, selection priority, env-var override |
-| `test_claimreview.py` | 16 | Slice 6: schema.org JSON-LD shape, Truth-O-Meter rendering, disclaimer always present, public-URL handling |
 | `test_decomposer.py` | 14 | Slice 2: AVeriTeC enums, idempotent discovery, NULL-answer state |
-| `test_constitution_parser.py` | 14 | Parser contract (301 articles), lookup behaviour, BM25 quality, FTS5/weights alignment |
+| `test_constitution_parser.py` | 14 | Parser contract (301 articles), lookup, BM25 quality, FTS5/weights alignment |
 | `test_fact_check_enricher.py` | 12 | Slice 5: V2-label backfill, reasoning_chain assembly, contradiction-pair promotion |
-| `test_contradictions_api.py` | 8 | Slice 7: GET /api/contradictions list + detail endpoints |
+| `test_secrets_hygiene.py` | 8 | Credential/PII guards + no-auth-surface posture (modules absent, deps absent, no /login or /admin routes) |
+| `test_contradictions_api.py` | 8 | Slice 7: GET /api/contradictions list + detail |
+| `test_host_llm_branch.py` | 4 | `ctx.llm` branch in narrative-tricks guarantee-pass |
 | `test_json1_fallback.py` | 4 | SQLite JSON1 happy-path + LIKE fallback parity |
-| `test_host_llm_branch.py` | 4 | ctx.llm branch in narrative-tricks guarantee-pass |
 | `test_readme_schema_drift.py` | 3 | Doc↔schema drift guard with silent-pass invariant |
 
-Runtime: ~2.3s total.
+Runtime: ~2.6s total.
 
 ---
 
-## 2. CI workflow dry-run — passes in fresh worktree
+## 2. CI workflow — passes in fresh worktree
 
 `./scripts/ci-dry-run.sh` clones HEAD into a temporary worktree, creates a
-clean venv, installs editable, bootstraps the DB, runs all 197 tests,
-and checks for stale references to the old end-to-end-test filename. **All steps pass.**
+clean venv, installs editable, bootstraps the DB, runs all 327 tests,
+and checks for stale references to the old end-to-end-test filename.
+**All steps pass.**
+
+`.github/workflows/test.yml` runs the suite on every push and PR;
+`.github/workflows/external-links.yml` probes mvlaw.gov.mv tile URLs
+weekly (Mondays 02:00 UTC). The `js-verify` job runs Node 20 against
+`scripts/js-verify/` and exercises the vendored Chart.js + marked
+libraries against kahzaabu's actual call sites.
 
 ---
 
@@ -62,9 +76,11 @@ and checks for stale references to the old end-to-end-test filename. **All steps
 | fact_checks (V2-enriched) | 220 / 220 with `verdict_label`, `truth_score`, `truth_score_label` |
 | fact_checks (with ClaimReview JSON-LD cached) | 218 |
 | fact_check_evidence | 304 |
+| evidence authoritative (ADR 0011) | 48 |
 | contradiction_pairs | 48 (**2 CONTRADICTION**, 46 NOT_CONTRADICTORY) |
 | manifesto_promises | 717 |
 | constitution_articles | 301 |
+| web_users | 0 (table preserved for backwards compat; auth removed) |
 
 | Referential integrity probe | Orphans |
 |---|---|
@@ -78,57 +94,82 @@ and checks for stale references to the old end-to-end-test filename. **All steps
 V2 columns on `claims`: `polarity`, `subject_normalized`, `is_checkable`,
 `canonical_claim_id` — all present.
 
-V2 columns on `fact_checks`: `verdict_label`, `truth_score`, `truth_score_label`,
-`reasoning_chain`, `contradiction_pair_id`, `speaker`, `canonical_url`,
-`claimreview_jsonld` — all present.
+V2 columns on `fact_checks`: `verdict_label`, `truth_score`,
+`truth_score_label`, `reasoning_chain`, `contradiction_pair_id`,
+`speaker`, `canonical_url`, `claimreview_jsonld`,
+`git_sha_at_publication` — all present.
+
+V2 columns on `fact_check_evidence`: `authoritative_entity_id` (ADR 0011)
+— present, indexed.
 
 V2 tables: `claim_questions`, `decomposition_runs`, `claim_embeddings`,
-`matching_runs`, `contradiction_pairs`, `contradiction_finder_runs` — all present.
+`matching_runs`, `contradiction_pairs`, `contradiction_finder_runs` —
+all present.
 
 ---
 
-## 4. Web stack — all routes return 200
+## 4. Web stack — all read-only public routes return 200
 
 ```
   200  /
   200  /browse
   200  /lies
-  200  /ask
-  200  /manifesto
-  200  /methodology
+  200  /factcheck/{id}            ← Truth-O-Meter centerpiece + provenance
+  200  /constitution              ← 301-article BM25 browser
+  200  /laws                      ← link-out to mvlaw.gov.mv (ADR 0012)
+  200  /contradictions
   200  /compare
-  200  /contradictions                            ← V2 (Slice 7)
-  200  /api/freshness
+  200  /manifesto
+  200  /ask
+  200  /methodology
+  200  /corrections
   200  /api/stats
-  200  /static/css/kahzaabu.css
-  200  /api/factchecks?limit=3                    ← returns V2 fields
-  200  /api/articles?limit=3
-  200  /api/contradictions                        ← V2 (Slice 7)
-  200  /api/contradictions/{id}                   ← V2 (Slice 7)
-  200  /api/factchecks/{id}/jsonld                ← V2 (Slice 6, ADR 0006)
-  200  /api/claimreviews/feed.json                ← V2 (Slice 6)
+  200  /api/factchecks?limit=N    ← always published=1
+  200  /api/articles?limit=N
+  200  /api/contradictions
+  200  /api/contradictions/{id}
+  200  /api/constitution/articles
+  200  /api/constitution/search?q=…
+  200  /api/constitution/{n}
+  200  /api/viz/truth-score-ladder
+  200  /api/reproducibility/{id}.json
+  200  /api/factchecks/{id}/jsonld
+  200  /api/claimreviews/feed.json
+  200  /metrics                   ← Prometheus exposition
 ```
 
-`/api/stats` returns the expected JSON shape with audit-trail subblocks
-(`last_extraction`, `last_curation`, etc.). `/api/factchecks` now includes
-the V2 fields `verdict_label`, `truth_score`, `truth_score_label`,
-`contradiction_pair_id`, `speaker` per ADR 0005.
+**Removed routes — all return 404 by design** (no in-app auth):
+`/login`, `/admin`, `/admin/queue`, `/admin/run`, `/api/login`,
+`/api/admin/*`, `/api/me`. The web UI is read-only public;
+operator actions run from the shell via the `kahzaabu` CLI.
 
 ---
 
-## 5. Hermes plugin — all tools registered, agent integration works
+## 5. Hermes plugin — 9 tools registered, plugin tests cover the surface
 
 `hermes kahzaabu doctor` returns all-green. `hermes plugins list` shows
-kahzaabu as enabled, bundled. `hermes kahzaabu status` reports correct
-corpus counts.
+kahzaabu v0.2.0 as enabled, bundled. The plugin's own test file
+(`tests/test_hermes_plugin.py`) verifies manifest↔code parity, error-
+envelope consistency, the legacy/new pipeline-gate env-var
+backwards-compat, and discovery via `kahzaabu_home()`.
 
-The `kahzaabu-fact-check` agentskills.io skill (Slice 8) installs via
-`scripts/install-hermes-skills.sh` and produces a structured verdict +
-Truth-O-Meter + reasoning chain + sources for arbitrary claim strings.
+Tools registered (9): `kahzaabu_stats`, `kahzaabu_ask`,
+`kahzaabu_list_lies`, `kahzaabu_get_factcheck`, `kahzaabu_manifesto`,
+`kahzaabu_get_article`, `kahzaabu_recent_activity`,
+`kahzaabu_constitution_lookup`, `kahzaabu_pipeline_run`.
+
+Plus the `/kahzaabu` slash command (works in any hermes chat session
+including messaging gateway) and the `hermes kahzaabu` CLI subcommand
+(setup, status, doctor, web, update, ask).
+
+The `kahzaabu-fact-check` agentskills.io skill (Slice 8) is installable
+via `scripts/install-hermes-skills.sh` and produces a structured
+verdict + Truth-O-Meter + reasoning chain + sources for arbitrary
+claim strings.
 
 ---
 
-## 6. CLI surface — all V1 + V2 commands present
+## 6. CLI surface — V1 + V2 + audit/transparency, no user-management
 
 ```
 ✅ pipeline               V1 — orchestrates scrape → extract → … → dv-compare
@@ -148,9 +189,17 @@ Truth-O-Meter + reasoning chain + sources for arbitrary claim strings.
 ✅ enrich-factchecks      V2 — V2-label backfill (Slice 5, ADR 0005)
 ✅ export-claimreview     V2 — schema.org JSON-LD generation (Slice 6, ADR 0006)
 ✅ eval                   V2 — golden-set quality eval (Slice 10, ADR 0008)
+✅ reproducibility <id>   V2 — provenance manifest JSON (Slice 12, ADR 0010)
+✅ audit                  V2 — bias/fairness chi-squared report
+✅ transparency-report    V2 — window-scoped public report
+
+✅ publish <id>           Toggle fact_checks.published — operator-only
+                          (this is now the SOLE publishing path; the
+                           login-gated web admin queue was removed)
 ```
 
-All commands surface in `kahzaabu --help` with V2-tagged help text.
+`create-user` and `set-password` no longer exist. There are no
+in-app credentials anywhere.
 
 ---
 
@@ -158,12 +207,7 @@ All commands surface in `kahzaabu --help` with V2-tagged help text.
 
 Auto-generated report: [`docs/EVAL_RESULTS.md`](EVAL_RESULTS.md).
 
-Per-stage metrics against the golden set under `tests/golden/`. 24 of 25
-fixtures are hand-verified ground truth; 1 deliberately gated. All
-verified-subset and all-fixture metrics currently score 1.000 — the
-pipeline is at baseline. A prompt edit that drops the **verified subset**
-below 1.000 is a real regression; the all-fixture subset acts as a
-drift detector for LLM noise.
+Per-stage metrics against the golden set under `tests/golden/`.
 
 | Stage | Fixtures | Verified | Verified-subset | Drift detector |
 |---|---|---|---|---|
@@ -172,6 +216,10 @@ drift detector for LLM noise.
 | decomposer | 4 | 4/4 | P=1.000 R=1.000 F1=1.000 | F1=1.000 |
 | matcher | 6 | 6/6 | acc=1.000 macro_f1=1.000 | acc=1.000 |
 | contradictions | 5 | 5/5 | acc=1.000 macro_f1=1.000 | acc=1.000 |
+| verifier | 8 | 0/8 | (pinned baselines) | F1=1.000 |
+
+33 fixtures total; 24 verified ground truth; 9 pinned (8 verifier +
+1 extractor) — promotion is operator-review work.
 
 ---
 
@@ -190,9 +238,6 @@ Top canonical groups (most-repeated talking points across the corpus):
 | 1871 | 2 | "the Government intends to launch a 6.5-million-dollar loan facility for women entrepreneurs" |
 | 2020 | 2 | "the landmark China-Maldives Friendship Bridge and many other housing and other infrastructure…" |
 | 2767 | 2 | "Our digital economy strategy aims to contribute 15% to GDP by 2030" |
-| 2912 | 2 | "next year will mark the sixtieth anniversary of establishing formal diplomatic relations" |
-| 3430 | 2 | "the Government's target of generating 33 per cent of the country's electricity from renewables" |
-| 5779 | 2 | "one of the several important steps taken towards becoming a developed country by 2040" |
 
 All groups are real political talking points correctly identified as repeated.
 
@@ -217,30 +262,35 @@ distribution validated via `tests/golden/contradictions/`.
 
 ---
 
-## 10. Known gaps (documented in V2_BUILD_PLAN)
+## 10. Security posture
 
-- **Reproducibility / observability (Slice 12)** — `/api/reproducibility.json`,
-  Prometheus metrics, Dockerfile, `kahzaabu audit` (bias/fairness),
-  `kahzaabu transparency-report` not yet built. Tracked in ADR 0010.
-- **OSS readiness (Slice 11)** — LICENSE/SECURITY/CONTRIBUTING/CODE_OF_CONDUCT
-  in place; MODEL_CARD.md, DATA_CARD.md, METHODOLOGY.md, backup scripts,
-  GitHub issue/PR templates in progress.
-- **Verified-subset growth** — 24/25 golden fixtures verified; 1 extractor
-  fixture (`article-32009`) deliberately gated pending `deadline_promise`
-  taxonomy clarification. Growing the verified subset across all 5
-  stages is the ongoing data-labelling task per ADR 0008.
+- **Zero in-app credentials.** No passwords, no sessions, no admin users,
+  no `/login` or `/admin` routes. The web UI is read-only public.
+  Operator actions go through the `kahzaabu` CLI on the operator's
+  shell, gated by OS-level permissions.
+- **No live-shape credentials in any tracked file.** Verified by
+  `test_secrets_hygiene.py::SecretShapeGuardTests` against 7 credential
+  patterns (sk-ant-, sk-, pa-, AKIA, AIza, ghp_, xox[abprs]-).
+- **No hardcoded developer-machine paths in active code.** Verified by
+  `DeveloperPathGuardTests` against `/Users/<name>/...` and
+  `/home/<name>/...` patterns.
+- **`data/kahzaabu.db` correctly gitignored.** Never committed.
+- **No CDN dependencies at runtime.** Chart.js + marked vendored under
+  `kahzaabu/web/static/js/` with `NOTICE.md` attribution + lockfile-
+  pinned verifier.
 
 ---
 
 ## 11. Verdict
 
-The codebase is in a healthy state through V2 Slice 10. All committed
-code is fully tested (197/197 green), the live database is schema-clean
-and orphan-free with full V2 enrichment, every web route and plugin tool
-responds correctly, and the CI dry-run validates the workflow against
-the current HEAD. The headline contradiction-detection result (2 real
-contradictions surfaced from 48 candidates) is journalistically defensible
-— both pairs are independently verifiable through the linked source
-press releases. No blocking defects.
+The codebase is in publication-ready state. All 327 tests green,
+live DB schema-clean + orphan-free, every read-only web route
+returns 200, every removed auth/admin route returns 404. The
+maintenance triangle (drift detection / upgrade recipe / call-site
+verification / reproducibility / link-rot / discoverability /
+cadence) is closed across the project, and CI enforces the most
+important gates on every PR.
 
-Slices 11 and 12 close the path to a publishable reference project.
+Open follow-ups are documented in `docs/V2_BUILD_PLAN.md` and the
+README TODO table — primarily public VPS deploy + growing the
+verified golden-fixture subset for the verifier stage.

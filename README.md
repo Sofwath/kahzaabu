@@ -4,7 +4,7 @@
 > *"Kahzaabu"* (ކަޒާބު) is Dhivehi for *falsehood* — and the street nickname for Mohamed Muizzu.
 > The two names refer to the same person; the project treats them as synonyms.
 
-**License:** Apache-2.0 · **Tests:** 262 passing · **V2 status:** Slices 0–12 done (see [V2 build plan](docs/V2_BUILD_PLAN.md))
+**License:** Apache-2.0 · **Tests:** 327 passing · **V2 status:** Slices 0–12 done (see [V2 build plan](docs/V2_BUILD_PLAN.md)) · **Trust model:** read-only public web, operator actions via CLI (no in-app auth, no passwords)
 
 This is a **research / educational project**: it scrapes public press releases from `presidency.gov.mv`, extracts factual claims with an LLM, curates contradictions across time, verifies them against the open web, and stores the result in a queryable SQLite archive. A native [Hermes Agent](https://github.com/NousResearch/hermes-agent) plugin exposes the archive to a chat agent so you can ask questions in plain English (or through Telegram / WhatsApp / Slack via the hermes gateway).
 
@@ -140,7 +140,7 @@ The hermes plugin source lives at `hermes-plugin/` in this repo and is symlinked
    │                                                                       │
    │   manifesto_promises ── manifesto_evidence (cross-ref)               │
    │                                                                       │
-   │   qna_sessions (multi-turn agent memory)  ── scrape_runs ── auth     │
+   │   qna_sessions (multi-turn agent memory)  ── scrape_runs            │
    └──────────────────────────────────────────────────────────────────────┘
                                       │
                 ┌─────────────────────┼─────────────────────┐
@@ -260,7 +260,11 @@ scrape_runs         -- audit log of pipeline cycles.
                     -- cols: category_id, language, started_at, finished_at,
                     --       pages_scraped, articles_scraped, articles_new,
                     --       status, resume_page, error_message
-web_users           -- admin/editor accounts for the web UI's publish workflow.
+web_users           -- LEGACY: kept for backwards-compat with deployed DBs.
+                    -- The password-based admin workflow was removed
+                    -- (web UI is read-only public; operator actions
+                    -- run from the CLI). No code reads or writes this
+                    -- table any more.
                     -- cols: username, password_hash, role, created_at
 ```
 
@@ -342,8 +346,9 @@ hermes-plugin/
 ├── __init__.py    register(ctx) — entry point. Three jobs:
 │                    1. Hydrate ~/.hermes/.env into os.environ
 │                    2. Ensure kahzaabu is importable (self-heal .pth)
-│                    3. Register 8 tools + `hermes kahzaabu` CLI
-├── tools.py       8 handler functions wrapping qna_agentic / claims_db
+│                    3. Register 9 tools + `hermes kahzaabu` CLI
+│                       + `/kahzaabu` slash command
+├── tools.py       9 handler functions wrapping qna_agentic / claims_db
 ├── cli.py         argparse setup for `hermes kahzaabu {setup,status,…}`
 ├── SKILL.md       Agent-facing guidance: when to use which tool
 └── README.md      Plugin-source README (design choices, bootstrap layers)
@@ -357,7 +362,7 @@ hermes-plugin/
 - **Tools are in-process.** Unlike the previous MCP-over-stdio design, hermes calls plugin tools directly — no subprocess, ~5-10× faster per call.
 - **`update` and `web` shell out.** Both need scikit-learn / FastAPI / etc. that don't live in hermes' lean venv, so they exec `<dev>/.venv/bin/kahzaabu pipeline|web`. `doctor` checks this.
 
-The 8 tools exposed to the agent:
+The 9 tools exposed to the agent:
 
 | Tool | What it does |
 |---|---|
@@ -368,7 +373,8 @@ The 8 tools exposed to the agent:
 | `kahzaabu_manifesto` | 2023 promises with delivery status |
 | `kahzaabu_get_article` | One article with claims + linked fact-checks |
 | `kahzaabu_recent_activity` | Last N days of articles |
-| `kahzaabu_pipeline_run` | Trigger pipeline (gated by `KAHZAABU_MCP_ALLOW_PIPELINE=1`) |
+| `kahzaabu_constitution_lookup` | BM25 search over the 301 Constitution articles |
+| `kahzaabu_pipeline_run` | Trigger pipeline (gated by `KAHZAABU_ALLOW_PIPELINE=1`; legacy `KAHZAABU_MCP_ALLOW_PIPELINE=1` still honoured) |
 
 **Three integration surfaces share one Q&A engine:**
 
@@ -399,9 +405,15 @@ All three call the same `kahzaabu/qna_agentic.py:ask_agentic()` function, so ses
 | `/ask` | The agentic Q&A interface (sessions, web toggle, tool-trace) |
 | `/methodology` | How the pipeline works (public-facing) |
 | `/corrections` | Public report-a-correction form |
-| `/admin/*` | Login-gated: publish queue, run pipeline, manage users |
 
-Auth: session-cookie via `itsdangerous.URLSafeTimedSerializer`; passwords bcrypt-hashed. Rate-limited via `slowapi`. Public mode (`KAHZAABU_PUBLIC_MODE=1`) gates fact-check visibility to `published=1` for anonymous viewers.
+**Read-only by design.** There is no `/admin`, no `/login`, no
+session cookie, no password anywhere in the system. Publishing a
+fact-check, triggering the pipeline, creating backups — all of it
+runs from the operator's shell via the `kahzaabu` CLI and inherits
+OS-level permissions. The web UI's only writes are: rate-limited
+`/api/ask` (Q&A budget capped per day) and `/api/corrections`
+(public form that appends to a moderation queue read by the operator
+in CLI). `slowapi` rate-limits anonymous traffic.
 
 ---
 
@@ -481,8 +493,8 @@ Daily caps:
 
 - The corpus is **already public** at `presidency.gov.mv`. No leaks, no inside sources.
 - Every fact-check links back to the original press release URL.
-- "Report a correction" form on `/corrections` creates an admin queue item.
-- Public-mode (`KAHZAABU_PUBLIC_MODE=1`) shows only `published=1` fact-checks. Unpublished items stay admin-only until reviewed.
+- "Report a correction" form on `/corrections` appends to a moderation queue; the operator reviews it with `kahzaabu` CLI tooling, then publishes any resulting fact-check via `kahzaabu publish <id>`.
+- The web UI is **read-only**: only published items (`fact_checks.published = 1`) ever surface. Publishing flows are CLI-only — no web-side credentials exist anywhere.
 - Pipeline LLM calls are budget-capped; daily Q&A spend is capped; anonymous web traffic is rate-limited (`slowapi`).
 - Subject is a sitting head of state. Treat output as automated analysis, not finished journalism — review the source article before quoting.
 - No mass scraping of social-media or non-official sources. Web-search-verify uses Anthropic's `web_search_20250305` server tool, which respects publisher robots.txt.
@@ -492,7 +504,7 @@ Daily caps:
 ## Testing
 
 ```bash
-./scripts/test.sh                              # full local suite — 197 tests, ~2.3s
+./scripts/test.sh                              # full local suite — 327 tests, ~2.6s
 .venv/bin/python -m unittest discover tests/   # just the unit tests
 .venv/bin/python tests/system_check.py         # live web-stack integration check
 .venv/bin/kahzaabu eval                        # golden-set quality eval (ADR 0008)
@@ -529,10 +541,10 @@ kahzaabu/                   The Python package
 ├── models.py               Type aliases
 ├── report.py               JSON/CSV export of fact_checks
 ├── infographics.py         Static-HTML viz generators (legacy tracker)
-├── auth.py                 Web-user password hashing + session helpers
 ├── scheduler.py            launchd helper
 ├── tui.py                  Textual TUI
-├── mcp_server.py           [legacy] stdio MCP server — superseded by plugin
+├── legacy/
+│   └── mcp_server.py       [DEPRECATED] stdio MCP server — superseded by hermes-plugin/
 │
 │  # V2 modules (ADR-driven)
 ├── decomposer.py           Slice 2 — AVeriTeC Q&A decomposition (Haiku)
@@ -553,12 +565,12 @@ kahzaabu/                   The Python package
 │
 └── web/                    FastAPI app
     ├── app.py
-    ├── api/                JSON endpoints
+    ├── api/                JSON endpoints (all public read-only)
     │   ├── articles.py / factchecks.py / manifesto.py
     │   ├── ask.py / freshness.py / stats.py / viz.py
-    │   ├── auth.py / admin.py
     │   ├── corrections.py / inspect.py
     │   ├── claimreview.py / contradictions.py    # V2
+    │   ├── constitution.py                       # 301-article BM25 search
     │   ├── reproducibility.py                    # V2 Slice 12
     ├── static/             HTML / CSS / JS (no SPA)
     │   └── contradictions.html                   # V2 — 4-way verdict browser

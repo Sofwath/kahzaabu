@@ -482,8 +482,12 @@ content that would conflict with publisher licences. The
 back to the originating press release. A mandatory disclaimer is
 embedded in the ClaimReview JSON-LD of every published fact-check.
 Corrections can be filed through a public form (`/corrections`) which
-populates an admin queue; corrections are processed by the project
-maintainer with the same review workflow as fact-check publication.
+appends to a moderation queue; corrections are processed by the
+project maintainer on the local filesystem with the same `kahzaabu`
+CLI used for fact-check publication. The system has no in-app
+authentication: the web UI is read-only public, and all moderation
+flows are gated by OS-level filesystem permissions on the maintainer's
+machine rather than by passwords or sessions inside the application.
 
 The system is released under Apache-2.0. The reproducibility
 manifest, evaluation set, ADRs, model card, data card, and
@@ -632,8 +636,10 @@ dataset for fake news detection. In *Proc. ACL*, pp. 422–426.
 | Constitutional articles | 301 |
 | Manifesto promises tracked | 717 |
 | ADRs written | 12 |
-| Tests passing | 283 |
+| Tests passing | 327 |
+| Golden-set fixtures (verified / total) | 24 / 33 |
 | One-shot LLM spend (V2 build) | ≈ $16.50 |
+| Web auth surface | None — system has no passwords; web UI is read-only public |
 
 ---
 
