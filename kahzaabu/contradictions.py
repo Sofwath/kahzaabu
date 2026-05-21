@@ -54,8 +54,6 @@ logger = logging.getLogger("kahzaabu")
 # Sonnet 4.6 for the verdict — this is the most consequential LLM call
 # in V2 and quality here directly affects published fact-checks.
 MODEL = pricing.MODELS["sonnet"].id
-PRICE_IN_PER_M = pricing.MODELS["sonnet"].in_per_m
-PRICE_OUT_PER_M = pricing.MODELS["sonnet"].out_per_m
 
 # Bias the SQL shortlist toward the polarity pairings the ADR calls out.
 OPPOSITE_POLARITIES = {
@@ -444,8 +442,7 @@ def run_finder(conn, *, limit: Optional[int] = None,
                 )
                 by_verdict[r["verdict"]] = by_verdict.get(r["verdict"], 0) + 1
                 classified += 1
-                cost = (tok_in / 1e6 * PRICE_IN_PER_M
-                        + tok_out / 1e6 * PRICE_OUT_PER_M)
+                cost = pricing.cost('sonnet', tokens_in=tok_in, tokens_out=tok_out)
                 if progress_cb:
                     progress_cb(classified, len(candidates),
                                  by_verdict["CONTRADICTION"], cost)
@@ -453,8 +450,7 @@ def run_finder(conn, *, limit: Optional[int] = None,
                     logger.warning(f"finder: budget hit (${cost:.4f})")
                     break
     finally:
-        cost = (tok_in / 1e6 * PRICE_IN_PER_M
-                + tok_out / 1e6 * PRICE_OUT_PER_M)
+        cost = pricing.cost('sonnet', tokens_in=tok_in, tokens_out=tok_out)
         conn.execute(
             """UPDATE contradiction_finder_runs
                SET finished_at = datetime('now'),

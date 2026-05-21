@@ -156,6 +156,59 @@ class StageConsistencyTests(unittest.TestCase):
             "Stage modules must import the pricing registry:\n  "
             + "\n  ".join(missing))
 
+    def test_no_stage_redeclares_price_constants(self):
+        """No stage module may declare its own PRICE_IN_PER_M /
+        PRICE_OUT_PER_M / WEB_SEARCH_PRICE_* constants — they all
+        belong in pricing.py. The original review's concern was
+        about 9-file duplication; this test pins that the parallel-
+        constants pattern stays gone."""
+        import re
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[1] / "kahzaabu"
+        offenders = []
+        pat = re.compile(
+            r"^(?:[A-Z_]*PRICE_(?:IN|OUT)_PER_M"
+            r"|[A-Z_]*WEB_SEARCH_PRICE\w*"
+            r"|LLM_PRICE_(?:IN|OUT)_PER_M)"
+            r"\s*=",
+            re.MULTILINE,
+        )
+        for stem in self.STAGES:
+            p = root / f"{stem}.py"
+            if not p.exists(): continue
+            for m in pat.finditer(p.read_text()):
+                offenders.append(f"{stem}.py: {m.group(0).strip()}")
+        self.assertEqual(offenders, [],
+            "Stage module redeclares a price constant. All pricing "
+            "lives in kahzaabu.pricing.MODELS; use pricing.cost() at "
+            "the call site instead. Offenders:\n  "
+            + "\n  ".join(offenders))
+
+    def test_no_inline_price_math_in_stages(self):
+        """No `tokens / 1e6 * SOMETHING` inline calculation. Every
+        cost is computed by pricing.cost(alias, ...). Catches the
+        easy regression where someone copy-pastes the old pattern."""
+        import re
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[1] / "kahzaabu"
+        offenders = []
+        pat = re.compile(r"/\s*1e6\s*\*\s*[A-Z_]+")
+        for stem in self.STAGES:
+            p = root / f"{stem}.py"
+            if not p.exists(): continue
+            for i, line in enumerate(p.read_text().splitlines(), 1):
+                # Allow the pattern inside comments / docstrings only —
+                # the active-code line check looks at non-comment lines.
+                stripped = line.lstrip()
+                if stripped.startswith("#"):
+                    continue
+                if pat.search(line):
+                    offenders.append(f"{stem}.py:{i}: {stripped[:80]}")
+        self.assertEqual(offenders, [],
+            "Inline price math found in stage code. Use "
+            "pricing.cost(alias, tokens_in=..., tokens_out=...). "
+            "Offenders:\n  " + "\n  ".join(offenders))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

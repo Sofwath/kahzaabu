@@ -34,15 +34,10 @@ from . import pricing
 logger = logging.getLogger("kahzaabu")
 
 MODEL = pricing.MODELS["sonnet"].id
-PRICE_IN_PER_M = pricing.MODELS["sonnet"].in_per_m
-PRICE_OUT_PER_M = pricing.MODELS["sonnet"].out_per_m
-WEB_SEARCH_PRICE_PER_SEARCH = pricing.MODELS["haiku-ws"].web_search_per_call
-
 # Cheaper model used only for the narrative-tricks guarantee-pass.
 # Haiku 4.5 handles structured-output-from-existing-context well.
 HAIKU_MODEL = pricing.MODELS["haiku"].id
-HAIKU_IN_PER_M = pricing.MODELS["haiku"].in_per_m
-HAIKU_OUT_PER_M = pricing.MODELS["haiku"].out_per_m
+# Cost constants removed — call pricing.cost(alias, ...) directly.
 
 # Bump when SYSTEM_PROMPT or output format changes — invalidates LRU cache.
 PROMPT_VERSION = "v2-narrative-tricks"
@@ -584,8 +579,10 @@ def ask_agentic(conn: sqlite3.Connection, question: str, *,
         messages.append({"role": "user", "content": tool_results})
 
         # Budget check mid-loop
-        cost = (tokens_in / 1e6 * PRICE_IN_PER_M + tokens_out / 1e6 * PRICE_OUT_PER_M
-                + web_searches * WEB_SEARCH_PRICE_PER_SEARCH)
+        cost = (
+            pricing.cost("sonnet",
+                          tokens_in=tokens_in, tokens_out=tokens_out)
+            + web_searches * pricing.MODELS["haiku-ws"].web_search_per_call)
         if today_spent + cost >= daily_budget_usd:
             logger.warning(f"agentic ask budget hit (${today_spent + cost:.2f}); stopping")
             final_text = "(daily budget exhausted before answer was complete)"
@@ -724,9 +721,10 @@ def ask_agentic(conn: sqlite3.Connection, question: str, *,
         except Exception as e:
             logger.warning(f"narrative-tricks pass failed: {e}")
 
-    cost = (tokens_in / 1e6 * PRICE_IN_PER_M + tokens_out / 1e6 * PRICE_OUT_PER_M
-            + haiku_in / 1e6 * HAIKU_IN_PER_M + haiku_out / 1e6 * HAIKU_OUT_PER_M
-            + web_searches * WEB_SEARCH_PRICE_PER_SEARCH)
+    cost = (
+        pricing.cost("sonnet", tokens_in=tokens_in, tokens_out=tokens_out)
+        + pricing.cost("haiku", tokens_in=haiku_in, tokens_out=haiku_out)
+        + web_searches * pricing.MODELS["haiku-ws"].web_search_per_call)
 
     # Persist the session (post-trim again to keep stored size sane)
     messages = _trim_messages(messages)

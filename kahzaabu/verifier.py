@@ -24,9 +24,6 @@ from . import metrics
 logger = logging.getLogger("kahzaabu")
 
 MODEL = pricing.MODELS["haiku-ws"].id  # Haiku + web_search server tool
-PRICE_IN_PER_M = pricing.MODELS["haiku-ws"].in_per_m
-PRICE_OUT_PER_M = pricing.MODELS["haiku-ws"].out_per_m
-WEB_SEARCH_PRICE_PER_SEARCH = pricing.MODELS["haiku-ws"].web_search_per_call
 DEFAULT_MAX_SEARCHES = 2  # halve from 4; cuts result-token volume too
 
 SYSTEM = """You are a fact-checking researcher.
@@ -207,17 +204,14 @@ def run_verification(conn, *, limit: Optional[int] = None,
                         )
                         evidence_count += 1
                 done += 1
-                cost = (tokens_in / 1e6 * PRICE_IN_PER_M
-                        + tokens_out / 1e6 * PRICE_OUT_PER_M
-                        + web_searches * WEB_SEARCH_PRICE_PER_SEARCH)
+                cost = pricing.cost('haiku-ws', tokens_in=tokens_in, tokens_out=tokens_out, web_searches=web_searches)
                 if progress_cb:
                     progress_cb(done, len(targets), web_searches, cost)
                 if cost + today_spent >= daily_budget_usd:
                     logger.warning(f"budget hit (${cost + today_spent:.2f}); stopping")
                     break
     except KeyboardInterrupt:
-        cost = (tokens_in / 1e6 * PRICE_IN_PER_M + tokens_out / 1e6 * PRICE_OUT_PER_M
-                + web_searches * WEB_SEARCH_PRICE_PER_SEARCH)
+        cost = pricing.cost('haiku-ws', tokens_in=tokens_in, tokens_out=tokens_out, web_searches=web_searches)
         claims_db.finish_verification_run(
             conn, run_id, items_processed=done, evidence_collected=evidence_count,
             tokens_in=tokens_in, tokens_out=tokens_out, web_searches=web_searches,
@@ -225,8 +219,7 @@ def run_verification(conn, *, limit: Optional[int] = None,
         )
         raise
 
-    cost = (tokens_in / 1e6 * PRICE_IN_PER_M + tokens_out / 1e6 * PRICE_OUT_PER_M
-            + web_searches * WEB_SEARCH_PRICE_PER_SEARCH)
+    cost = pricing.cost('haiku-ws', tokens_in=tokens_in, tokens_out=tokens_out, web_searches=web_searches)
     claims_db.finish_verification_run(
         conn, run_id, items_processed=done, evidence_collected=evidence_count,
         tokens_in=tokens_in, tokens_out=tokens_out, web_searches=web_searches,

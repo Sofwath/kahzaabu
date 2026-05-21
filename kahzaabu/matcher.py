@@ -49,8 +49,7 @@ EMBED_MODEL = DEFAULT_EMBED_MODEL
 EMBED_DIM = DEFAULT_EMBED_DIM
 
 LLM_MODEL = pricing.MODELS["haiku"].id
-LLM_PRICE_IN_PER_M = 1.0
-LLM_PRICE_OUT_PER_M = 5.0
+# Cost constants removed — call pricing.cost("haiku", ...) directly.
 
 COSINE_THRESHOLD = 0.85
 ENTITY_OVERLAP_THRESHOLD = 0.60
@@ -365,13 +364,13 @@ def run_matching(conn, *, limit: Optional[int] = None,
             pairs_matched += 1
         claims_db.set_canonical(conn, r["id"], cid)
         if progress_cb:
-            llm_cost = (llm_in / 1e6 * LLM_PRICE_IN_PER_M
-                        + llm_out / 1e6 * LLM_PRICE_OUT_PER_M)
+            llm_cost = pricing.cost("haiku",
+                                      tokens_in=llm_in, tokens_out=llm_out)
             progress_cb(pairs_compared, len(rows), pairs_matched,
                          llm_tiebreakers, llm_cost)
 
-    llm_cost = (llm_in / 1e6 * LLM_PRICE_IN_PER_M
-                + llm_out / 1e6 * LLM_PRICE_OUT_PER_M)
+    llm_cost = pricing.cost("haiku",
+                              tokens_in=llm_in, tokens_out=llm_out)
     claims_db.finish_matching_run(
         conn, run_id,
         claims_embedded=0,

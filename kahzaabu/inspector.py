@@ -32,12 +32,8 @@ from . import metrics
 logger = logging.getLogger("kahzaabu")
 
 MODEL = pricing.MODELS["sonnet"].id
-PRICE_IN_PER_M = pricing.MODELS["sonnet"].in_per_m
-PRICE_OUT_PER_M = pricing.MODELS["sonnet"].out_per_m
 WEB_MODEL = pricing.MODELS["haiku-ws"].id
-WEB_IN  = pricing.MODELS["haiku-ws"].in_per_m
-WEB_OUT = pricing.MODELS["haiku-ws"].out_per_m
-WEB_SEARCH_PRICE = pricing.MODELS["haiku-ws"].web_search_per_call
+# Cost constants removed — call pricing.cost(alias, ...) directly.
 
 TRUNC_PR = 4000
 TRUNC_SPEECH = 8000
@@ -355,11 +351,15 @@ def run_inspection(conn: sqlite3.Connection, *, limit: Optional[int] = 20,
 
                 # Per-card cost (rough split: this article's tokens only — we have aggregate, not per-card)
                 # Approximate per-call attribution; not perfectly accurate but useful.
-                cost_main = ((res.get("_in") or 0) / 1e6 * PRICE_IN_PER_M
-                              + (res.get("_out") or 0) / 1e6 * PRICE_OUT_PER_M)
-                cost_web = ((web_usage.get("tokens_in") or 0) / 1e6 * WEB_IN
-                             + (web_usage.get("tokens_out") or 0) / 1e6 * WEB_OUT
-                             + (web_usage.get("searches") or 0) * WEB_SEARCH_PRICE)
+                cost_main = pricing.cost(
+                    "sonnet",
+                    tokens_in=(res.get("_in") or 0),
+                    tokens_out=(res.get("_out") or 0))
+                cost_web = pricing.cost(
+                    "haiku-ws",
+                    tokens_in=(web_usage.get("tokens_in") or 0),
+                    tokens_out=(web_usage.get("tokens_out") or 0),
+                    web_searches=(web_usage.get("searches") or 0))
 
                 claims_db.upsert_fact_card(
                     conn,
@@ -376,8 +376,10 @@ def run_inspection(conn: sqlite3.Connection, *, limit: Optional[int] = 20,
                 cards += 1
                 done += 1
 
-                total_cost = (tokens_in / 1e6 * PRICE_IN_PER_M + tokens_out / 1e6 * PRICE_OUT_PER_M
-                              + web_searches * WEB_SEARCH_PRICE)
+                total_cost = (
+                    pricing.cost("sonnet",
+                                  tokens_in=tokens_in, tokens_out=tokens_out)
+                    + web_searches * pricing.MODELS["haiku-ws"].web_search_per_call)
                 if progress_cb:
                     progress_cb(done, len(todo), flagged, red_flagged, total_cost)
                 # Budget guard
@@ -385,8 +387,10 @@ def run_inspection(conn: sqlite3.Connection, *, limit: Optional[int] = 20,
                     logger.warning(f"budget hit (${total_cost + today_spent:.2f}); stopping")
                     break
     except KeyboardInterrupt:
-        total_cost = (tokens_in / 1e6 * PRICE_IN_PER_M + tokens_out / 1e6 * PRICE_OUT_PER_M
-                      + web_searches * WEB_SEARCH_PRICE)
+        total_cost = (
+            pricing.cost("sonnet",
+                          tokens_in=tokens_in, tokens_out=tokens_out)
+            + web_searches * pricing.MODELS["haiku-ws"].web_search_per_call)
         claims_db.finish_inspection_run(
             conn, run_id, articles_processed=done, cards_generated=cards,
             flagged=flagged, red_flagged=red_flagged,
@@ -395,8 +399,9 @@ def run_inspection(conn: sqlite3.Connection, *, limit: Optional[int] = 20,
         )
         raise
 
-    total_cost = (tokens_in / 1e6 * PRICE_IN_PER_M + tokens_out / 1e6 * PRICE_OUT_PER_M
-                  + web_searches * WEB_SEARCH_PRICE)
+    total_cost = (
+        pricing.cost("sonnet", tokens_in=tokens_in, tokens_out=tokens_out)
+        + web_searches * pricing.MODELS["haiku-ws"].web_search_per_call)
     claims_db.finish_inspection_run(
         conn, run_id, articles_processed=done, cards_generated=cards,
         flagged=flagged, red_flagged=red_flagged,

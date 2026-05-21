@@ -35,8 +35,6 @@ logger = logging.getLogger("kahzaabu")
 # is ~6× cheaper than Sonnet. Switch to Sonnet only if the dry-run
 # shows quality issues.
 MODEL = pricing.MODELS["haiku"].id
-PRICE_IN_PER_M = pricing.MODELS["haiku"].in_per_m
-PRICE_OUT_PER_M = pricing.MODELS["haiku"].out_per_m
 
 SYSTEM = """You are a fact-checking research planner.
 
@@ -195,8 +193,7 @@ def run_decomposition(conn, *, limit: Optional[int] = None,
                         conn, run_id, todo[idx]["id"], r["questions"])
                     n_questions += n_q
                 n_done += 1
-                cost = (tokens_in / 1e6 * PRICE_IN_PER_M
-                        + tokens_out / 1e6 * PRICE_OUT_PER_M)
+                cost = pricing.cost('haiku', tokens_in=tokens_in, tokens_out=tokens_out)
                 if progress_cb:
                     progress_cb(n_done, len(todo), tokens_in, tokens_out,
                                  cost, n_questions)
@@ -206,8 +203,7 @@ def run_decomposition(conn, *, limit: Optional[int] = None,
                         f"stopping after {n_done} claims")
                     break
     except KeyboardInterrupt:
-        cost = (tokens_in / 1e6 * PRICE_IN_PER_M
-                + tokens_out / 1e6 * PRICE_OUT_PER_M)
+        cost = pricing.cost('haiku', tokens_in=tokens_in, tokens_out=tokens_out)
         claims_db.finish_decomposition_run(
             conn, run_id, claims_processed=n_done,
             questions_generated=n_questions, errors=n_errors,
@@ -215,8 +211,7 @@ def run_decomposition(conn, *, limit: Optional[int] = None,
             cost_usd=cost, status="interrupted")
         raise
 
-    cost = (tokens_in / 1e6 * PRICE_IN_PER_M
-            + tokens_out / 1e6 * PRICE_OUT_PER_M)
+    cost = pricing.cost('haiku', tokens_in=tokens_in, tokens_out=tokens_out)
     claims_db.finish_decomposition_run(
         conn, run_id, claims_processed=n_done,
         questions_generated=n_questions, errors=n_errors,

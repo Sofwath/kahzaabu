@@ -25,13 +25,13 @@ from . import pricing
 
 logger = logging.getLogger("kahzaabu")
 
-# Pricing + model IDs centralised in kahzaabu.pricing (single source).
-PARSER_MODEL = pricing.MODELS["haiku"].id    # cheap, structured-output
-ANSWER_MODEL = pricing.MODELS["sonnet"].id   # better synthesis
-PRICE_HAIKU_IN  = pricing.MODELS["haiku"].in_per_m
-PRICE_HAIKU_OUT = pricing.MODELS["haiku"].out_per_m
-PRICE_SONNET_IN  = pricing.MODELS["sonnet"].in_per_m
-PRICE_SONNET_OUT = pricing.MODELS["sonnet"].out_per_m
+# Pricing + model IDs centralised in kahzaabu.pricing. The PARSER_*
+# and ANSWER_* aliases give the two-LLM flow (cheap structured parsing
+# via Haiku, expensive synthesis via Sonnet) a self-documenting name.
+PARSER_ALIAS = "haiku"
+ANSWER_ALIAS = "sonnet"
+PARSER_MODEL = pricing.MODELS[PARSER_ALIAS].id
+ANSWER_MODEL = pricing.MODELS[ANSWER_ALIAS].id
 
 TODAY_ISO = date.today().isoformat()
 
@@ -321,10 +321,12 @@ def ask(conn: sqlite3.Connection, question: str, *, default_limit: int = 20,
         answer = ""
         ans_usage = {"in": 0, "out": 0}
 
-    parser_cost = (parser_usage["in"] / 1e6 * PRICE_HAIKU_IN
-                   + parser_usage["out"] / 1e6 * PRICE_HAIKU_OUT)
-    answer_cost = (ans_usage["in"] / 1e6 * PRICE_SONNET_IN
-                   + ans_usage["out"] / 1e6 * PRICE_SONNET_OUT)
+    parser_cost = pricing.cost(
+        PARSER_ALIAS,
+        tokens_in=parser_usage["in"], tokens_out=parser_usage["out"])
+    answer_cost = pricing.cost(
+        ANSWER_ALIAS,
+        tokens_in=ans_usage["in"], tokens_out=ans_usage["out"])
     return {
         "question": question,
         "intent": intent,

@@ -22,8 +22,6 @@ logger = logging.getLogger("kahzaabu")
 MODEL = pricing.MODELS["sonnet"].id
 TRUNC_PR = 4000
 TRUNC_SPEECH = 8000
-PRICE_IN_PER_M = pricing.MODELS["sonnet"].in_per_m
-PRICE_OUT_PER_M = pricing.MODELS["sonnet"].out_per_m
 
 SYSTEM = """You are a forensic fact-extraction analyst working on Maldives Presidency press releases.
 
@@ -206,7 +204,7 @@ def run_extraction(conn, *, since_date: Optional[str] = "2023-11-17",
                           "actor_credited": None, "quote": None}],
                     )
                 n_done += 1
-                cost = tokens_in / 1e6 * PRICE_IN_PER_M + tokens_out / 1e6 * PRICE_OUT_PER_M
+                cost = pricing.cost('sonnet', tokens_in=tokens_in, tokens_out=tokens_out)
                 if progress_cb:
                     progress_cb(n_done, len(todo), tokens_in, tokens_out, cost)
                 # Budget check mid-run
@@ -214,7 +212,7 @@ def run_extraction(conn, *, since_date: Optional[str] = "2023-11-17",
                     logger.warning(f"budget hit (${cost + today_spent:.2f} >= ${daily_budget_usd}); stopping")
                     break
     except KeyboardInterrupt:
-        cost = tokens_in / 1e6 * PRICE_IN_PER_M + tokens_out / 1e6 * PRICE_OUT_PER_M
+        cost = pricing.cost('sonnet', tokens_in=tokens_in, tokens_out=tokens_out)
         claims_db.finish_extraction_run(
             conn, run_id, articles_processed=n_done, claims_extracted=n_claims,
             errors=n_errors, tokens_in=tokens_in, tokens_out=tokens_out,
@@ -222,7 +220,7 @@ def run_extraction(conn, *, since_date: Optional[str] = "2023-11-17",
         )
         raise
 
-    cost = tokens_in / 1e6 * PRICE_IN_PER_M + tokens_out / 1e6 * PRICE_OUT_PER_M
+    cost = pricing.cost('sonnet', tokens_in=tokens_in, tokens_out=tokens_out)
     claims_db.finish_extraction_run(
         conn, run_id, articles_processed=n_done, claims_extracted=n_claims,
         errors=n_errors, tokens_in=tokens_in, tokens_out=tokens_out,

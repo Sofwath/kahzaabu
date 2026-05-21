@@ -29,8 +29,6 @@ from . import pricing
 logger = logging.getLogger("kahzaabu")
 
 MODEL = pricing.MODELS["haiku"].id
-PRICE_IN_PER_M = pricing.MODELS["haiku"].in_per_m
-PRICE_OUT_PER_M = pricing.MODELS["haiku"].out_per_m
 
 SYSTEM = """You enrich political claims with structured labels for downstream
 contradiction-detection. For each input claim, output three fields:
@@ -201,16 +199,14 @@ def run_enrichment(conn, *, limit: Optional[int] = None,
                 continue
             applied = _apply_enrichment(conn, r.get("results") or [])
             n_enriched += applied
-            cost = (tok_in / 1e6 * PRICE_IN_PER_M
-                    + tok_out / 1e6 * PRICE_OUT_PER_M)
+            cost = pricing.cost('haiku', tokens_in=tok_in, tokens_out=tok_out)
             if progress_cb:
                 progress_cb(n_enriched, len(todo), tok_in, tok_out, cost)
             if cost >= budget_usd:
                 logger.warning(f"enrich: budget hit (${cost:.4f})")
                 break
 
-    cost = (tok_in / 1e6 * PRICE_IN_PER_M
-            + tok_out / 1e6 * PRICE_OUT_PER_M)
+    cost = pricing.cost('haiku', tokens_in=tok_in, tokens_out=tok_out)
     return {
         "enriched": n_enriched,
         "errors": n_errors,

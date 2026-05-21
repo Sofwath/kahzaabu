@@ -32,8 +32,6 @@ from . import pricing
 logger = logging.getLogger("kahzaabu")
 
 MODEL = pricing.MODELS["sonnet"].id
-PRICE_IN_PER_M = pricing.MODELS["sonnet"].in_per_m
-PRICE_OUT_PER_M = pricing.MODELS["sonnet"].out_per_m
 
 CHUNK_SIZE_CHARS = 6000     # comfortable for Sonnet, leaves headroom
 CHUNK_OVERLAP_CHARS = 400   # so promises straddling chunks don't get cut
@@ -221,7 +219,7 @@ def run_extraction(conn: sqlite3.Connection, text: str, *,
                     promises_total += 1
                 conn.commit()
                 done += 1
-                cost = tokens_in / 1e6 * PRICE_IN_PER_M + tokens_out / 1e6 * PRICE_OUT_PER_M
+                cost = pricing.cost('sonnet', tokens_in=tokens_in, tokens_out=tokens_out)
                 if progress_cb:
                     progress_cb(done, len(chunks), promises_total, cost)
                 if cost + today_spent >= daily_budget_usd:
@@ -230,7 +228,7 @@ def run_extraction(conn: sqlite3.Connection, text: str, *,
     except KeyboardInterrupt:
         pass
 
-    cost = tokens_in / 1e6 * PRICE_IN_PER_M + tokens_out / 1e6 * PRICE_OUT_PER_M
+    cost = pricing.cost('sonnet', tokens_in=tokens_in, tokens_out=tokens_out)
     conn.execute(
         """UPDATE manifesto_runs SET finished_at = ?, chunks_processed = ?,
            promises_extracted = ?, tokens_in = ?, tokens_out = ?, cost_usd = ?,
@@ -403,7 +401,7 @@ def run_cross_ref(conn: sqlite3.Connection, *,
                 )
                 conn.commit()
                 processed += 1
-                cost = tokens_in / 1e6 * PRICE_IN_PER_M + tokens_out / 1e6 * PRICE_OUT_PER_M
+                cost = pricing.cost('sonnet', tokens_in=tokens_in, tokens_out=tokens_out)
                 if progress_cb:
                     progress_cb(processed, len(todo), status_counts, cost)
                 if cost + today_spent >= daily_budget_usd:
@@ -412,7 +410,7 @@ def run_cross_ref(conn: sqlite3.Connection, *,
     except KeyboardInterrupt:
         pass
 
-    cost = tokens_in / 1e6 * PRICE_IN_PER_M + tokens_out / 1e6 * PRICE_OUT_PER_M
+    cost = pricing.cost('sonnet', tokens_in=tokens_in, tokens_out=tokens_out)
     conn.execute(
         """UPDATE manifesto_runs SET finished_at = ?, promises_cross_ref = ?,
            tokens_in = ?, tokens_out = ?, cost_usd = ?, status = 'completed' WHERE id = ?""",

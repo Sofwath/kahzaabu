@@ -32,8 +32,8 @@ from . import metrics
 logger = logging.getLogger("kahzaabu")
 
 MODEL = pricing.MODELS["sonnet"].id
-PRICE_IN_PER_M = pricing.MODELS["sonnet"].in_per_m
-PRICE_OUT_PER_M = pricing.MODELS["sonnet"].out_per_m
+# PRICE_IN_PER_M / PRICE_OUT_PER_M removed — every cost call below now
+# uses pricing.cost("sonnet", ...) directly. Single source of truth.
 
 TRUNC_BODY = 6000  # chars per language
 JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
@@ -187,8 +187,10 @@ def run_dv_compare(conn: sqlite3.Connection, *, limit: int = 20,
                         max_sev = sev
                     inconsistencies += 1
 
-                cost_pair = ((res.get("_in") or 0) / 1e6 * PRICE_IN_PER_M
-                             + (res.get("_out") or 0) / 1e6 * PRICE_OUT_PER_M)
+                cost_pair = pricing.cost(
+                    "sonnet",
+                    tokens_in=(res.get("_in") or 0),
+                    tokens_out=(res.get("_out") or 0))
                 claims_db.record_dv_pair(
                     conn,
                     en_article_id=p["en_article_id"],
@@ -202,14 +204,16 @@ def run_dv_compare(conn: sqlite3.Connection, *, limit: int = 20,
                     pairs_with_issues += 1
                 done += 1
 
-                total_cost = (tokens_in / 1e6 * PRICE_IN_PER_M + tokens_out / 1e6 * PRICE_OUT_PER_M)
+                total_cost = pricing.cost("sonnet",
+                                    tokens_in=tokens_in, tokens_out=tokens_out)
                 if progress_cb:
                     progress_cb(done, len(todo), inconsistencies, total_cost)
                 if total_cost + today_spent >= daily_budget_usd:
                     logger.warning(f"budget hit (${total_cost + today_spent:.2f}); stopping")
                     break
     except KeyboardInterrupt:
-        total_cost = (tokens_in / 1e6 * PRICE_IN_PER_M + tokens_out / 1e6 * PRICE_OUT_PER_M)
+        total_cost = pricing.cost("sonnet",
+                                    tokens_in=tokens_in, tokens_out=tokens_out)
         claims_db.finish_dv_compare_run(
             conn, run_id, pairs_processed=done, pairs_with_issues=pairs_with_issues,
             inconsistencies_logged=inconsistencies,
@@ -218,7 +222,8 @@ def run_dv_compare(conn: sqlite3.Connection, *, limit: int = 20,
         )
         raise
 
-    total_cost = (tokens_in / 1e6 * PRICE_IN_PER_M + tokens_out / 1e6 * PRICE_OUT_PER_M)
+    total_cost = pricing.cost("sonnet",
+                                tokens_in=tokens_in, tokens_out=tokens_out)
     claims_db.finish_dv_compare_run(
         conn, run_id, pairs_processed=done, pairs_with_issues=pairs_with_issues,
         inconsistencies_logged=inconsistencies,

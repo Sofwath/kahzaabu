@@ -21,8 +21,6 @@ from . import metrics
 logger = logging.getLogger("kahzaabu")
 
 MODEL = pricing.MODELS["sonnet"].id
-PRICE_IN_PER_M = pricing.MODELS["sonnet"].in_per_m
-PRICE_OUT_PER_M = pricing.MODELS["sonnet"].out_per_m
 TODAY = date.today().isoformat()
 
 # Reuse the topic taxonomy from phase4
@@ -232,15 +230,15 @@ def run_curation(conn, *, days_back: int = 7, max_chunk_claims: int = 200,
                     item["_topic"] = res["topic"]
                     all_new_items.append(item)
                 if progress_cb:
-                    cost = cost_in / 1e6 * PRICE_IN_PER_M + cost_out / 1e6 * PRICE_OUT_PER_M
+                    cost = pricing.cost('sonnet', tokens_in=cost_in, tokens_out=cost_out)
                     progress_cb(res["topic"], res["chunk"], len(res.get("new_items", [])), cost)
                 # Budget check
-                cost = cost_in / 1e6 * PRICE_IN_PER_M + cost_out / 1e6 * PRICE_OUT_PER_M
+                cost = pricing.cost('sonnet', tokens_in=cost_in, tokens_out=cost_out)
                 if cost + today_spent >= daily_budget_usd:
                     logger.warning(f"budget hit during curation (${cost + today_spent:.2f}); stopping")
                     break
     except KeyboardInterrupt:
-        cost = cost_in / 1e6 * PRICE_IN_PER_M + cost_out / 1e6 * PRICE_OUT_PER_M
+        cost = pricing.cost('sonnet', tokens_in=cost_in, tokens_out=cost_out)
         claims_db.finish_curation_run(
             conn, run_id, chunks_processed=len(all_new_items), new_items=len(all_new_items),
             tokens_in=cost_in, tokens_out=cost_out, cost_usd=cost, status="interrupted",
@@ -254,7 +252,7 @@ def run_curation(conn, *, days_back: int = 7, max_chunk_claims: int = 200,
         if new_id is not None:
             inserted += 1
 
-    cost = cost_in / 1e6 * PRICE_IN_PER_M + cost_out / 1e6 * PRICE_OUT_PER_M
+    cost = pricing.cost('sonnet', tokens_in=cost_in, tokens_out=cost_out)
     claims_db.finish_curation_run(
         conn, run_id, chunks_processed=len(tasks), new_items=inserted,
         tokens_in=cost_in, tokens_out=cost_out, cost_usd=cost, status="completed",
