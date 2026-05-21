@@ -82,17 +82,28 @@ If you have [Hermes Agent](https://github.com/NousResearch/hermes-agent) install
 hermes kahzaabu setup        # interactive: API key, daily budget, freshness threshold
 hermes kahzaabu doctor       # health check (all should be ✅)
 
-# Use it
+# Use it — three surfaces
 hermes kahzaabu status                          # archive counts + freshness
 hermes kahzaabu ask "what did he promise about housing?"
+hermes kahzaabu ask --continue "and the deadlines on those?"   # ↑ same session
 hermes kahzaabu update --budget 0.50            # run pipeline
 hermes kahzaabu web                             # start the web UI
+
+# Inside any hermes chat session (terminal OR gateway-routed):
+#   /kahzaabu what is he up to this week?
+#   /kahzaabu and what about housing?           # ↑ auto-continues the session
 
 # Wire messaging channels (Telegram, WhatsApp, Slack, Discord)
 hermes gateway setup       # one-time
 hermes gateway install     # install as systemd / launchd service
 hermes gateway start       # now messages to your bot route to kahzaabu tools
 ```
+
+**Three things to know about the integration:**
+
+1. **`/kahzaabu` slash command** is available in every hermes chat — terminal, Telegram, WhatsApp, Slack, Discord. Auto-continues the most-recent session (within 24h), so follow-ups don't lose context.
+2. **`hermes kahzaabu ask --continue`** mirrors hermes' own `--continue` UX for the CLI — picks up the previous session_id from the qna_sessions table.
+3. **LLM-provider inheritance**: the narrative-tricks pass routes through hermes' configured provider (whatever you picked in `hermes setup model`). Switch hermes from Anthropic to OpenAI to OpenRouter — the secondary pass follows. (Main agentic loop still uses Anthropic — it needs multi-turn tool-use that `ctx.llm.complete()` doesn't yet support.)
 
 The hermes plugin source lives at `hermes-plugin/` in this repo and is symlinked into `~/.hermes/hermes-agent/plugins/kahzaabu/` by the install script. It **does not vendor code** — it imports the package from this dev tree. See [hermes plugin section](#hermes-plugin) for details.
 
@@ -278,13 +289,23 @@ The 8 tools exposed to the agent:
 | Tool | What it does |
 |---|---|
 | `kahzaabu_stats` | Counts + freshness — call first for "recent" questions |
-| `kahzaabu_ask` | Run the full agentic loop (session-aware) |
+| **`kahzaabu_ask`** | **Run the full agentic loop — preferred for any natural-language question** |
 | `kahzaabu_list_lies` | List fact-checks with filters |
-| `kahzaabu_get_factcheck` | One fact-check + evidence + supporting claims |
+| `kahzaabu_get_factcheck` | One fact-check + web evidence + linked source articles |
 | `kahzaabu_manifesto` | 2023 promises with delivery status |
 | `kahzaabu_get_article` | One article with claims + linked fact-checks |
 | `kahzaabu_recent_activity` | Last N days of articles |
-| `kahzaabu_pipeline_run` | Trigger pipeline (gated by env flag) |
+| `kahzaabu_pipeline_run` | Trigger pipeline (gated by `KAHZAABU_MCP_ALLOW_PIPELINE=1`) |
+
+**Three integration surfaces share one Q&A engine:**
+
+- **Agent tool call**: `hermes chat -q "..."` → agent invokes `kahzaabu_ask` and gets back `{answer, session_id, cost_usd, tool_trace, web_searches}`.
+- **CLI subcommand**: `hermes kahzaabu ask [--continue] [--no-web] [--session ID] "..."` — direct human use.
+- **Slash command**: `/kahzaabu <question>` works inside any hermes session, including chats routed through the messaging gateway. Auto-continues the most-recent session.
+
+All three call the same `kahzaabu/qna_agentic.py:ask_agentic()` function, so session memory, the narrative-tricks layer, daily-budget caps, and cost accounting behave identically across surfaces. Sessions persist in the `qna_sessions` table and survive process restarts; the `--continue` and slash auto-continue affordances both use `claims_db.most_recent_session_id()` to find the latest one within a 24h window.
+
+**LLM-provider inheritance**: the secondary narrative-tricks pass calls `ctx.llm.complete()` when invoked from the plugin (so it follows `hermes setup model`), and falls back to Anthropic Haiku 4.5 when called from the standalone CLI / TUI / web. The main agentic loop always uses Anthropic Sonnet — `ctx.llm.complete()` doesn't yet support multi-turn tool-use.
 
 ---
 
@@ -359,16 +380,20 @@ Daily caps:
 2. **`hermes default model` shows `anthropic/anthropic/...` in doctor.** Pre-existing cosmetic bug in `_hermes_provider()` formatting — concatenates provider with a default that already includes the provider prefix.
 3. **launchd plist still in use.** Migration to `hermes cron` is documented in `hermes kahzaabu setup` but not executed. Both can run side-by-side; once you're confident, `launchctl unload ~/Library/LaunchAgents/com.kahzaabu.pipeline.plist`.
 
+### Recently fixed
+
+- ~~**Four plugin handlers used a hallucinated schema.**~~ `kahzaabu_list_lies`, `kahzaabu_get_factcheck`, `kahzaabu_get_article` were querying columns that don't exist (`title`/`severity`/`summary`) and joining a table that doesn't exist (`fact_check_claims`). Now rewritten against the real schema — fact-check ↔ article linkage uses the JSON `source_article_ids` column.
+
 ### TODOs
 
 | Priority | Item |
 |---|---|
 | 🔴 High | **Public VPS deploy.** Caddy + systemd templates in `scripts/`. Methodology page, robots.txt, rate-limits done. Needs: domain, server, DB sync strategy (push from laptop vs. run pipeline on server). |
 | 🟡 Medium | **Viber channel.** Hermes doesn't support Viber. Would require a custom `ctx.register_platform(...)` adapter — 3-5 days. Out of scope unless Maldives-market demand justifies. |
-| 🟡 Medium | **Migrate guarantee-pass to `ctx.llm`.** The narrative-tricks Haiku call would then go through hermes' provider config, removing the last direct `anthropic.Anthropic()` call in the secondary path. (Main agentic loop needs tool-use; `ctx.llm.complete()` doesn't yet support it.) |
+| ~~🟡 Medium~~ ✅ done | ~~**Migrate guarantee-pass to `ctx.llm`.**~~ Shipped: narrative-tricks pass now uses `ctx.llm.complete()` inside the plugin (anthropic fallback for non-plugin paths). Main loop still uses anthropic — needs tool-use. |
 | 🟡 Medium | **Self-improver loop.** A hermes skill at `~/.hermes/skills/kahzaabu/kahzaabu-self-improver/` already exists. Has produced `test_claims_db.py` with 17 unit tests. Pending: branch merge, additional iterations. |
 | 🟢 Low | **Replace launchd with `hermes cron`** (see Known issues #3). |
-| 🟢 Low | **Per-tenant LLM selection.** Today, the kahzaabu plugin uses Anthropic regardless of hermes' default. Could use `ctx.llm` for *some* paths so OpenAI / OpenRouter users get a coherent experience. |
+| ~~🟢 Low~~ ✅ partial | ~~**Per-tenant LLM selection.**~~ Secondary tricks pass now follows hermes' provider config. Main loop still hard-coded to Anthropic — would need a tool-use-capable host-LLM facade. |
 | 🟢 Low | **Fix doctor's `anthropic/anthropic/...` cosmetic bug.** Strip the provider prefix from `model.default` before formatting. |
 | 🟢 Low | **Compare-presidents page.** Would need historical pre-Muizzu data. Out of scope but the schema supports it. |
 | 🟢 Low | **RSS/Atom feed of new fact-checks** for public consumers. |
