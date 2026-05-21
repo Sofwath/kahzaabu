@@ -1,18 +1,25 @@
 #!/bin/bash
-# Wrapper for launchd: loads API key from a file with restricted perms,
-# then runs `kahzaabu pipeline`.
+# Wrapper for launchd / cron: loads API key from a file with restricted
+# perms, then runs `kahzaabu pipeline`.
 #
 # Setup:
 #   mkdir -p ~/.config/kahzaabu
-#   echo 'sk-ant-...' > ~/.config/kahzaabu/api_key
+#   echo 'sk-ant-...' > ~/.config/kahzaabu/api_key      # placeholder; real key
 #   chmod 600 ~/.config/kahzaabu/api_key
 #
-# launchd plist should point ProgramArguments at this script:
-#   <string>/Users/sofwath/Developer/myLabs/kahzaabu/scripts/run_pipeline.sh</string>
+# launchd plist points ProgramArguments at this script's absolute path
+# on YOUR machine (e.g. /Users/<you>/Developer/.../scripts/run_pipeline.sh).
+# The script itself derives PROJECT from $0 so it works regardless of
+# where the repo is cloned.
 
 set -euo pipefail
 
-PROJECT="/Users/sofwath/Developer/myLabs/kahzaabu"
+# Derive PROJECT from the script's own location ($0). Resolves symlinks
+# so a launchd plist symlinked from ~/Library/LaunchAgents/ still gets
+# the real repo path.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PROJECT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+
 KEY_FILE="${ANTHROPIC_API_KEY_FILE:-$HOME/.config/kahzaabu/api_key}"
 
 if [[ ! -f "$KEY_FILE" ]]; then

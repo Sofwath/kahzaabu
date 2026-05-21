@@ -203,12 +203,20 @@ def _slash_kahzaabu(raw_args: str) -> str:
     try:
         from kahzaabu import claims_db
         import sqlite3
-        db_path = Path("/Users/sofwath/Developer/myLabs/kahzaabu/data/kahzaabu.db")
+        # Derive the DB path from the installed kahzaabu package — works
+        # regardless of where the user cloned the repo. The hardcoded
+        # absolute path that used to live here leaked the developer's
+        # machine layout and broke installs on any other host.
         try:
             import kahzaabu as _kpkg
             db_path = Path(_kpkg.__file__).resolve().parents[1] / "data" / "kahzaabu.db"
         except ImportError:
-            pass
+            # If kahzaabu isn't on sys.path, fall back to a $KAHZAABU_DB
+            # override or the OS-conventional location.
+            db_path = Path(os.environ.get(
+                "KAHZAABU_DB",
+                str(Path.home() / ".local" / "share" / "kahzaabu" / "kahzaabu.db"),
+            ))
         conn = sqlite3.connect(str(db_path), check_same_thread=False)
         conn.row_factory = sqlite3.Row
         try:
