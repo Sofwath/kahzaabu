@@ -19,17 +19,20 @@ Each slice is complete + tested before the next starts. Discipline:
 | 0 | Bootstrap: ADRs + build plan + ARCHITECTURE skeleton | ✅ done (95fd8c3) | 0001-0006 | docs-only |
 | 1 | Claims enrichment (polarity / subject / is_checkable) | ✅ done (2e8c81d) | 0002 | DB + extractor + tests |
 | 2 | Q&A decomposition + backfill | ✅ done (749fa6a + backfill) | 0001 | 8,954 / 8,954 claims; 35,648 questions; avg 3.98/claim; $12.51 total spend (vs $200 ADR projection — Haiku 4.5 outperformed expectations) |
-| 3 | Claim matching (canonical_claim_id, embeddings + entity) | 🟢 code+tests in; live backfill pending | 0003 | new claim_embeddings + matching_runs; OpenAI text-embedding-3-small (~$0.20 expected); Anthropic Haiku 4.5 tiebreaker; ENTITY_OVERLAP threshold 0.6 / COSINE threshold 0.85 |
+| 3 | Claim matching (canonical_claim_id, embeddings + entity) | ✅ done | 0003, 0007 | 8,954/8,954 embedded; 151 paraphrase-grouped (1.7%); 53 LLM tiebreakers; **$0 spend** (local sentence-transformers); provider abstraction via ADR 0007 supports openai/voyage too |
 | 4 | Contradiction finder (the headline feature) | ⚪ pending | 0004 | new contradiction_pairs table + pipeline stage |
 | 5 | AVeriTeC verdict + Truth-O-Meter + RAGAR reasoning_chain | ⚪ pending | 0005 | enrich fact_checks; derivation function |
 | 6 | ClaimReview JSON-LD export | ⚪ pending | 0006 | per-factcheck + feed endpoint |
 | 7 | Web UI: Truth-O-Meter card + Q&A trace + /contradictions | ⚪ pending | — | UX |
 | 8 | `kahzaabu-fact-check` agentskills.io skill | ⚪ pending | — | hermes skill for external use |
 | 9 | docs/ARCHITECTURE.md fill-in + citation block | ⚪ pending | — | reference-project polish |
+| 10 | Quality evals + prompt regression tests | ⚪ pending | 0008 | golden set per stage, `kahzaabu eval` CLI, F1 metrics, hash-based prompt drift detection |
+| 11 | OSS readiness + model/data cards + backup | ⚪ pending | 0009 | LICENSE, CONTRIBUTING.md, SECURITY.md, CODE_OF_CONDUCT.md, docs/MODEL_CARD.md, docs/DATA_CARD.md, scripts/backup.sh + restore.sh, arXiv-style methodology paper draft |
+| 12 | Reproducibility manifest + observability + audit CLIs | ⚪ pending | 0010 | /api/reproducibility.json endpoint, prometheus_client, Grafana JSON, `kahzaabu audit` (bias/fairness), `kahzaabu transparency-report`, Dockerfile for one-command reproduction |
 
 ## Definition of done (the whole V2)
 
-When Slice 9 lands, the project is V2 if:
+When Slices 0–12 land, the project is V2 / reference-project-grade if:
 
 1. Every claim has `polarity`, `subject_normalized`, `is_checkable`, `canonical_claim_id`.
 2. Every checkable claim has at least one row in `claim_questions`.
@@ -40,6 +43,9 @@ When Slice 9 lands, the project is V2 if:
 7. `docs/ARCHITECTURE.md` has a citation block, a flow diagram, and links to ADRs 0001–0006.
 8. All 25+ existing tests still pass; new slices add their own tests.
 9. `./scripts/ci-dry-run.sh` passes against the final commit.
+10. **Quality**: `kahzaabu eval` produces precision/recall/F1 per pipeline stage against a hand-labeled golden set; numbers reported in `docs/EVAL_RESULTS.md`; prompt regression detection in CI.
+11. **OSS-ready**: LICENSE (Apache-2.0), CONTRIBUTING.md, SECURITY.md, CODE_OF_CONDUCT.md, docs/MODEL_CARD.md (per stage), docs/DATA_CARD.md, scripts/backup.sh; cloneable + buildable from scratch with documented one-command setup.
+12. **Reproducibility**: every published fact-check has a complete provenance trace queryable via `/api/reproducibility.json`; Dockerfile builds the stack; `kahzaabu audit` produces a bias/fairness summary; `kahzaabu transparency-report` generates a public-facing markdown report.
 
 ## Costs
 

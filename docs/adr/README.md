@@ -19,3 +19,7 @@ Each file is numbered chronologically (`NNNN-short-name.md`). Once accepted, ADR
 | 0004 | Contradiction verdict — 4-way | Accepted |
 | 0005 | Dual labeling — AVeriTeC + PolitiFact | Accepted |
 | 0006 | ClaimReview JSON-LD export | Accepted |
+| 0007 | Embedding provider abstraction | Accepted (supersedes the embedding model choice in 0003) |
+| 0008 | Quality evaluation methodology | Accepted |
+| 0009 | OSS readiness, methodology cards, backup | Accepted |
+| 0010 | Reproducibility manifest, observability, audit CLIs | Accepted |

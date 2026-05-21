@@ -31,12 +31,19 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 from . import claims_db
+from .embeddings import get_provider, EmbeddingProvider
 
 logger = logging.getLogger("kahzaabu")
 
-EMBED_MODEL = "text-embedding-3-small"
-EMBED_DIM = 1536
-EMBED_PRICE_PER_M = 0.02   # $/M tokens (OpenAI's current price)
+# Embedding model + dim are now provider-supplied (ADR 0007).
+# We keep these constants for legacy tests that need a known dim;
+# production code asks the active provider.
+DEFAULT_EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_EMBED_DIM = 384
+
+# Back-compat names (some tests import these directly):
+EMBED_MODEL = DEFAULT_EMBED_MODEL
+EMBED_DIM = DEFAULT_EMBED_DIM
 
 LLM_MODEL = "claude-haiku-4-5"
 LLM_PRICE_IN_PER_M = 1.0
@@ -128,12 +135,14 @@ def jaccard(a: set, b: set) -> float:
 # Embedding (OpenAI)
 # ────────────────────────────────────────────────────────────────────
 
-def embed_batch(texts: list[str]) -> tuple[list[list[float]], int]:
-    """Embed N texts in one OpenAI API call. Returns (vectors, total_tokens)."""
-    import openai
-    client = openai.OpenAI()
-    r = client.embeddings.create(model=EMBED_MODEL, input=texts)
-    return [d.embedding for d in r.data], r.usage.total_tokens
+def embed_batch(texts: list[str],
+                 provider: EmbeddingProvider | None = None) -> tuple:
+    """Embed N texts via the active provider. Returns
+    (vectors, tokens, model, dim, cost_usd)."""
+    p = provider or get_provider()
+    batch = p.embed(texts)
+    return (batch.vectors, batch.tokens, batch.model,
+             batch.dim, batch.cost_usd)
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -156,67 +165,75 @@ def _embed_text_for_claim(claim: dict) -> str:
 def run_embedding(conn, *, limit: Optional[int] = None,
                    batch_size: int = 100,
                    budget_usd: float = 5.0,
+                   provider_name: Optional[str] = None,
                    progress_cb=None) -> dict:
     """Embed all checkable claims that don't yet have an embedding.
-    Idempotent. Returns {claims_embedded, tokens, cost_usd}."""
-    if "OPENAI_API_KEY" not in os.environ:
-        raise RuntimeError(
-            "OPENAI_API_KEY not set — Slice 3 matching needs OpenAI's "
-            "embedding API. Add to ~/.hermes/.env or your shell."
-        )
+    Idempotent. Provider auto-selected via embeddings.get_provider()
+    unless `provider_name` is passed (test override or explicit user
+    pick). Returns {claims_embedded, tokens, cost_usd, model, dim}."""
     claims_db.init_claims_schema(conn)
+
+    provider = get_provider(name=provider_name)
+    logger.info("matcher.embed: provider=%s model=%s dim=%d",
+                 type(provider).__name__, provider.model, provider.dim)
 
     rows = claims_db.claims_missing_embedding(conn, limit=limit)
     todo = [dict(r) for r in rows]
     if not todo:
         logger.info("matcher.embed: no claims need embedding")
-        return {"claims_embedded": 0, "tokens": 0, "cost_usd": 0.0}
+        return {"claims_embedded": 0, "tokens": 0, "cost_usd": 0.0,
+                "model": provider.model, "dim": provider.dim}
 
     total_tokens = 0
+    total_cost = 0.0
     n_embedded = 0
     for batch_start in range(0, len(todo), batch_size):
         batch = todo[batch_start:batch_start + batch_size]
         texts = [_embed_text_for_claim(c) for c in batch]
-        vectors, tokens = embed_batch(texts)
+        vectors, tokens, model, dim, cost = embed_batch(texts, provider)
         total_tokens += tokens
+        total_cost += cost
         for c, v in zip(batch, vectors):
             claims_db.upsert_claim_embedding(
-                conn, c["id"], pack_vector(v), EMBED_MODEL, EMBED_DIM
+                conn, c["id"], pack_vector(v), model, dim
             )
             n_embedded += 1
-        cost = total_tokens / 1e6 * EMBED_PRICE_PER_M
         if progress_cb:
-            progress_cb(n_embedded, len(todo), total_tokens, cost)
-        if cost >= budget_usd:
-            logger.warning(f"matcher.embed: budget hit (${cost:.4f})")
+            progress_cb(n_embedded, len(todo), total_tokens, total_cost)
+        if total_cost >= budget_usd:
+            logger.warning(f"matcher.embed: budget hit (${total_cost:.4f})")
             break
 
-    cost = total_tokens / 1e6 * EMBED_PRICE_PER_M
     return {"claims_embedded": n_embedded, "tokens": total_tokens,
-            "cost_usd": cost}
+            "cost_usd": total_cost,
+            "model": provider.model, "dim": provider.dim}
 
 
 # ────────────────────────────────────────────────────────────────────
 # Match pass — candidate shortlist via cosine, confirm via entity / LLM
 # ────────────────────────────────────────────────────────────────────
 
-def _candidate_pool(conn, claim) -> list[dict]:
-    """Earlier claims in the SAME subject_normalized bucket. If the claim
+def _candidate_pool(conn, claim, *, embed_model: Optional[str] = None
+                     ) -> list[dict]:
+    """Earlier claims in the SAME subject_normalized bucket AND embedded
+    with the SAME model (cross-model cosine is meaningless). If the claim
     lacks subject_normalized (V1 legacy), fall back to subject."""
     bucket = claim.get("subject_normalized") or claim.get("subject")
     if not bucket:
         return []
-    rows = conn.execute(
-        """SELECT c.id, c.quote, c.subject, c.subject_normalized,
-                  ce.vector
-           FROM claims c
-           JOIN claim_embeddings ce ON ce.claim_id = c.id
-           WHERE c.language = 'EN'
-             AND c.id < ?
-             AND (c.subject_normalized = ? OR c.subject = ?)
-             AND c.type != 'no_specific_claims'""",
-        (claim["id"], bucket, bucket),
-    ).fetchall()
+    sql = """SELECT c.id, c.quote, c.subject, c.subject_normalized,
+                    ce.vector, ce.model
+             FROM claims c
+             JOIN claim_embeddings ce ON ce.claim_id = c.id
+             WHERE c.language = 'EN'
+               AND c.id < ?
+               AND (c.subject_normalized = ? OR c.subject = ?)
+               AND c.type != 'no_specific_claims'"""
+    params: list = [claim["id"], bucket, bucket]
+    if embed_model is not None:
+        sql += " AND ce.model = ?"
+        params.append(embed_model)
+    rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -252,9 +269,10 @@ def find_match(conn, claim) -> tuple[Optional[int], str]:
     emb = claims_db.get_claim_embedding(conn, claim["id"])
     if emb is None:
         return None, "no-embedding"
-    vec = unpack_vector(emb[0])
+    vec_bytes, model, _dim = emb
+    vec = unpack_vector(vec_bytes)
 
-    pool = _candidate_pool(conn, claim)
+    pool = _candidate_pool(conn, claim, embed_model=model)
     if not pool:
         return claim["id"], "self"   # first claim in its bucket
 

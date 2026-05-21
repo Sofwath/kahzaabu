@@ -33,10 +33,23 @@ tui = [
 mcp = [
     "mcp>=0.9",               # only needed for the legacy standalone MCP server (kahzaabu.mcp_server). The native hermes plugin uses no MCP SDK.
 ]
-ml = [
-    "openai>=1.40",           # V2 Slice 3: text-embedding-3-small for canonical claim matching (ADR 0003)
-    "numpy>=1.24",            # vector math (cosine similarity, packing/unpacking embedding BLOBs)
+# V2 Slice 3 — embedding-provider extras. ADR 0007 mandates that no single
+# proprietary API is required; users pick the backend they want and install
+# the matching extra. At least one ml-* extra must be installed for the
+# `match` command to work.
+ml-local = [
+    "sentence-transformers>=2.5",  # default — no API key needed
+    "numpy>=1.24",
 ]
+ml-openai = [
+    "openai>=1.40",                # text-embedding-3-small (literature default)
+    "numpy>=1.24",
+]
+ml-voyage = [
+    "voyageai>=0.2",               # voyage-3 (Anthropic-recommended)
+    "numpy>=1.24",
+]
+ml = ["kahzaabu[ml-local]"]        # the OSS default — `pip install kahzaabu[ml]` works offline
 all = [
     "kahzaabu[web,tui,mcp,ml]",
 ]
