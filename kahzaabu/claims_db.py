@@ -351,6 +351,56 @@ V2_SLICE3_MIGRATIONS = [
     "ALTER TABLE claims ADD COLUMN canonical_claim_id INTEGER REFERENCES claims(id)",
     "CREATE INDEX IF NOT EXISTS idx_claims_canonical ON claims(canonical_claim_id)",
 ]
+
+# V2 Slice 4 — contradiction finder (ADR 0004).
+#   contradiction_pairs — explicit pairwise contradictions with 4-way
+#   verdict. Each row carries a reasoning_chain (JSON) explaining the
+#   verdict, so the system's call is defensible / re-verifiable.
+V2_SLICE4_SCHEMA = """
+CREATE TABLE IF NOT EXISTS contradiction_pairs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_a_id INTEGER NOT NULL REFERENCES claims(id),
+    claim_b_id INTEGER NOT NULL REFERENCES claims(id),
+    subject TEXT NOT NULL,
+    verdict TEXT NOT NULL
+        CHECK(verdict IN ('CONTRADICTION', 'EVOLVING_POSITION',
+                          'CONTEXT_CHANGED', 'NOT_CONTRADICTORY')),
+    confidence REAL NOT NULL CHECK(confidence BETWEEN 0 AND 1),
+    reasoning_chain TEXT NOT NULL,
+    published INTEGER DEFAULT 0,
+    reviewed_at TEXT,
+    reviewed_by TEXT,
+    finder_run_id INTEGER,
+    detected_at TEXT NOT NULL,
+    UNIQUE(claim_a_id, claim_b_id)
+);
+CREATE INDEX IF NOT EXISTS idx_contra_subject   ON contradiction_pairs(subject);
+CREATE INDEX IF NOT EXISTS idx_contra_verdict   ON contradiction_pairs(verdict);
+CREATE INDEX IF NOT EXISTS idx_contra_published ON contradiction_pairs(published);
+
+CREATE TABLE IF NOT EXISTS contradiction_finder_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    candidates_shortlisted INTEGER DEFAULT 0,
+    pairs_classified INTEGER DEFAULT 0,
+    contradictions INTEGER DEFAULT 0,
+    evolving INTEGER DEFAULT 0,
+    context_changed INTEGER DEFAULT 0,
+    not_contradictory INTEGER DEFAULT 0,
+    tokens_in INTEGER DEFAULT 0,
+    tokens_out INTEGER DEFAULT 0,
+    cost_usd REAL DEFAULT 0,
+    model TEXT,
+    status TEXT DEFAULT 'running',
+    error_message TEXT
+);
+"""
+
+VALID_CONTRADICTION_VERDICTS = frozenset({
+    "CONTRADICTION", "EVOLVING_POSITION",
+    "CONTEXT_CHANGED", "NOT_CONTRADICTORY",
+})
 V2_SLICE3_SCHEMA = """
 CREATE TABLE IF NOT EXISTS claim_embeddings (
     claim_id INTEGER PRIMARY KEY REFERENCES claims(id),
@@ -400,6 +450,7 @@ def init_claims_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(CLAIMS_SCHEMA)
     conn.executescript(V2_SLICE2_SCHEMA)
     conn.executescript(V2_SLICE3_SCHEMA)
+    conn.executescript(V2_SLICE4_SCHEMA)
     # Apply phase-3 ALTERs + V2 migrations idempotently
     for sql in PUBLISH_MIGRATIONS + V2_SLICE1_MIGRATIONS + V2_SLICE3_MIGRATIONS:
         try:

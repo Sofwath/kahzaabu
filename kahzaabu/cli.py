@@ -239,6 +239,64 @@ def match(ctx, limit, embed_budget, llm_budget, skip_embedding,
                     f"${mr['llm_cost_usd']:.4f}")
 
 
+@main.command(name="enrich-claims")
+@click.option("--limit", default=0, type=int)
+@click.option("--budget", default=5.0, type=float,
+               help="LLM budget cap in USD")
+@click.option("--concurrency", default=6, type=int)
+@click.pass_context
+def enrich_claims(ctx, limit, budget, concurrency):
+    """V2 — backfill polarity / subject_normalized / is_checkable for
+    claims that pre-date Slice 1's extractor enrichment (ADR 0002)."""
+    from .claims_enricher import run_enrichment
+    from . import claims_db
+    conn = ctx.obj["conn"]
+    claims_db.init_claims_schema(conn)
+
+    def _p(done, total, ti, to, cost):
+        if done % 100 == 0 or done == total:
+            click.echo(f"  {done}/{total}  tokens_in={ti} out={to}  cost=${cost:.3f}")
+
+    r = run_enrichment(conn, limit=(limit or None),
+                       budget_usd=budget, concurrency=concurrency,
+                       progress_cb=_p)
+    click.echo(f"\nEnriched: {r['enriched']} claims, "
+                f"{r.get('errors', 0)} errors, ${r['cost_usd']:.3f}")
+
+
+@main.command(name="find-contradictions")
+@click.option("--limit", default=0, type=int,
+               help="Cap to N candidate pairs (use for dry-runs)")
+@click.option("--budget", default=10.0, type=float)
+@click.option("--concurrency", default=4, type=int)
+@click.pass_context
+def find_contradictions(ctx, limit, budget, concurrency):
+    """V2 — find pairs of contradictory claims (ADR 0004, the headline V2
+    feature). Requires Slice 1 enrichment to have populated polarity +
+    subject_normalized; run `kahzaabu enrich-claims` first if needed.
+
+    Writes to contradiction_pairs with 4-way verdict:
+      CONTRADICTION | EVOLVING_POSITION | CONTEXT_CHANGED | NOT_CONTRADICTORY
+    Only CONTRADICTION verdicts propagate to fact-checks downstream.
+    """
+    from .contradictions import run_finder
+    from . import claims_db
+    conn = ctx.obj["conn"]
+    claims_db.init_claims_schema(conn)
+
+    def _p(done, total, n_contra, cost):
+        if done % 5 == 0 or done == total:
+            click.echo(f"  {done}/{total}  contradictions={n_contra}  cost=${cost:.3f}")
+
+    r = run_finder(conn, limit=(limit or None),
+                    budget_usd=budget, concurrency=concurrency,
+                    progress_cb=_p)
+    click.echo(f"\nClassified: {r['classified']} pairs")
+    for v, n in r["by_verdict"].items():
+        click.echo(f"  {v:<20} {n}")
+    click.echo(f"Cost: ${r['cost_usd']:.3f}")
+
+
 @main.command()
 @click.option("--budget", default=1.0, type=float, help="Daily LLM budget cap in USD")
 @click.option("--days-back", default=7, type=int)
