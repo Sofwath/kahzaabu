@@ -53,8 +53,11 @@ def ask(request: Request, req: AskRequest,
             )
 
     # Cache only for first-turn questions (no session_id). Following turns vary.
+    # Include PROMPT_VERSION so prompt/format changes auto-invalidate old entries.
     if not req.session_id:
-        key = f"{req.question.strip().lower()}|{req.enable_web}|{req.max_iterations}"
+        from ...qna_agentic import PROMPT_VERSION
+        key = (f"{PROMPT_VERSION}|{req.question.strip().lower()}|"
+               f"{req.enable_web}|{req.max_iterations}")
         cached = ask_cache.get(key)
         if cached:
             out = dict(cached)

@@ -33,6 +33,15 @@ PRICE_IN_PER_M = 3.0
 PRICE_OUT_PER_M = 15.0
 WEB_SEARCH_PRICE_PER_SEARCH = 0.01
 
+# Cheaper model used only for the narrative-tricks guarantee-pass.
+# Haiku 4.5 handles structured-output-from-existing-context well.
+HAIKU_MODEL = "claude-haiku-4-5"
+HAIKU_IN_PER_M = 1.0
+HAIKU_OUT_PER_M = 5.0
+
+# Bump when SYSTEM_PROMPT or output format changes — invalidates LRU cache.
+PROMPT_VERSION = "v2-narrative-tricks"
+
 TODAY = date.today().isoformat()
 MAX_SESSION_BYTES = 80_000        # ~20K tokens of history before we compress
 MAX_TOOL_RESULT_BYTES = 8_000     # cap per tool result so context doesn't explode
@@ -63,7 +72,63 @@ Don't just dump tool results. Synthesize. If you find a conflict between manifes
 
 DATA FRESHNESS: When the question is about "recent" or "this week" or "what's happening now", call `archive_stats` first and check the `freshness` field. If `is_stale` is true (>24h since last scrape), warn the user at the end of your answer that the data may be missing very recent items, and suggest they run the pipeline to refresh. Do NOT trigger the pipeline yourself — only report.
 
-Output: well-structured Markdown. Use headings, bullet points, and inline article-id citations. End with a one-line confidence/gap note when appropriate."""
+=== NARRATIVE-TRICKS ANALYSIS (REQUIRED for article-based answers) ===
+
+Whenever your answer draws on the body or quotes of press releases / speeches, you MUST end with a section titled exactly:
+
+  🎭 Narrative tricks observed
+
+In that section, list the framing/PR techniques you noticed in the source text. For each, give:
+  • the technique name (from the catalog below)
+  • the verbatim phrase (in quotes, from the article you read)
+  • a one-line explanation of what the technique does
+
+If you read article/speech text and found nothing notable, say so explicitly: "No notable framing tricks observed beyond standard institutional language." Don't pad with non-examples.
+
+OMIT this section ONLY when the question is purely data-shaped ("how many fact-checks", "what's the archive size") and you didn't read any article text. Otherwise it appears at the end of every answer.
+
+Catalog of named tricks — quote the verbatim phrase, then name the technique:
+
+1. **Hero framing** — superlatives that elevate the actor without evidence: "first ever", "historic", "unprecedented", "in less than X months", "for the first time in N years".
+2. **Active voice for wins** — "the President personally directed", "the President officiated" while the underlying work was done by ministries/contractors.
+3. **Passive voice for failures** — "mistakes were made", "delays occurred", "challenges arose" (no agent named).
+4. **Inherited-project credit** — claiming credit while quietly using disclosure words like "previously stalled", "inherited", "resumed", "revived" — the disclosure itself reveals it wasn't the speaker's project.
+5. **Manufactured momentum** — "progress is on track", "rapid pace", "significant strides" without a measurable target.
+6. **Vague timeframes** — "soon", "in due course", "very near future", "in the coming period" replacing previously-specific dates.
+7. **Goalpost shifting** — switching the metric (MVR billions → % of GDP), the scope ("12,940 units this year" → "9,175 units in various stages"), or the deadline ("by end-2025" → "before end of 2028") without acknowledging the change.
+8. **Empty markers of action** — "directives have been issued", "a committee has been formed", "discussions are underway" reported as if outcomes.
+9. **Crisis externalization** — attributing setbacks to "global situation", "regional tensions", "previous administration" while keeping wins attributed to the speaker.
+10. **Religious / national legitimacy** — "God willing", "by Allah's grace", "for the nation" appended to political commitments to make them harder to challenge.
+11. **Adverb inflation** — "successfully", "expertly", "extensively", "fully", "comprehensively" without a metric. Strip the adverb and ask: what's the actual claim?
+12. **Pronoun pivot** — "I delivered" / "this Administration secured" for wins vs "we faced challenges" / "challenges remain" for setbacks.
+13. **Future-tense crowding** — heavy "will" usage, few "did" / "have completed" statements. Signals announcement-as-substitute-for-delivery.
+14. **Audience-specific framing** — same fact, different framing for different audiences. (e.g. "India Out" at home, "India is a key partner" abroad.)
+15. **Bypass framing** — "I brought the government to you", "no need to travel to Malé" — implicit critique of the prior model, framed as a personal innovation.
+16. **Pre-existing-event repackaging** — taking a routine ceremony, signing, or visit and labelling it "milestone", "achievement", "first-of-its-kind".
+
+Be specific and disciplined: only flag a technique if you can quote the actual phrase. Don't claim "bias" without evidence. The point is to make the reader see the framing layer, not to score political points.
+
+When MULTIPLE techniques appear on the same phrase, list them together. When the source text is sparse (e.g. archive returns nothing useful), skip the section rather than invent.
+
+ANTI-OVER-CLAIMING RULES (hard):
+- One quote ≠ one trick. A neutral factual sentence ("The President visited X on Y date") is NOT a trick. Don't flag it.
+- A trick requires either (a) loaded/superlative wording, (b) a measurable claim without a metric, (c) a vague timeframe, or (d) attribution that shifts agency. If none of these is present, skip.
+- Cap the section at 5 items. Pick the strongest. Quantity is not quality.
+- The presence of bullet points, formal tone, or government-speak is NOT a trick — those are standard institutional language. Only flag what's genuinely manipulative.
+- If you're tempted to write "this could be seen as…" or "this might imply…" — don't. Either the textual evidence is clear, or you skip the item.
+- Standard ceremonial language ("expressed gratitude", "extended condolences", "wished success") is NOT a trick. Skip.
+
+=== OUTPUT FORMAT (follow exactly) ===
+
+Structure your final answer in this order:
+
+1. Substantive answer to the question (headings, bullets, citations)
+2. **🎭 Narrative tricks observed** — REQUIRED whenever you quoted or summarised press-release text. Each item: technique name (bold) → verbatim quote → one-line explanation. If genuinely none, write the single line: *"No notable framing tricks observed beyond standard institutional language."*
+3. *Confidence / gap note* — one short line on data freshness, missing coverage, or uncertainty
+
+Skip step 2 ONLY for purely data-shaped questions where you didn't read any article body text. Otherwise it is non-optional.
+
+Use Markdown. Cite article ids inline as `[NNNNN]`."""
 
 
 # ---------- internal tools (DB-backed, cheap) ----------
@@ -505,7 +570,57 @@ def ask_agentic(conn: sqlite3.Connection, question: str, *,
             "if your client supports it.)"
         )
 
+    # Guarantee-pass: if the agent quoted/read article body text but did not
+    # include the required "🎭 Narrative tricks observed" section, do one
+    # focused follow-up call. The system prompt asks for this but models
+    # routinely treat it as optional under tool-use pressure.
+    _ARTICLE_TOOLS = {"search_articles", "get_article", "search_factchecks",
+                      "get_factcheck", "search_manifesto", "get_promise",
+                      "list_recent", "web_search"}
+    touched_articles = any(t.get("tool") in _ARTICLE_TOOLS for t in tool_trace)
+    haiku_in = haiku_out = 0
+    if (touched_articles and "🎭" not in final_text
+            and not final_text.startswith("(")):  # skip on failure messages
+        try:
+            messages.append({"role": "assistant", "content": final_text})
+            messages.append({
+                "role": "user",
+                "content": (
+                    "Good. Now append ONLY the '🎭 Narrative tricks observed' "
+                    "section as specified in your instructions. Use the catalog. "
+                    "For each item: technique name (bold), verbatim quote from "
+                    "the article text you already showed, one-line explanation. "
+                    "If you genuinely see nothing notable, output exactly: "
+                    "'🎭 Narrative tricks observed\\n\\nNo notable framing tricks "
+                    "observed beyond standard institutional language.' "
+                    "Do not repeat the substantive answer. Section only."
+                ),
+            })
+            r = client.messages.create(
+                model=HAIKU_MODEL, max_tokens=1500, system=SYSTEM_PROMPT,
+                messages=messages,
+            )
+            haiku_in = r.usage.input_tokens
+            haiku_out = r.usage.output_tokens
+            tricks_text = ""
+            for block in r.content:
+                if getattr(block, "type", None) == "text":
+                    tricks_text += getattr(block, "text", "")
+            tricks_text = tricks_text.strip()
+            if tricks_text:
+                # Ensure visual separator and a leading heading marker
+                if not tricks_text.startswith("##") and not tricks_text.startswith("🎭"):
+                    tricks_text = "## " + tricks_text
+                final_text = final_text.rstrip() + "\n\n---\n\n" + tricks_text
+                tool_trace.append({"iteration": iterations + 1,
+                                    "tool": "(narrative-tricks-pass)",
+                                    "args": {},
+                                    "result_preview": f"appended {len(tricks_text)} chars"})
+        except Exception as e:
+            logger.warning(f"narrative-tricks pass failed: {e}")
+
     cost = (tokens_in / 1e6 * PRICE_IN_PER_M + tokens_out / 1e6 * PRICE_OUT_PER_M
+            + haiku_in / 1e6 * HAIKU_IN_PER_M + haiku_out / 1e6 * HAIKU_OUT_PER_M
             + web_searches * WEB_SEARCH_PRICE_PER_SEARCH)
 
     # Persist the session (post-trim again to keep stored size sane)
