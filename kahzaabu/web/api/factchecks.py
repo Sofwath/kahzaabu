@@ -44,7 +44,9 @@ def list_factchecks(
 ) -> dict:
     sql = """SELECT id, category, claim_date, claim, what_actually_happened, type,
                     topic, source, source_article_ids, evidence_quotes, created_at,
-                    published, public_summary
+                    published, public_summary,
+                    verdict_label, truth_score, truth_score_label,
+                    contradiction_pair_id, speaker
              FROM fact_checks WHERE 1=1""" + _public_filter(user)
     params: list = []
     if category:
@@ -95,7 +97,9 @@ def get_factcheck(
 ) -> dict:
     sql = """SELECT id, category, claim_date, claim, what_actually_happened, type,
                     topic, source, source_article_ids, evidence_quotes, confidence,
-                    created_at, published, public_summary
+                    created_at, published, public_summary,
+                    verdict_label, truth_score, truth_score_label, reasoning_chain,
+                    contradiction_pair_id, speaker
              FROM fact_checks WHERE id = ?""" + _public_filter(user)
     r = conn.execute(sql, (fc_id,)).fetchone()
     if not r:
@@ -109,6 +113,10 @@ def get_factcheck(
         d["evidence_quotes"] = json.loads(d["evidence_quotes"] or "[]")
     except Exception:
         d["evidence_quotes"] = []
+    try:
+        d["reasoning_chain"] = json.loads(d["reasoning_chain"] or "[]")
+    except Exception:
+        d["reasoning_chain"] = []
     ev = conn.execute(
         """SELECT id, url, title, snippet, relevance, summary, retrieved_at
            FROM fact_check_evidence WHERE fact_check_id = ? ORDER BY id""",

@@ -27,7 +27,7 @@ from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from .api import admin, articles, ask, auth, claimreview, corrections, factchecks, freshness, inspect, manifesto, stats, viz
+from .api import admin, articles, ask, auth, claimreview, contradictions, corrections, factchecks, freshness, inspect, manifesto, stats, viz
 from .limits import limiter
 
 # Quiet noisy logs
@@ -60,6 +60,7 @@ app.include_router(corrections.router, prefix="/api", tags=["corrections"])
 app.include_router(manifesto.router, prefix="/api", tags=["manifesto"])
 app.include_router(freshness.router, prefix="/api", tags=["freshness"])
 app.include_router(claimreview.router, prefix="/api", tags=["claimreview"])
+app.include_router(contradictions.router, prefix="/api", tags=["contradictions"])
 
 
 @app.get("/robots.txt", include_in_schema=False)
@@ -90,6 +91,11 @@ def page_browse():
 @app.get("/lies", include_in_schema=False)
 def page_lies():
     return FileResponse(STATIC_DIR / "lies.html")
+
+
+@app.get("/contradictions", include_in_schema=False)
+def page_contradictions():
+    return FileResponse(STATIC_DIR / "contradictions.html")
 
 
 @app.get("/article/{article_id}", include_in_schema=False)

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>kahzaabu — contradictions</title>
+<link rel="stylesheet" href="/static/css/kahzaabu.css" />
+<style>
+.cpair {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--lie);
+    border-radius: var(--r-md);
+    padding: var(--sp-lg) var(--sp-xl);
+    margin-bottom: var(--sp-md);
+}
+.cpair.v-CONTRADICTION    { border-left-color: var(--lie); }
+.cpair.v-EVOLVING_POSITION { border-left-color: var(--shifting); }
+.cpair.v-CONTEXT_CHANGED   { border-left-color: var(--secondary); }
+.cpair.v-NOT_CONTRADICTORY { border-left-color: var(--fg-muted); }
+
+.cpair .side {
+    background: var(--surface-2);
+    border-radius: var(--r-sm);
+    padding: var(--sp-md);
+    margin: var(--sp-sm) 0;
+    font: var(--type-body-prose);
+}
+.cpair .side .when {
+    font: var(--type-caption);
+    color: var(--fg-dim);
+    margin-bottom: var(--sp-xs);
+}
+.cpair .meta {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-md);
+    margin-bottom: var(--sp-md);
+    flex-wrap: wrap;
+}
+.cpair .verdict-tag {
+    padding: 3px 12px;
+    border-radius: var(--r-pill);
+    font: var(--type-label);
+    background: var(--lie);
+    color: #fff;
+}
+.cpair.v-EVOLVING_POSITION .verdict-tag { background: var(--shifting); color: var(--fg-inverse); }
+.cpair.v-CONTEXT_CHANGED   .verdict-tag { background: var(--secondary); }
+.cpair.v-NOT_CONTRADICTORY .verdict-tag { background: var(--fg-muted); }
+.cpair .confidence { font: var(--type-caption); color: var(--fg-dim); }
+.cpair .reasoning {
+    margin-top: var(--sp-md);
+    font: var(--type-small);
+    color: var(--fg-dim);
+}
+.cpair .reasoning summary { cursor: pointer; color: var(--primary); }
+.cpair .reasoning ol { padding-left: var(--sp-xl); }
+.cpair .reasoning li { margin-bottom: var(--sp-sm); }
+.cpair .reasoning .question { color: var(--fg); }
+.cpair .reasoning .evidence { color: var(--fg-muted); font-style: italic; margin-top: 2px; }
+
+.legend {
+    display: flex;
+    gap: var(--sp-md);
+    flex-wrap: wrap;
+    margin-bottom: var(--sp-lg);
+    font: var(--type-small);
+    color: var(--fg-dim);
+}
+.legend .swatch {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border-radius: 2px;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+</style>
+</head>
+<body>
+<header class="site">
+    <div class="brand">kahzaabu <span class="tag">contradictions</span></div>
+    <nav>
+        <a href="/"        data-nav="dashboard">Dashboard</a>
+        <a href="/browse"  data-nav="browse">Articles</a>
+        <a href="/lies"    data-nav="lies">Fact-checks</a>
+        <a href="/contradictions" data-nav="contradictions">Contradictions</a>
+        <a href="/compare" data-nav="compare">Compare</a>
+        <a href="/manifesto" data-nav="manifesto">Manifesto</a>
+        <a href="/ask"     data-nav="ask">Ask</a>
+    </nav>
+</header>
+
+<main>
+    <h1>Contradictions</h1>
+    <p class="muted">Pairs of claims that the system flagged as opposing on the same subject. The LLM verifier classifies each pair into one of four verdicts (ADR 0004). Only <strong>CONTRADICTION</strong> verdicts are propagated to the public fact-check stream — the other three are persisted for transparency and reviewable here.</p>
+
+    <div class="legend">
+        <span><span class="swatch" style="background: var(--lie);"></span>CONTRADICTION</span>
+        <span><span class="swatch" style="background: var(--shifting);"></span>EVOLVING_POSITION — honest revision, acknowledged</span>
+        <span><span class="swatch" style="background: var(--secondary);"></span>CONTEXT_CHANGED — external facts shifted (defensible)</span>
+        <span><span class="swatch" style="background: var(--fg-muted);"></span>NOT_CONTRADICTORY — polarity-pair false positive</span>
+    </div>
+
+    <section class="filters">
+        <select id="verdict">
+            <option value="">all verdicts</option>
+            <option value="CONTRADICTION">CONTRADICTION only</option>
+            <option value="EVOLVING_POSITION">EVOLVING_POSITION</option>
+            <option value="CONTEXT_CHANGED">CONTEXT_CHANGED</option>
+            <option value="NOT_CONTRADICTORY">NOT_CONTRADICTORY</option>
+        </select>
+        <input type="text" id="subject" placeholder="filter by subject…" />
+        <button id="apply">Apply</button>
+    </section>
+
+    <p class="muted" id="result-count">Loading…</p>
+    <section id="items"></section>
+    <div class="pagination">
+        <button id="prev">‹ Prev</button>
+        <span id="pageinfo" class="muted"></span>
+        <button id="next">Next ›</button>
+    </div>
+</main>
+
+<footer class="site">Automated analysis of public press releases. Not legal advice. · <a href="/methodology">Methodology</a> · <a href="/corrections">Report a correction</a></footer>
+
+<script src="/static/js/api.js"></script>
+<script>
+setNavActive && setNavActive("contradictions");
+
+const state = { limit: 20, offset: 0, total: 0 };
+
+function fmtDate(d) { return d ? d.slice(0,10) : ""; }
+function el(tag, attrs={}, ...kids) {
+    const e = document.createElement(tag);
+    for (const k in attrs) {
+        if (k === "class") e.className = attrs[k];
+        else if (k === "style") e.style.cssText = attrs[k];
+        else e.setAttribute(k, attrs[k]);
+    }
+    for (const k of kids) {
+        if (k == null) continue;
+        e.appendChild(typeof k === "string" ? document.createTextNode(k) : k);
+    }
+    return e;
+}
+
+function renderPair(p) {
+    const div = el("div", { class: `cpair v-${p.verdict}` });
+    const meta = el("div", { class: "meta" });
+    meta.appendChild(el("span", { class: "verdict-tag" }, p.verdict.replace(/_/g, " ")));
+    meta.appendChild(el("span", { class: "topic" }, p.subject || "(no subject)"));
+    meta.appendChild(el("span", { class: "confidence" }, `confidence ${(p.confidence*100).toFixed(0)}%`));
+    div.appendChild(meta);
+
+    if (p.claim_a) {
+        const a = el("div", { class: "side" });
+        a.appendChild(el("div", { class: "when" }, `${fmtDate(p.claim_a.published_date)} — ${p.claim_a.title || ''}`));
+        a.appendChild(document.createTextNode(p.claim_a.quote || ''));
+        div.appendChild(a);
+    }
+    if (p.claim_b) {
+        const b = el("div", { class: "side" });
+        b.appendChild(el("div", { class: "when" }, `${fmtDate(p.claim_b.published_date)} — ${p.claim_b.title || ''}`));
+        b.appendChild(document.createTextNode(p.claim_b.quote || ''));
+        div.appendChild(b);
+    }
+
+    // Lazy-load reasoning chain on expand
+    const det = el("details", { class: "reasoning" });
+    det.appendChild(el("summary", {}, "Show LLM verifier's reasoning chain"));
+    const ol = el("ol");
+    det.appendChild(ol);
+    det.addEventListener("toggle", async () => {
+        if (det.open && ol.children.length === 0) {
+            try {
+                const r = await fetch(`/api/contradictions/${p.id}`);
+                const d = await r.json();
+                for (const step of (d.reasoning_chain || [])) {
+                    const li = el("li");
+                    if (step.question) li.appendChild(el("div", { class: "question" }, "Q: " + step.question));
+                    if (step.answer)   li.appendChild(el("div", {}, "A: " + step.answer));
+                    if (step.evidence && step.evidence !== "no direct evidence") li.appendChild(el("div", { class: "evidence" }, step.evidence));
+                    ol.appendChild(li);
+                }
+                if (ol.children.length === 0) ol.appendChild(el("li", {}, "(no reasoning chain stored for this pair)"));
+            } catch (e) {
+                ol.appendChild(el("li", {}, "(could not load reasoning chain)"));
+            }
+        }
+    });
+    div.appendChild(det);
+    return div;
+}
+
+async function load() {
+    const verdict = document.getElementById("verdict").value;
+    const subject = document.getElementById("subject").value.trim();
+    const p = new URLSearchParams({ limit: state.limit, offset: state.offset });
+    if (verdict) p.set("verdict", verdict);
+    if (subject) p.set("subject", subject);
+    const r = await fetch(`/api/contradictions?${p}`);
+    const d = await r.json();
+    state.total = d.total;
+    document.getElementById("result-count").textContent = `${d.total} contradiction pair${d.total === 1 ? '' : 's'}`;
+    const items = document.getElementById("items");
+    items.innerHTML = "";
+    for (const it of d.items) items.appendChild(renderPair(it));
+    document.getElementById("pageinfo").textContent =
+        `${state.offset + 1}–${Math.min(state.offset + state.limit, state.total)} of ${state.total}`;
+    document.getElementById("prev").disabled = state.offset === 0;
+    document.getElementById("next").disabled = state.offset + state.limit >= state.total;
+}
+
+document.getElementById("apply").addEventListener("click", () => { state.offset = 0; load(); });
+document.getElementById("prev").addEventListener("click", () => { state.offset = Math.max(0, state.offset - state.limit); load(); });
+document.getElementById("next").addEventListener("click", () => { state.offset += state.limit; load(); });
+load();
+</script>
+</body>
+</html>

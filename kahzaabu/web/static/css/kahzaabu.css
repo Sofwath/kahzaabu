@@ -231,6 +231,33 @@ h4 {
 .badge.context               { background: var(--secondary); color: #fff; }
 .badge.good                  { background: var(--good);     color: var(--fg-inverse); }
 
+/* ─── Truth-O-Meter (V2 Slice 7; ADR 0005) ──────────────────────────── */
+.truth-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: var(--r-pill);
+    font: var(--type-label);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border: 1px solid transparent;
+    margin-right: var(--sp-sm);
+}
+/* 6=TRUE → green; 5=MOSTLY_TRUE → green-tinted;
+   4=HALF_TRUE → amber; 3=MOSTLY_FALSE → orange;
+   2=FALSE → red; 1=PANTS_ON_FIRE → dark-red with glow */
+.truth-6 { background: var(--good);     color: var(--fg-inverse); }
+.truth-5 { background: rgba(91,199,135,0.30); color: var(--good); border-color: var(--good); }
+.truth-4 { background: rgba(247,201,72,0.25); color: var(--shifting); border-color: var(--shifting); }
+.truth-3 { background: rgba(240,160,75,0.25); color: var(--deadline); border-color: var(--deadline); }
+.truth-2 { background: rgba(233,69,96,0.25); color: var(--lie); border-color: var(--lie); }
+.truth-1 {
+    background: var(--lie); color: #fff; border-color: var(--lie);
+    box-shadow: 0 0 12px rgba(233,69,96,0.6);
+}
+
 /* ─── tables ────────────────────────────────────────────────────────── */
 table.kz {
     width: 100%;

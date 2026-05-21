@@ -13,6 +13,7 @@
         <a href="/"        data-nav="dashboard">Dashboard</a>
         <a href="/browse"  data-nav="browse">Articles</a>
         <a href="/lies"    data-nav="lies">Fact-checks</a>
+        <a href="/contradictions" data-nav="contradictions">Contradictions</a>
         <a href="/compare" data-nav="compare">Compare</a>
         <a href="/manifesto" data-nav="manifesto">Manifesto</a>
         <a href="/ask"     data-nav="ask">Ask</a>
@@ -79,10 +80,18 @@ function buildQuery() {
 function renderItem(it) {
     const div = el("div", { class: `fc-item ${catClass(it.category)}` });
     const head = el("div", { class: "head" });
+    // Truth-O-Meter badge (V2 Slice 7) — PolitiFact-style public label
+    if (it.truth_score && it.truth_score_label) {
+        head.appendChild(el("span", {
+            class: `truth-badge truth-${it.truth_score}`,
+            title: `Truth score ${it.truth_score}/6 (${it.verdict_label || ''})`,
+        }, `${it.truth_score}/6 ${it.truth_score_label.replace(/_/g, " ")}`));
+    }
     head.appendChild(el("span", { class: `badge ${catBadgeClass(it.category)}` }, it.category));
     head.appendChild(el("span", { class: "date" }, fmtDate(it.claim_date)));
     if (it.topic) head.appendChild(el("span", { class: "topic" }, it.topic));
     if (it.n_evidence) head.appendChild(el("span", { class: "topic", style: "color: var(--good);" }, `🌐 ${it.n_evidence} web sources`));
+    if (it.contradiction_pair_id) head.appendChild(el("span", { class: "topic", style: "color: var(--lie);" }, `🪞 contradiction pair #${it.contradiction_pair_id}`));
     div.appendChild(head);
     div.appendChild(el("div", { class: "claim" }, it.claim || ""));
     if (it.what_actually_happened) {
