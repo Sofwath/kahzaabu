@@ -168,8 +168,11 @@
         </fieldset>
     </form>
     <p class="muted" style="font: var(--type-tiny); margin: -8px 0 var(--sp-lg) 0;">
-        Default is DuckDuckGo — no tracking. Switch to Google if you want
-        broader coverage of mvlaw.gov.mv's older / .pdf content.
+        <strong>Privacy note:</strong> any search you type here is sent
+        to your chosen engine's servers before reaching mvlaw.gov.mv —
+        DuckDuckGo (default) does not log it, Google does. For
+        100% private browsing, click any tile below directly: each is
+        a static link to the AGO domain with no third party involved.
     </p>
 
     <div class="laws-grid" id="laws-grid"></div>
@@ -238,11 +241,14 @@ const SECTIONS = [
 ];
 
 // Site-search engines. Both build a `site:` qualifier so results stay
-// on the AGO domain. DuckDuckGo's `kp=-2` disables safe-search
-// inheritance from the user's settings (statutory text can mention
-// terms a strict filter would block). Google ignores the same param.
+// on the AGO domain. We deliberately DO NOT override the user's
+// safesearch preference — earlier versions used DDG's `kp=-2` param
+// to disable strict filtering, but that param is undocumented in
+// DDG's public API and could change silently. If a user has strict
+// safesearch on, that's their setting; we're not the right layer to
+// override it for them.
 const SEARCH_ENGINES = {
-    ddg:    q => `https://duckduckgo.com/?q=${encodeURIComponent(`site:${CANONICAL_HOST} ${q}`)}&kp=-2`,
+    ddg:    q => `https://duckduckgo.com/?q=${encodeURIComponent(`site:${CANONICAL_HOST} ${q}`)}`,
     google: q => `https://www.google.com/search?q=${encodeURIComponent(`site:${CANONICAL_HOST} ${q}`)}`,
 };
 

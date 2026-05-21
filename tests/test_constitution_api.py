@@ -183,6 +183,36 @@ class LawsPageTests(unittest.TestCase):
         self.assertNotIn("checked", google_radio.group(0),
                           "google radio must NOT be the default")
 
+    def test_ddg_url_does_not_override_safesearch(self):
+        """Concern: the earlier `kp=-2` DDG parameter was undocumented
+        and could break silently. We removed it; the user's own
+        safesearch setting wins."""
+        r = self.c.get("/laws")
+        body = r.text
+        import re
+        # Find the DDG URL builder line.
+        m = re.search(r'ddg:\s*q\s*=>\s*`([^`]+)`', body)
+        self.assertIsNotNone(m, "DDG URL builder not found")
+        ddg_template = m.group(1)
+        self.assertNotIn("kp=", ddg_template,
+                          "kp= parameter must not be set — user's "
+                          "DDG safesearch preference is theirs to control")
+
+    def test_search_query_privacy_disclaimer_visible(self):
+        """Concern: even the DDG default still routes the typed query
+        through a third party. The page must surface this clearly so
+        users can choose to click tiles directly for full privacy."""
+        r = self.c.get("/laws")
+        body = r.text.lower()
+        # Some plain-language privacy disclosure must be visible above
+        # the search box. We check for two phrases so a future
+        # copy-edit doesn't silently lose the disclosure.
+        self.assertIn("privacy note", body,
+                       "missing 'Privacy note:' label on the search box")
+        self.assertTrue(
+            "100% private" in body or "fully private" in body,
+            "missing the 'click tiles directly for full privacy' callout")
+
     def test_url_registry_centralised(self):
         """Concern: URL drift across the page. SECTIONS is the single
         source of truth; hard-coded https://old.mvlaw.gov.mv paths
