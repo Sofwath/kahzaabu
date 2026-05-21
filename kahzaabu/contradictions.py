@@ -68,6 +68,26 @@ OPPOSITE_POLARITIES = {
 # We require at least N days between the two claims.
 MIN_DAYS_APART = 1
 
+# Semantic-similarity prefilter. Two claims with opposite polarity on the
+# same subject_normalized bucket are CANDIDATES, but most of those pairs
+# are about different TOPICS within the bucket (e.g. "the government" can
+# affirm housing and deny corruption — same subject, different propositions,
+# not a contradiction). The cosine threshold restricts to pairs about the
+# SAME proposition.
+#
+# Calibration on the kahzaabu corpus:
+#   ≥ 0.95  paraphrases (same canonical_claim_id; we exclude these as not
+#           contradiction-candidates — they ARE the same statement)
+#   0.55-0.95  same proposition, different framing — contradiction zone
+#   < 0.55  different propositions — likely false positive, drop
+#
+# 0.55 is the floor where the LLM call is worth making. Tunable; lower
+# = more LLM cost but catches more edge cases. Higher = cheaper but misses
+# real contradictions where the wording diverged a lot.
+MIN_SIMILARITY = 0.55
+MAX_SIMILARITY = 0.95   # above this, the two claims are paraphrases of
+                         # one another — exclude (they're not opposites)
+
 
 SYSTEM = """You are evaluating whether two political claims, made at different times,
 constitute a contradiction. You will be given:
@@ -141,7 +161,10 @@ JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
 def shortlist_candidates(conn, *, limit: Optional[int] = None,
-                          subject_bucket: Optional[str] = None
+                          subject_bucket: Optional[str] = None,
+                          min_similarity: float = MIN_SIMILARITY,
+                          max_similarity: float = MAX_SIMILARITY,
+                          apply_similarity_filter: bool = True,
                           ) -> list[tuple[int, int, str]]:
     """Return list of (claim_a_id, claim_b_id, subject) triples that
     are candidate contradictions per the polarity-pair rules.
@@ -205,6 +228,51 @@ def shortlist_candidates(conn, *, limit: Optional[int] = None,
             continue
         seen.add((a, b))
         out.append((a, b, s))
+
+    if not apply_similarity_filter:
+        return out
+
+    # Semantic-similarity filter. Without this, "the government" pairs
+    # 4,000+ claims-of-fact against 40 denials at the polarity level,
+    # producing ~96k candidates that mostly describe different topics.
+    # Filter to pairs whose embeddings are close enough to be about the
+    # SAME proposition.
+    return _filter_by_similarity(conn, out, min_similarity, max_similarity)
+
+
+def _filter_by_similarity(conn, candidates: list[tuple[int, int, str]],
+                           min_sim: float, max_sim: float
+                           ) -> list[tuple[int, int, str]]:
+    """Drop pairs whose cosine similarity falls outside [min_sim, max_sim].
+    Pairs without embeddings are dropped silently (matcher hadn't run on
+    them). Reuses matcher.cosine + matcher.unpack_vector to stay in sync."""
+    from . import matcher as _m
+    # Pre-load all needed embeddings in one query
+    ids: set[int] = set()
+    for a, b, _ in candidates:
+        ids.add(a); ids.add(b)
+    if not ids:
+        return []
+    placeholders = ",".join("?" * len(ids))
+    rows = conn.execute(
+        f"SELECT claim_id, vector, model FROM claim_embeddings "
+        f"WHERE claim_id IN ({placeholders})", sorted(ids),
+    ).fetchall()
+    vecs: dict[int, tuple[list, str]] = {
+        r[0]: (_m.unpack_vector(r[1]), r[2]) for r in rows
+    }
+    out: list[tuple[int, int, str]] = []
+    for a, b, subj in candidates:
+        if a not in vecs or b not in vecs:
+            continue
+        va, ma = vecs[a]
+        vb, mb = vecs[b]
+        if ma != mb:
+            # cross-model cosine is meaningless (ADR 0007)
+            continue
+        sim = _m.cosine(va, vb)
+        if min_sim <= sim <= max_sim:
+            out.append((a, b, subj))
     return out
 
 

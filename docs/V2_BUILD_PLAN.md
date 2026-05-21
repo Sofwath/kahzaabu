@@ -20,7 +20,7 @@ Each slice is complete + tested before the next starts. Discipline:
 | 1 | Claims enrichment (polarity / subject / is_checkable) | ✅ done (2e8c81d) | 0002 | DB + extractor + tests |
 | 2 | Q&A decomposition + backfill | ✅ done (749fa6a + backfill) | 0001 | 8,954 / 8,954 claims; 35,648 questions; avg 3.98/claim; $12.51 total spend (vs $200 ADR projection — Haiku 4.5 outperformed expectations) |
 | 3 | Claim matching (canonical_claim_id, embeddings + entity) | ✅ done | 0003, 0007 | 8,954/8,954 embedded; 151 paraphrase-grouped (1.7%); 53 LLM tiebreakers; **$0 spend** (local sentence-transformers); provider abstraction via ADR 0007 supports openai/voyage too |
-| 4 | Contradiction finder (the headline feature) | ⚪ pending | 0004 | new contradiction_pairs table + pipeline stage |
+| 4 | Contradiction finder (the headline feature) | ✅ done | 0004 | enrichment backfill: 8,954 claims @ $3; finder: 48 candidates → **2 CONTRADICTION verdicts** (judicial interference + external debt), 46 NOT_CONTRADICTORY, @ $0.41. Sonnet 4.6 verifier; semantic-similarity prefilter (cosine 0.55-0.95) keeps shortlist tractable. Total slice cost ~$3.50. |
 | 5 | AVeriTeC verdict + Truth-O-Meter + RAGAR reasoning_chain | ⚪ pending | 0005 | enrich fact_checks; derivation function |
 | 6 | ClaimReview JSON-LD export | ⚪ pending | 0006 | per-factcheck + feed endpoint |
 | 7 | Web UI: Truth-O-Meter card + Q&A trace + /contradictions | ⚪ pending | — | UX |

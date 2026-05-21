@@ -114,7 +114,7 @@ class ShortlistTests(unittest.TestCase):
                           subject_normalized="housing", quote="we will deliver")
         c2 = _seed_claim(self.conn, article_id=2, polarity="DENY",
                           subject_normalized="housing", quote="we will not deliver")
-        cands = contradictions.shortlist_candidates(self.conn)
+        cands = contradictions.shortlist_candidates(self.conn, apply_similarity_filter=False)
         self.assertEqual(len(cands), 1)
         a, b, subj = cands[0]
         self.assertEqual(sorted([a, b]), sorted([c1, c2]))
@@ -127,7 +127,7 @@ class ShortlistTests(unittest.TestCase):
                      subject_normalized="x", quote="q1")
         _seed_claim(self.conn, article_id=2, polarity="AFFIRM",
                      subject_normalized="x", quote="q2")
-        cands = contradictions.shortlist_candidates(self.conn)
+        cands = contradictions.shortlist_candidates(self.conn, apply_similarity_filter=False)
         self.assertEqual(cands, [])
 
     def test_does_not_pair_different_subject(self):
@@ -137,7 +137,7 @@ class ShortlistTests(unittest.TestCase):
                      subject_normalized="housing", quote="q1")
         _seed_claim(self.conn, article_id=2, polarity="DENY",
                      subject_normalized="taxes", quote="q2")
-        cands = contradictions.shortlist_candidates(self.conn)
+        cands = contradictions.shortlist_candidates(self.conn, apply_similarity_filter=False)
         self.assertEqual(cands, [])
 
     def test_does_not_pair_same_day_claims(self):
@@ -147,7 +147,7 @@ class ShortlistTests(unittest.TestCase):
                      subject_normalized="x", quote="q1")
         _seed_claim(self.conn, article_id=2, polarity="DENY",
                      subject_normalized="x", quote="q2")
-        cands = contradictions.shortlist_candidates(self.conn)
+        cands = contradictions.shortlist_candidates(self.conn, apply_similarity_filter=False)
         self.assertEqual(cands, [])
 
     def test_neutral_polarity_never_pairs(self):
@@ -157,7 +157,7 @@ class ShortlistTests(unittest.TestCase):
                      subject_normalized="x", quote="ceremonial 1")
         _seed_claim(self.conn, article_id=2, polarity="DENY",
                      subject_normalized="x", quote="denial of x")
-        cands = contradictions.shortlist_candidates(self.conn)
+        cands = contradictions.shortlist_candidates(self.conn, apply_similarity_filter=False)
         self.assertEqual(cands, [])
 
     def test_promise_vs_denial_of_promise_pairs(self):
@@ -167,7 +167,7 @@ class ShortlistTests(unittest.TestCase):
                           subject_normalized="housing", quote="we promise 12k")
         c2 = _seed_claim(self.conn, article_id=2, polarity="DENIAL_OF_PROMISE",
                           subject_normalized="housing", quote="never promised 12k")
-        cands = contradictions.shortlist_candidates(self.conn)
+        cands = contradictions.shortlist_candidates(self.conn, apply_similarity_filter=False)
         self.assertEqual(len(cands), 1)
         self.assertEqual(sorted([cands[0][0], cands[0][1]]), sorted([c1, c2]))
 
@@ -181,7 +181,7 @@ class ShortlistTests(unittest.TestCase):
         contradictions._persist_pair(
             self.conn, 1, c1, c2, "x", "NOT_CONTRADICTORY", 0.2, [],
         )
-        cands = contradictions.shortlist_candidates(self.conn)
+        cands = contradictions.shortlist_candidates(self.conn, apply_similarity_filter=False)
         self.assertEqual(cands, [])
 
     def test_excludes_non_checkable_claims(self):
@@ -228,6 +228,64 @@ class EnumsAndConstantsTests(unittest.TestCase):
         # PROMISE → DENIAL_OF_PROMISE
         self.assertIn("DENIAL_OF_PROMISE",
                        contradictions.OPPOSITE_POLARITIES["PROMISE"])
+
+
+class SimilarityFilterTests(unittest.TestCase):
+    """The semantic-similarity prefilter is the practical scaling fix —
+    polarity-pair alone produces ~100x too many candidates on the live
+    corpus. These tests pin the filter behaviour."""
+
+    def setUp(self):
+        self.conn = _bootstrap()
+        _seed_article(self.conn, 1, "2025-01-01")
+        _seed_article(self.conn, 2, "2025-06-01")
+        self.c1 = _seed_claim(self.conn, article_id=1, polarity="AFFIRM",
+                                subject_normalized="housing",
+                                quote="we will build 12000 flats")
+        self.c2 = _seed_claim(self.conn, article_id=2, polarity="DENY",
+                                subject_normalized="housing",
+                                quote="we will not build 12000 flats")
+        self.c3 = _seed_claim(self.conn, article_id=2, polarity="DENY",
+                                subject_normalized="housing",
+                                quote="we will not raise GST")
+
+        # Seed embeddings: c1↔c2 in the contradiction zone (cosine ≈ 0.7,
+        # between MIN_SIMILARITY 0.55 and MAX_SIMILARITY 0.95);
+        # c1↔c3 orthogonal — different topic, should be filtered out.
+        from kahzaabu import matcher
+        import math
+        # angle 45 degrees → cosine ≈ 0.71 (squarely in the keep zone)
+        v_flats_a = [1.0, 0.0] + [0.0] * 382
+        v_flats_b = [math.cos(math.radians(45)),
+                      math.sin(math.radians(45))] + [0.0] * 382
+        v_gst     = [0.0, 0.0, 1.0] + [0.0] * 381   # orthogonal
+        for cid, v in [(self.c1, v_flats_a), (self.c2, v_flats_b),
+                        (self.c3, v_gst)]:
+            claims_db.upsert_claim_embedding(
+                self.conn, cid, matcher.pack_vector(v),
+                "test-model", 384,
+            )
+
+    def test_filter_drops_low_similarity_pairs(self):
+        # Without filter: c1↔c2 + c1↔c3 + c2↔c3 (some)
+        all_cands = contradictions.shortlist_candidates(
+            self.conn, apply_similarity_filter=False)
+        self.assertGreaterEqual(len(all_cands), 2)
+
+        # With filter: c1↔c2 stays (high cosine); c1↔c3 dropped
+        filtered = contradictions.shortlist_candidates(
+            self.conn, min_similarity=0.55)
+        nos = [(a, b) for a, b, _ in filtered]
+        self.assertIn((min(self.c1, self.c2), max(self.c1, self.c2)), nos)
+        self.assertNotIn((min(self.c1, self.c3), max(self.c1, self.c3)), nos)
+
+    def test_filter_drops_paraphrases_above_max(self):
+        # c1↔c2 cosine ≈ 0.71. If we lower max_similarity below 0.71,
+        # the pair is treated as paraphrase and excluded.
+        filtered = contradictions.shortlist_candidates(
+            self.conn, min_similarity=0.55, max_similarity=0.65)
+        nos = [(a, b) for a, b, _ in filtered]
+        self.assertNotIn((min(self.c1, self.c2), max(self.c1, self.c2)), nos)
 
 
 class PersistTests(unittest.TestCase):
