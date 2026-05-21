@@ -401,6 +401,30 @@ VALID_CONTRADICTION_VERDICTS = frozenset({
     "CONTRADICTION", "EVOLVING_POSITION",
     "CONTEXT_CHANGED", "NOT_CONTRADICTORY",
 })
+
+# V2 Slice 5 — AVeriTeC verdict labels + PolitiFact Truth-O-Meter +
+# RAGAR reasoning chains on fact_checks (ADR 0005).
+V2_SLICE5_MIGRATIONS = [
+    "ALTER TABLE fact_checks ADD COLUMN verdict_label TEXT",
+    "ALTER TABLE fact_checks ADD COLUMN truth_score INTEGER",
+    "ALTER TABLE fact_checks ADD COLUMN truth_score_label TEXT",
+    "ALTER TABLE fact_checks ADD COLUMN reasoning_chain TEXT",
+    "ALTER TABLE fact_checks ADD COLUMN contradiction_pair_id INTEGER REFERENCES contradiction_pairs(id)",
+    "ALTER TABLE fact_checks ADD COLUMN speaker TEXT DEFAULT 'Mohamed Muizzu'",
+    "ALTER TABLE fact_checks ADD COLUMN canonical_url TEXT",
+    "CREATE INDEX IF NOT EXISTS idx_fc_verdict_label  ON fact_checks(verdict_label)",
+    "CREATE INDEX IF NOT EXISTS idx_fc_truth_score    ON fact_checks(truth_score)",
+    "CREATE INDEX IF NOT EXISTS idx_fc_contradiction  ON fact_checks(contradiction_pair_id)",
+]
+
+VALID_VERDICT_LABELS = frozenset({
+    "SUPPORTED", "REFUTED", "NOT_ENOUGH_EVIDENCE", "CONFLICTING_EVIDENCE",
+})
+
+VALID_TRUTH_LABELS = frozenset({
+    "TRUE", "MOSTLY_TRUE", "HALF_TRUE",
+    "MOSTLY_FALSE", "FALSE", "PANTS_ON_FIRE",
+})
 V2_SLICE3_SCHEMA = """
 CREATE TABLE IF NOT EXISTS claim_embeddings (
     claim_id INTEGER PRIMARY KEY REFERENCES claims(id),
@@ -452,7 +476,8 @@ def init_claims_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(V2_SLICE3_SCHEMA)
     conn.executescript(V2_SLICE4_SCHEMA)
     # Apply phase-3 ALTERs + V2 migrations idempotently
-    for sql in PUBLISH_MIGRATIONS + V2_SLICE1_MIGRATIONS + V2_SLICE3_MIGRATIONS:
+    for sql in (PUBLISH_MIGRATIONS + V2_SLICE1_MIGRATIONS
+                + V2_SLICE3_MIGRATIONS + V2_SLICE5_MIGRATIONS):
         try:
             conn.execute(sql)
         except sqlite3.OperationalError:

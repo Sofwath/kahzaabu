@@ -264,6 +264,36 @@ def enrich_claims(ctx, limit, budget, concurrency):
                 f"{r.get('errors', 0)} errors, ${r['cost_usd']:.3f}")
 
 
+@main.command(name="enrich-factchecks")
+@click.option("--limit", default=0, type=int)
+@click.option("--rebuild", is_flag=True,
+               help="Re-derive all fact_checks (default: only those "
+                    "with verdict_label IS NULL)")
+@click.pass_context
+def enrich_factchecks(ctx, limit, rebuild):
+    """V2 — derive verdict_label / truth_score / reasoning_chain
+    on fact_checks (Slice 5, ADR 0005). Deterministic — no LLM cost."""
+    from .fact_check_enricher import run_enrichment
+    from . import claims_db
+    conn = ctx.obj["conn"]
+    claims_db.init_claims_schema(conn)
+
+    def _p(done, total):
+        if done % 50 == 0 or done == total:
+            click.echo(f"  {done}/{total}")
+
+    r = run_enrichment(conn, limit=(limit or None),
+                       only_unset=not rebuild, progress_cb=_p)
+    click.echo(f"\nPromoted contradictions: {r['promoted_contradictions']}")
+    click.echo(f"Enriched fact_checks: {r['enriched']}")
+    click.echo("\nBy verdict_label:")
+    for v, n in sorted(r["by_verdict_label"].items(), key=lambda x: -x[1]):
+        click.echo(f"  {v:<25} {n}")
+    click.echo("\nBy truth_score (1=PANTS_ON_FIRE → 6=TRUE):")
+    for s, n in sorted(r["by_truth_score"].items()):
+        click.echo(f"  {s} ({['?','PANTS_ON_FIRE','FALSE','MOSTLY_FALSE','HALF_TRUE','MOSTLY_TRUE','TRUE'][s] if s and s<=6 else '?'}): {n}")
+
+
 @main.command(name="find-contradictions")
 @click.option("--limit", default=0, type=int,
                help="Cap to N candidate pairs (use for dry-runs)")
