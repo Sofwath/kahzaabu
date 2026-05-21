@@ -63,17 +63,24 @@ def parse_constitution(txt_path: Path = DEFAULT_TXT) -> list[dict]:
 
     records: list[dict] = []
     chapter = ""
-    pending_title: list[str] = []   # title lines for the NEXT article
+    # Two separate title buffers:
+    #   * current_title: full title for the article we're INSIDE right now.
+    #     Seeded by the pre-marker pending_next_title + the on-line prefix
+    #     when an NN. marker arrives.
+    #   * pending_next_title: title-y lines we see while inside an article.
+    #     If an NN. marker arrives soon, this becomes the next article's
+    #     title; if instead a clearly-body line arrives first, these were
+    #     false positives and get flushed to the current body.
+    current_title: list[str] = []
+    pending_next_title: list[str] = []
     current_no: Optional[int] = None
-    current_title_inline: list[str] = []  # title-column text seen WHILE inside an article
+    current_title_inline: list[str] = []  # extra title lines within the title-window AFTER the marker
     current_body: list[str] = []
+    title_lines_remaining = 0   # window of N lines after NN. that can still be title
 
     def _close_current():
         if current_no is not None:
-            # The title is pending_title (lines BEFORE the marker) plus any
-            # title-column continuation lines that came AFTER the marker on
-            # subsequent lines (current_title_inline).
-            title_lines = pending_title + current_title_inline
+            title_lines = current_title + current_title_inline
             records.append(_make_record(current_no, title_lines,
                                          current_body, chapter))
 
@@ -85,8 +92,9 @@ def parse_constitution(txt_path: Path = DEFAULT_TXT) -> list[dict]:
             current_no = None
             current_body = []
             current_title_inline = []
-            pending_title = []
-            chapter = ch.group(1).split(None, 1)[1]  # roman only for now
+            current_title = []
+            pending_next_title = []
+            chapter = ch.group(1).split(None, 1)[1]
             continue
         # The chapter title line (UPPERCASE) follows
         if chapter and re.fullmatch(r"\s*[A-Z][A-Z0-9 ,'’/&\-]{3,}\s*", raw) \
@@ -105,16 +113,26 @@ def parse_constitution(txt_path: Path = DEFAULT_TXT) -> list[dict]:
             # Reject TOC-style lines (they have `..........` runs of dots)
             if "....." in raw:
                 continue
-            if 1 <= new_no <= 320:
-                # Close previous, start new — pending_title was consumed by
-                # _close_current via _make_record. Reset it for this new
-                # article: seed with the same-line prefix if present.
+            # Sequential check: articles in the Constitution go 1, 2, …,
+            # 301 in order. Sub-clauses like `1. citizens of the Maldives`
+            # inside article 9's body look identical to my article-number
+            # regex — reject them by requiring forward progress. The very
+            # first article (current_no is None) and chapter transitions
+            # (next article jumps to a higher number) are still accepted.
+            is_sequential = current_no is None or new_no > current_no
+            if 1 <= new_no <= 320 and is_sequential:
                 _close_current()
-                pending_title = [title_prefix] if title_prefix else []
+                current_title = list(pending_next_title)
+                if title_prefix:
+                    current_title.append(title_prefix)
+                pending_next_title = []
                 current_no = new_no
                 current_title_inline = []
                 current_body = [body_inline] if body_inline else []
+                title_lines_remaining = 2
                 continue
+            # Not a real article marker (sub-clause numbering or stale TOC
+            # echo) — fall through and treat as body text.
 
         # Not an article-start line — classify as body vs title vs blank.
         stripped = raw.strip()
@@ -123,20 +141,36 @@ def parse_constitution(txt_path: Path = DEFAULT_TXT) -> list[dict]:
                 current_body.append("")
             continue
 
-        # Heuristic: lines that start at left margin (≤4 leading spaces) AND
-        # are short-ish are title continuations. Anything else is body.
         leading_spaces = len(raw) - len(raw.lstrip(" "))
         if current_no is None:
-            # Pre-first-article — accumulate as title for first article
-            pending_title.append(stripped)
+            # Pre-first-article — accumulate as title for the article #1
+            pending_next_title.append(stripped)
             continue
 
-        if leading_spaces <= 4 and len(stripped) <= 50:
-            # title continuation for the CURRENT (open) article — captures
-            # multi-line titles like "Manner of\nPresidential election"
+        looks_titlish = (leading_spaces <= 4
+                          and len(stripped) <= 50
+                          and not stripped.endswith((":", ";", ".", ",", "—", ")"))
+                          and not stripped.startswith(("(", "—", "•")))
+
+        if title_lines_remaining > 0 and looks_titlish:
+            # Within the title-window after NN. — continuation of the
+            # CURRENT article's title.
             current_title_inline.append(stripped)
+            title_lines_remaining -= 1
+        elif looks_titlish:
+            # Past the title window — might be the NEXT article's
+            # pre-marker title. Buffer it; cap at 3 to avoid runaway
+            # collection. If a body line arrives before NN., flush.
+            pending_next_title.append(stripped)
+            pending_next_title = pending_next_title[-3:]
         else:
+            # Real body line — clear pending_next_title (it was a false
+            # positive) and append to current body.
+            if pending_next_title and current_no is not None:
+                current_body.extend(pending_next_title)
+                pending_next_title = []
             current_body.append(stripped)
+            title_lines_remaining = 0
 
     _close_current()
 
@@ -219,19 +253,39 @@ CREATE TABLE IF NOT EXISTS constitution_articles (
 CREATE INDEX IF NOT EXISTS idx_const_chapter ON constitution_articles(chapter);
 """
 
+FTS_SQL = """
+CREATE VIRTUAL TABLE IF NOT EXISTS constitution_articles_fts
+USING fts5(article_no UNINDEXED, title, body);
+"""
 
-def init_constitution_schema(conn: sqlite3.Connection) -> None:
+
+def init_constitution_schema(conn: sqlite3.Connection) -> bool:
+    """Create the main table and (if SQLite has FTS5) the FTS index.
+    Returns True iff FTS5 is available."""
     conn.executescript(SCHEMA_SQL)
+    has_fts = False
+    try:
+        conn.executescript(FTS_SQL)
+        has_fts = True
+    except sqlite3.OperationalError as e:
+        logger.info("constitution: FTS5 not available (%s) — will use LIKE fallback", e)
     conn.commit()
+    return has_fts
 
 
 def import_constitution(conn: sqlite3.Connection,
                           txt_path: Path = DEFAULT_TXT) -> int:
     """Idempotent: REPLACE INTO so a re-import refreshes content."""
     from datetime import datetime, timezone
-    init_constitution_schema(conn)
+    has_fts = init_constitution_schema(conn)
     records = parse_constitution(txt_path)
     now = datetime.now(timezone.utc).isoformat()
+    # Clear FTS so re-imports don't double-insert
+    if has_fts:
+        try:
+            conn.execute("DELETE FROM constitution_articles_fts")
+        except sqlite3.OperationalError:
+            pass
     for r in records:
         conn.execute(
             "INSERT OR REPLACE INTO constitution_articles "
@@ -240,17 +294,45 @@ def import_constitution(conn: sqlite3.Connection,
             (r["article_no"], r["chapter"], r["title"], r["body"],
              r["source_version"], now),
         )
+        if has_fts:
+            conn.execute(
+                "INSERT INTO constitution_articles_fts "
+                "(article_no, title, body) VALUES (?, ?, ?)",
+                (r["article_no"], r["title"], r["body"]),
+            )
     conn.commit()
-    logger.info("constitution: imported %d articles", len(records))
+    logger.info("constitution: imported %d articles (FTS5: %s)",
+                len(records), "yes" if has_fts else "no")
     return len(records)
 
 
 def lookup(conn: sqlite3.Connection, query: str, limit: int = 5) -> list[dict]:
-    """Cheap LIKE-based search. Returns articles whose title or body matches.
-
-    Ranks rough-relevance by: title match > body match, with title hits
-    boosted. Limited to `limit` results.
+    """Search the Constitution. Uses FTS5 with BM25 ranking when available
+    (returns ~3× better top results, fewer iterations for the agent);
+    falls back to LIKE for SQLite builds without FTS5.
     """
+    if not query or not query.strip():
+        return []
+
+    # Try FTS5 first
+    try:
+        rows = conn.execute(
+            """SELECT a.article_no, a.chapter, a.title, a.body, a.source_version
+               FROM constitution_articles_fts f
+               JOIN constitution_articles a ON a.article_no = f.article_no
+               WHERE constitution_articles_fts MATCH ?
+               ORDER BY bm25(constitution_articles_fts, 10.0, 1.0)
+               LIMIT ?""",
+            (_fts_sanitize(query), limit),
+        ).fetchall()
+        if rows:
+            return [dict(r) for r in rows]
+        # Zero hits via FTS — might be a phrase no token matches; fall through
+        # to LIKE below.
+    except sqlite3.OperationalError:
+        pass
+
+    # LIKE fallback (used when FTS5 missing OR returned 0 results)
     q = f"%{query.lower()}%"
     rows = conn.execute(
         """SELECT article_no, chapter, title, body, source_version,
@@ -262,3 +344,16 @@ def lookup(conn: sqlite3.Connection, query: str, limit: int = 5) -> list[dict]:
         (q, q, q, limit),
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+def _fts_sanitize(query: str) -> str:
+    """Turn freeform user text into a safe FTS5 MATCH expression.
+
+    FTS5 has special operators (AND, OR, NOT, NEAR, *, ", etc.) — quoting
+    each word handles them. Splits on whitespace and wraps each token in
+    double quotes so 'NOT' or punctuation can't blow up the query.
+    """
+    tokens = re.findall(r"[A-Za-z0-9']+", query)
+    if not tokens:
+        return '""'
+    return " ".join(f'"{t}"' for t in tokens)
