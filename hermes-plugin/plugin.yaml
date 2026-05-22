@@ -22,7 +22,12 @@ provides_tools:
   - kahzaabu_get_promise
   - kahzaabu_run_eval
 provides_slash_commands:
-  - /kahzaabu
+  - /kahzaabu             # backwards-compat alias for /kahzaabu-ask
+  - /kahzaabu-ask         # natural-language Q&A (agentic loop)
+  - /kahzaabu-recent      # articles from last N days
+  - /kahzaabu-stats       # archive snapshot
+  - /kahzaabu-promise     # search 2023 manifesto promises
+  - /kahzaabu-factcheck   # fetch one fact-check by id
 provides_cli_subcommands:
   - hermes kahzaabu
 

@@ -171,13 +171,47 @@ def register(ctx) -> None:
         ),
     )
 
-    # Register the `/kahzaabu <question>` slash command — available in any
-    # hermes chat session, including messaging gateway (Telegram, WhatsApp).
+    # Slash commands — available in any hermes chat including
+    # messaging gateways (Telegram, WhatsApp, Slack, Discord). The
+    # split (Slice D) gives mobile users autocomplete for specific
+    # actions instead of typing free-form questions every time.
+    # `/kahzaabu <args>` is kept as a backwards-compat alias that
+    # routes to /kahzaabu-ask.
     ctx.register_command(
         name="kahzaabu",
         handler=_slash_kahzaabu,
-        description="Ask kahzaabu a question over the Maldives Presidency archive",
+        description="Ask kahzaabu a question (alias of /kahzaabu-ask)",
         args_hint="<question>",
+    )
+    ctx.register_command(
+        name="kahzaabu-ask",
+        handler=_slash_kahzaabu,
+        description="Ask kahzaabu a natural-language question; agentic loop with optional web search",
+        args_hint="<question>",
+    )
+    ctx.register_command(
+        name="kahzaabu-recent",
+        handler=_slash_recent,
+        description="List articles from the last N days (default 7)",
+        args_hint="[days]",
+    )
+    ctx.register_command(
+        name="kahzaabu-stats",
+        handler=_slash_stats,
+        description="Archive freshness + counts (articles, claims, fact-checks)",
+        args_hint="",
+    )
+    ctx.register_command(
+        name="kahzaabu-promise",
+        handler=_slash_promise,
+        description="Search 2023 manifesto promises by topic keyword",
+        args_hint="<topic>",
+    )
+    ctx.register_command(
+        name="kahzaabu-factcheck",
+        handler=_slash_factcheck,
+        description="Fetch a single fact-check by ID with web evidence",
+        args_hint="<id>",
     )
 
     # Register the pre_llm_call ambient-context hook unless opted out.
@@ -254,3 +288,112 @@ def _slash_kahzaabu(raw_args: str) -> str:
         f"${result.get('cost_usd', 0):.3f}*"
     )
     return result.get("answer", "(no answer)") + footer
+
+
+def _slash_recent(raw_args: str) -> str:
+    """/kahzaabu-recent [days] — list articles from the last N days.
+
+    Wraps handle_recent_activity (the same tool kahzaabu_ask uses
+    internally), so the slash command and the agent-callable tool
+    share semantics: defaults to 7 days, capped at 30, lists
+    articles + their checkable claims."""
+    import json
+    raw_args = (raw_args or "").strip()
+    days = 7
+    if raw_args:
+        try:
+            days = max(1, min(int(raw_args), 30))
+        except ValueError:
+            return f"Usage: /kahzaabu-recent [days]  (got '{raw_args}')"
+    from plugins.kahzaabu.tools import handle_recent_activity
+    out = json.loads(handle_recent_activity({"days": days, "limit": 12}))
+    if "error" in out:
+        return f"❌ {out['error']}"
+    items = out.get("articles") or out.get("items") or []
+    if not items:
+        return f"No articles in the last {days} day(s)."
+    lines = [f"**Articles in the last {days} day(s):**\n"]
+    for a in items[:12]:
+        title = (a.get('title') or '')[:80]
+        date = a.get('published_date') or ''
+        aid = a.get('id', '?')
+        lines.append(f"• {date}  [{aid}] {title}")
+    return "\n".join(lines)
+
+
+def _slash_stats(raw_args: str) -> str:
+    """/kahzaabu-stats — archive snapshot."""
+    import json
+    from plugins.kahzaabu.tools import handle_stats
+    out = json.loads(handle_stats({}))
+    if "error" in out:
+        return f"❌ {out['error']}"
+    fresh = out.get("freshness") or {}
+    return (
+        f"**kahzaabu archive snapshot**\n\n"
+        f"• Articles (Muizzu era, EN): {out.get('articles_muizzu_era', '?'):,}\n"
+        f"• Claims extracted: {out.get('claims_extracted', '?'):,}\n"
+        f"• Published fact-checks: {out.get('fact_checks', '?'):,}\n"
+        f"• Manifesto promises tracked: {out.get('manifesto_promises', '?'):,}\n\n"
+        f"_Last scrape: {fresh.get('last_scrape_at') or 'never'} "
+        f"({'⚠️ stale' if fresh.get('is_stale') else 'fresh'})_"
+    )
+
+
+def _slash_promise(raw_args: str) -> str:
+    """/kahzaabu-promise <topic> — search 2023 manifesto promises."""
+    import json
+    raw_args = (raw_args or "").strip()
+    if not raw_args:
+        return ("Usage: /kahzaabu-promise <topic>\n"
+                "Example: /kahzaabu-promise housing")
+    from plugins.kahzaabu.tools import handle_manifesto
+    out = json.loads(handle_manifesto({"q": raw_args, "limit": 8}))
+    if "error" in out:
+        return f"❌ {out['error']}"
+    items = out.get("promises") or out.get("items") or []
+    if not items:
+        return f"No manifesto promises match '{raw_args}'."
+    lines = [f"**Manifesto promises matching '{raw_args}':**\n"]
+    for p in items[:8]:
+        status = p.get("delivery_status") or "?"
+        section = p.get("section") or "?"
+        text = (p.get("promise_text_en") or "")[:120]
+        lines.append(f"• [{status}] ({section}) {text}")
+    return "\n".join(lines)
+
+
+def _slash_factcheck(raw_args: str) -> str:
+    """/kahzaabu-factcheck <id> — fetch one fact-check."""
+    import json
+    raw_args = (raw_args or "").strip()
+    if not raw_args:
+        return ("Usage: /kahzaabu-factcheck <id>\n"
+                "Tip: /kahzaabu-recent first, then look up the ID.")
+    try:
+        fc_id = int(raw_args)
+    except ValueError:
+        return f"Expected a numeric fact-check id; got '{raw_args}'"
+    from plugins.kahzaabu.tools import handle_get_factcheck
+    out = json.loads(handle_get_factcheck({"id": fc_id}))
+    if "error" in out:
+        return f"❌ {out['error']}"
+    fc = out.get("fact_check") or out
+    verdict = fc.get("verdict_label") or fc.get("category") or "?"
+    truth = fc.get("truth_score_label") or ""
+    claim = (fc.get("claim") or "")[:200]
+    explanation = (fc.get("what_actually_happened") or "")[:400]
+    evidence = out.get("web_evidence") or []
+    lines = [
+        f"**Fact-check #{fc_id}**  ·  verdict: **{verdict}**  ·  {truth}",
+        f"",
+        f"_Claim:_ {claim}",
+    ]
+    if explanation:
+        lines.append(f"")
+        lines.append(f"_What actually happened:_ {explanation}")
+    if evidence:
+        lines.append(f"\n_Web evidence ({len(evidence)} source(s)):_")
+        for ev in evidence[:3]:
+            lines.append(f"  • {ev.get('relevance', '?')}: {(ev.get('url') or ev.get('title', ''))[:80]}")
+    return "\n".join(lines)
