@@ -73,7 +73,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from .api import (articles, ask, claimreview, constitution,
                   contradictions, corrections, factchecks, freshness, inspect,
-                  manifesto, reproducibility, stats, viz)
+                  manifesto, registry, reproducibility, stats, viz)
 from .limits import limiter
 from .. import metrics
 
@@ -123,6 +123,7 @@ app.include_router(inspect.router, prefix="/api", tags=["inspect"])
 # permissions. No web-side credentials exist anywhere in the system.
 app.include_router(corrections.router, prefix="/api", tags=["corrections"])
 app.include_router(manifesto.router, prefix="/api", tags=["manifesto"])
+app.include_router(registry.router, prefix="/api", tags=["registry"])
 app.include_router(freshness.router, prefix="/api", tags=["freshness"])
 app.include_router(claimreview.router, prefix="/api", tags=["claimreview"])
 app.include_router(contradictions.router, prefix="/api", tags=["contradictions"])

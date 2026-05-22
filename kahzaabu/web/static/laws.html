@@ -43,6 +43,44 @@
 }
 .laws-search button:hover { filter: brightness(1.1); }
 
+/* Authoritative-entity tiles (ADR 0011, Slice E) */
+.laws-entities { margin-top: var(--sp-xxxl); }
+.laws-entities h3 { margin: 0 0 var(--sp-sm) 0; }
+.entity-group-label {
+    font: var(--type-tiny);
+    color: var(--fg-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: var(--sp-lg) 0 var(--sp-xs) 0;
+}
+.entity-group {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: var(--sp-sm);
+    margin-bottom: var(--sp-md);
+}
+.entity-tile {
+    display: block;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--good);
+    border-radius: var(--r-sm);
+    padding: var(--sp-md);
+    text-decoration: none;
+    color: var(--fg);
+}
+.entity-tile:hover {
+    border-color: var(--good);
+    background: rgba(91,199,135,0.05);
+}
+.entity-tile .entity-name {
+    font: var(--type-body-strong);
+    margin-bottom: 2px;
+}
+.entity-tile .entity-domain {
+    font: var(--type-tiny);
+    color: var(--good);
+}
 .laws-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -181,6 +219,22 @@
 
     <div class="laws-grid" id="laws-grid"></div>
 
+    <!-- Slice E: ADR 0011 public-sector entity registry -->
+    <section class="laws-entities">
+        <h3>Authoritative Maldivian sources</h3>
+        <p class="muted">
+            The 25 institutions kahzaabu treats as authoritative
+            evidence sources when verifying claims (ADR 0011 —
+            <code>kahzaabu/registry.py</code>). Click through to the
+            official site; kahzaabu tags evidence URLs against this
+            list to power the "Verified against authoritative sources"
+            block on each fact-check.
+        </p>
+        <div class="entities-grid" id="entities-grid">
+            <p class="muted">Loading…</p>
+        </div>
+    </section>
+
     <section class="laws-note">
         <h3>Why kahzaabu links out instead of importing</h3>
         <p>
@@ -273,6 +327,52 @@ const SEARCH_ENGINES = {
             `<div class="desc">${s.desc}</div>` +
             `<div class="external">${display}</div>`;
         grid.appendChild(tile);
+    }
+})();
+
+// --- Render the authoritative-entity tiles from the registry ---
+// Uses the new /api/registry/entities endpoint (Slice E).
+(async function renderEntities() {
+    const grid = document.getElementById("entities-grid");
+    let entities;
+    try {
+        const r = await fetch("/api/registry/entities");
+        const body = await r.json();
+        entities = body.entities || [];
+    } catch (e) {
+        grid.innerHTML = "<p class='muted'>Entity registry unavailable.</p>";
+        return;
+    }
+    if (!entities.length) {
+        grid.innerHTML = "<p class='muted'>No entities registered.</p>";
+        return;
+    }
+    grid.innerHTML = "";
+    // Group entities by entity_type so similar institutions appear
+    // together (constitutional_executive, ministry, regulator, ...).
+    const byType = {};
+    for (const e of entities) {
+        (byType[e.entity_type] = byType[e.entity_type] || []).push(e);
+    }
+    for (const t of Object.keys(byType).sort()) {
+        const groupHeader = document.createElement("div");
+        groupHeader.className = "entity-group-label";
+        groupHeader.textContent = t.replace(/_/g, " ");
+        grid.appendChild(groupHeader);
+        const groupWrap = document.createElement("div");
+        groupWrap.className = "entity-group";
+        for (const e of byType[t]) {
+            const tile = document.createElement("a");
+            tile.className = "entity-tile";
+            tile.href = "https://" + e.domain;
+            tile.target = "_blank";
+            tile.rel = "noopener noreferrer";
+            tile.innerHTML =
+                `<div class="entity-name">${e.official_name}</div>` +
+                `<div class="entity-domain">${e.domain}</div>`;
+            groupWrap.appendChild(tile);
+        }
+        grid.appendChild(groupWrap);
     }
 })();
 
