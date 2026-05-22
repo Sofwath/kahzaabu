@@ -176,8 +176,9 @@ async function load() {
     }
     root.innerHTML = "";
 
-    // Title
-    root.appendChild(el("h1", null, art.title || "(untitled)"));
+    // Title — dir="auto" so the browser picks LTR/RTL based on the
+    // first strong character; correct rendering for Thaana (DV) titles.
+    root.appendChild(el("h1", { dir: "auto" }, art.title || "(untitled)"));
 
     // Meta line
     const meta = el("div", { class: "article-meta" });
@@ -247,7 +248,7 @@ async function load() {
     // Body
     const bodyH2 = el("h2", null, "Article body");
     root.appendChild(bodyH2);
-    root.appendChild(el("div", { class: "article-body" }, art.body_text || "(no body text)"));
+    root.appendChild(el("div", { class: "article-body", dir: "auto" }, art.body_text || "(no body text)"));
 
     // Fact card (mounted ABOVE body, after meta) — fetched lazily
     fetchJSON(`/api/article/${art.id}/factcard?language=${art.language}`)

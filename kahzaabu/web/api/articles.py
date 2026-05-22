@@ -58,18 +58,38 @@ def list_articles(
 @router.get("/article/{article_id}")
 def get_article(
     article_id: int,
-    language: str = "EN",
+    language: Optional[str] = None,
     conn: sqlite3.Connection = Depends(get_db)
 ) -> dict:
-    art = conn.execute(
-        """SELECT id, language, paired_id, category, title, body_text,
-                  body_html, reference, published_date, image_urls, scraped_at
-           FROM articles WHERE id = ? AND language = ?""",
-        (article_id, language)
-    ).fetchone()
+    # Articles are PK'd on (id, language) but in practice IDs are
+    # globally unique across the EN + DV sets. When the caller does
+    # not pin a language (which the article.html JS doesn't — it
+    # just fetches /api/article/{id}), look up by id alone and
+    # prefer EN when both happen to exist. This is what fixes the
+    # symptom "/article/{id} renders empty for DV-only IDs".
+    if language:
+        art = conn.execute(
+            """SELECT id, language, paired_id, category, title, body_text,
+                      body_html, reference, published_date, image_urls, scraped_at
+               FROM articles WHERE id = ? AND language = ?""",
+            (article_id, language)
+        ).fetchone()
+    else:
+        art = conn.execute(
+            """SELECT id, language, paired_id, category, title, body_text,
+                      body_html, reference, published_date, image_urls, scraped_at
+               FROM articles WHERE id = ?
+               ORDER BY (language = 'EN') DESC
+               LIMIT 1""",
+            (article_id,)
+        ).fetchone()
     if not art:
-        raise HTTPException(404, f"article {article_id} ({language}) not found")
+        suffix = f" ({language})" if language else ""
+        raise HTTPException(404, f"article {article_id}{suffix} not found")
     art = dict(art)
+    # Use the resolved language for the dependent claims/factcheck
+    # queries below — otherwise we'd pull EN claims for a DV row.
+    language = art["language"]
     # parse image_urls
     try:
         art["image_urls"] = json.loads(art.get("image_urls") or "[]")

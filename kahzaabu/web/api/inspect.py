@@ -31,9 +31,18 @@ def recent_factcards(
     return {"items": [dict(r) for r in rows]}
 
 @router.get("/article/{article_id}/factcard")
-def get_factcard(article_id: int, language: str = "EN",
+def get_factcard(article_id: int, language: Optional[str] = None,
                  conn: sqlite3.Connection = Depends(get_db)) -> dict:
-    fc = claims_db.get_fact_card(conn, article_id, language)
+    # Same EN-default footgun as get_article — if the caller doesn't
+    # pin a language, try EN first then DV. (Fact cards are nearly
+    # always generated for the EN row in practice; this just makes
+    # the endpoint not silently return exists=False on the DV row.)
+    if language:
+        fc = claims_db.get_fact_card(conn, article_id, language)
+    else:
+        fc = (claims_db.get_fact_card(conn, article_id, "EN")
+              or claims_db.get_fact_card(conn, article_id, "DV"))
+        language = fc["language"] if fc else "EN"
     if not fc:
         return {"exists": False, "article_id": article_id, "language": language}
     if True and not fc.get("published"):
