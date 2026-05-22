@@ -521,6 +521,23 @@ def init_claims_schema(conn: sqlite3.Connection) -> None:
         import logging
         logging.getLogger(__name__).debug(
             "constitution schema init skipped: %s", e)
+    # fact_checks FTS5 piece — same pattern. If the FTS table was
+    # just created (or empty), backfill from the existing rows so a
+    # search works immediately without waiting for the next pipeline
+    # run. The trigger keeps it in sync after that.
+    try:
+        from kahzaabu.factcheck_search import (
+            init_fact_checks_fts, backfill_fact_checks_fts,
+        )
+        if init_fact_checks_fts(conn):
+            cnt = conn.execute(
+                "SELECT COUNT(*) FROM fact_checks_fts").fetchone()[0]
+            if cnt == 0:
+                backfill_fact_checks_fts(conn)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).debug(
+            "fact_checks FTS5 init skipped: %s", e)
 
 
 def init_full_schema(conn: sqlite3.Connection) -> None:

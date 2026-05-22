@@ -337,11 +337,12 @@ def lookup(conn: sqlite3.Connection, query: str, limit: int = 5) -> list[dict]:
     try:
         rows = conn.execute(
             f"""SELECT a.article_no, a.chapter, a.title, a.body,
-                       a.source_version
+                       a.source_version,
+                       bm25(constitution_articles_fts, {weights_sql}) AS rank
                FROM constitution_articles_fts f
                JOIN constitution_articles a ON a.article_no = f.article_no
                WHERE constitution_articles_fts MATCH ?
-               ORDER BY bm25(constitution_articles_fts, {weights_sql})
+               ORDER BY rank
                LIMIT ?""",
             (_fts_sanitize(query), limit),
         ).fetchall()

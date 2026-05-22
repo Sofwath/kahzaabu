@@ -94,13 +94,17 @@ def citing_factchecks(
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
     """Reverse cross-reference: given a constitution article, find
-    fact-checks whose claim + topic best match its body via the same
-    FTS5 BM25 ranking the forward search uses.
+    fact-checks whose claim + topic + explanation BM25-match the
+    article's title + body via the FTS5 index on fact_checks.
 
-    There is no curated `fact_check.constitution_article_no` column
-    (yet) — this is a best-effort symmetric search using the article's
-    title + first ~30 body words as the query against the fact-checks
-    text. A separate ADR'd backfill would produce explicit links."""
+    BM25 ranks by multi-token coverage, so a query for the article
+    on the Judicial Service Commission preferentially returns
+    fact-checks that mention all three tokens over fact-checks that
+    happen to share just one common word with the article title.
+
+    Returns `rank` per item (BM25 score, negative; lower = more
+    relevant) so the caller can apply a score threshold."""
+    from kahzaabu import factcheck_search
     art = conn.execute(
         "SELECT article_no, title, body "
         "FROM constitution_articles WHERE article_no = ?",
@@ -109,41 +113,32 @@ def citing_factchecks(
     if not art:
         raise HTTPException(status_code=404,
                              detail=f"article {article_no} not found")
-    # Build a focused query: title + first 30 body words. Strip
-    # quote characters because they have special meaning in FTS5.
+    # Query = TITLE ONLY. Body words inject high-frequency tokens
+    # ("Maldives", "State", "shall", "person") that flood the
+    # substring fallback with noise. Titles are 3-7 distinctive
+    # words ("Judicial Service Commission", "Right to vote") —
+    # the right granularity for cross-reference retrieval.
     title = (art["title"] or "").strip()
-    body_words = (art["body"] or "").split()[:30]
-    raw_query = f"{title} {' '.join(body_words)}".replace('"', " ")
-    # FTS5 has a query-string length cap; trim defensively.
-    query = raw_query[:240].strip()
-    if not query:
+    if not title:
         return {"article_no": article_no, "items": []}
-
-    # We don't have an FTS5 index on fact_checks itself; fall back
-    # to a LIKE-against-claim+topic with the most salient single
-    # term from the article title. This is intentionally crude —
-    # the goal is "show readers SOME related fact-checks", not
-    # ranked retrieval.
-    salient = title.split() or body_words
-    if not salient:
-        return {"article_no": article_no, "items": []}
-    # Use the longest title token as the LIKE seed (longest = most
-    # specific, avoids stopwords like "of"/"the").
-    seed = max(salient, key=len)
-    if len(seed) < 4:
-        return {"article_no": article_no, "items": []}
-    rows = conn.execute(
-        """SELECT id, category, claim, topic, verdict_label, truth_score_label,
-                  claim_date
-           FROM fact_checks
-           WHERE published = 1
-             AND (claim LIKE ? OR topic LIKE ?)
-           ORDER BY claim_date DESC
-           LIMIT ?""",
-        (f"%{seed}%", f"%{seed}%", limit),
-    ).fetchall()
+    hits = factcheck_search.search_fact_checks(
+        conn, title, limit=limit, published_only=True)
+    # Drop weak substring-fallback matches: when the fallback fires
+    # (rank is a small negative integer like -1 or -2), we want at
+    # least 2 distinct tokens matched, else the result is incidental.
+    # BM25 ranks (large negative floats like -7.0) are kept as-is.
+    strong = []
+    for h in hits:
+        rank = h.get("rank")
+        if rank is None: strong.append(h); continue
+        # FTS5 BM25 ranks are floats; substring fallback ranks are
+        # negative integers from -1 to -12. Use that as a discriminator.
+        if isinstance(rank, float) and rank < -3.0:
+            strong.append(h)
+        elif isinstance(rank, int) and rank <= -2:
+            strong.append(h)
     return {
         "article_no": article_no,
-        "query_seed": seed,
-        "items": [dict(r) for r in rows],
+        "query":      title,
+        "items":      strong,
     }

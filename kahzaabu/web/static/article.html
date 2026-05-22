@@ -256,20 +256,36 @@ async function load() {
         .catch(() => {});
 
     // ── Cross-reference: Constitution articles relevant to this
-    //    press release. Reuses the same BM25 FTS5 endpoint the
-    //    factcheck page uses; query is built from the title + the
-    //    article's claim subjects (more selective than full body).
-    if (art.language === "EN") {
-        const query = [
-            art.title || "",
-            ...(art.claims || []).map(c => c.subject || "").filter(Boolean),
-        ].join(" ").slice(0, 240);  // FTS5 input cap
+    //    press release. Skipped when there are no extracted claims
+    //    (attendance/meeting press releases generate noise hits on
+    //    every "President" or "today" mention) — without claims
+    //    there's no anchor for constitutional context.
+    //
+    //    Query is built from claim QUOTES (full text, not just
+    //    subjects) — more selective. The /api/constitution/search
+    //    endpoint returns BM25 `rank`; we drop hits whose rank is
+    //    too weak (BM25 is negative; threshold -1.0 = drop hits
+    //    whose score is closer to zero than -1, which empirically
+    //    correspond to incidental token matches).
+    if (art.language === "EN" && (art.claims || []).length > 0) {
+        const RANK_THRESHOLD = -1.0;
+        const query = (art.claims || [])
+            .map(c => c.quote || c.subject || "").filter(Boolean)
+            .join(" ").slice(0, 240);
         if (query.trim()) {
-            fetchJSON(`/api/constitution/search?q=${encodeURIComponent(query)}&limit=3`)
+            fetchJSON(`/api/constitution/search?q=${encodeURIComponent(query)}&limit=5`)
                 .then(r => {
-                    if (!r.items || !r.items.length) return;
+                    const strong = (r.items || []).filter(a =>
+                        a.rank == null || a.rank < RANK_THRESHOLD);
+                    if (!strong.length) return;
+                    // Chapter-dedup: if all strong hits belong to the
+                    // same constitutional chapter, collapse to the top
+                    // hit (otherwise the UI shows 3 near-identical
+                    // sibling articles for one underlying claim).
+                    const chapters = new Set(strong.map(a => a.chapter));
+                    const showHits = chapters.size === 1 ? strong.slice(0, 1) : strong.slice(0, 3);
                     const wrap = el("div");
-                    for (const a of r.items) {
+                    for (const a of showHits) {
                         const body = (a.body || "").slice(0, 200);
                         wrap.appendChild(el("a",
                             { href: `/constitution#article-${a.article_no}`,
