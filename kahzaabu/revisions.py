@@ -213,6 +213,60 @@ def archive_revision(
     return cur.lastrowid
 
 
+def backfill_content_hashes(
+    conn: sqlite3.Connection,
+    progress_cb=None,
+) -> dict:
+    """One-shot: compute and store content_hash for every article
+    row where it's currently NULL.
+
+    No revision rows are written — the migration's design treats
+    NULL as "first observation, can't tell if anything changed".
+    This populates the baseline so SUBSEQUENT scrapes can detect
+    edits against a known hash.
+
+    Idempotent: re-running only touches rows where content_hash IS
+    NULL. Already-hashed rows are skipped. `progress_cb(done, total)`
+    is invoked periodically for long-running runs.
+
+    Returns: {"total": int, "updated": int, "skipped": int}."""
+    # Count work upfront for progress reporting.
+    total = conn.execute(
+        "SELECT COUNT(*) FROM articles WHERE content_hash IS NULL"
+    ).fetchone()[0]
+    if total == 0:
+        return {"total": 0, "updated": 0, "skipped": 0}
+
+    updated = 0
+    BATCH = 200
+    while True:
+        rows = conn.execute(
+            """SELECT id, language, title, body_text, reference, image_urls
+               FROM articles WHERE content_hash IS NULL LIMIT ?""",
+            (BATCH,),
+        ).fetchall()
+        if not rows:
+            break
+        for r in rows:
+            id_, lang, title, body, ref, images = r
+            h = compute_content_hash(title, body, ref, images)
+            conn.execute(
+                "UPDATE articles SET content_hash = ? "
+                "WHERE id = ? AND language = ?",
+                (h, id_, lang),
+            )
+            updated += 1
+            if progress_cb is not None and updated % 500 == 0:
+                progress_cb(updated, total)
+        conn.commit()
+        # If the batch was short, we're done.
+        if len(rows) < BATCH:
+            break
+    if progress_cb is not None:
+        progress_cb(updated, total)
+    return {"total": total, "updated": updated, "skipped": 0}
+
+
 def list_revisions(
     conn: sqlite3.Connection,
     article_id: int,

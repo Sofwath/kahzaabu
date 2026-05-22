@@ -1082,3 +1082,35 @@ def revisions_diff(ctx, revision_id, context_lines):
         )
         return
     click.echo(diff)
+
+
+@revisions.command(name="backfill-hashes")
+@click.pass_context
+def revisions_backfill(ctx):
+    """One-shot: compute content_hash for every article row that
+    doesn't have one yet. Idempotent — re-running is safe.
+
+    Necessary after the slice-15 migration so subsequent scrapes
+    can detect edits against a known baseline rather than starting
+    from "next time we see this article."""
+    from . import revisions as _rev
+    conn = ctx.obj["conn"]
+
+    pending = conn.execute(
+        "SELECT COUNT(*) FROM articles WHERE content_hash IS NULL"
+    ).fetchone()[0]
+    if pending == 0:
+        click.echo("All articles already have content_hash. Nothing to do.")
+        return
+    click.echo(f"Computing content_hash for {pending} articles…")
+
+    def _p(done, total):
+        click.echo(f"  {done}/{total}")
+
+    result = _rev.backfill_content_hashes(conn, progress_cb=_p)
+    click.echo(
+        f"\nDone. {result['updated']} articles hashed "
+        f"({result['skipped']} skipped, {result['total']} total)."
+    )
+    click.echo(
+        "Subsequent scrapes will detect edits against these baselines.")

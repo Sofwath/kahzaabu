@@ -423,6 +423,119 @@ class UnifiedDiffForRevision(unittest.TestCase):
 # Single-writer invariant (ADR 0015 Consequences)
 # ───────────────────────────────────────────────────────────────────
 
+class BackfillContentHashes(unittest.TestCase):
+    """Populate content_hash on legacy rows that pre-date slice 15.
+
+    Critical because (a) the live DB has 20,817 NULL-hash rows, and
+    (b) the scraper's edit-detection logic treats NULL as 'first
+    observation, can't tell' — so without backfill the system can't
+    actually detect a 2nd-scrape edit until each article has been
+    seen twice after the migration."""
+
+    def test_first_call_hashes_all_null_rows(self):
+        conn = _mkconn()
+        # Insert 3 rows directly with NULL content_hash to simulate
+        # pre-migration state.
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        for i in range(3):
+            conn.execute(
+                """INSERT INTO articles (id, language, paired_id, category,
+                    category_id, title, body_text, body_html, reference,
+                    published_date, image_urls, scraped_at, raw_page_html,
+                    content_hash)
+                   VALUES (?, 'EN', NULL, 'press_release', 1,
+                           ?, ?, NULL, ?, '2026-05-22', '[]',
+                           ?, '<raw>', NULL)""",
+                (1000 + i, f"title {i}", f"body {i}",
+                 f"2026-{i:03d}", now)
+            )
+        conn.commit()
+
+        result = revisions.backfill_content_hashes(conn)
+        self.assertEqual(result["total"], 3)
+        self.assertEqual(result["updated"], 3)
+
+        # All 3 rows now have a hash
+        n_null = conn.execute(
+            "SELECT COUNT(*) FROM articles WHERE content_hash IS NULL"
+        ).fetchone()[0]
+        self.assertEqual(n_null, 0,
+            "After backfill, no row should still have a NULL "
+            "content_hash — that's the whole point of the backfill")
+
+    def test_idempotent_second_call_is_no_op(self):
+        """Re-running the backfill must not touch already-hashed rows
+        (would create churn + risk hash drift)."""
+        conn = _mkconn()
+        # Use the regular insert path which DOES compute the hash
+        db.insert_article(conn, _article(id_=2000, body="some content"))
+        # First backfill: nothing to do (already hashed)
+        r1 = revisions.backfill_content_hashes(conn)
+        self.assertEqual(r1["total"], 0)
+        # Second call: still nothing
+        r2 = revisions.backfill_content_hashes(conn)
+        self.assertEqual(r2["total"], 0)
+
+    def test_backfill_does_NOT_write_revision_rows(self):
+        """The backfill is a hash-population step; it must not write
+        revision rows (NULL-hash rows have no 'old version' to
+        archive). Otherwise the live DB's 20,817 articles would
+        produce 20,817 phantom revisions."""
+        conn = _mkconn()
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            """INSERT INTO articles (id, language, paired_id, category,
+                category_id, title, body_text, body_html, reference,
+                published_date, image_urls, scraped_at, raw_page_html,
+                content_hash)
+               VALUES (3000, 'EN', NULL, 'press_release', 1,
+                       'title', 'body', NULL, '2026-100', '2026-05-22',
+                       '[]', ?, '<raw>', NULL)""",
+            (now,)
+        )
+        conn.commit()
+        revisions.backfill_content_hashes(conn)
+        n_revs = conn.execute(
+            "SELECT COUNT(*) FROM article_revisions"
+        ).fetchone()[0]
+        self.assertEqual(n_revs, 0,
+            "Backfill must not create revision rows — otherwise "
+            "running it on the 20k-row live DB would produce 20k "
+            "phantom revisions")
+
+    def test_hash_matches_what_insert_article_would_compute(self):
+        """The backfilled hash must exactly equal what
+        db.insert_article computes — otherwise the next scrape
+        would see a 'change' between the backfilled hash and the
+        recomputed hash of the same content."""
+        conn = _mkconn()
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            """INSERT INTO articles (id, language, paired_id, category,
+                category_id, title, body_text, body_html, reference,
+                published_date, image_urls, scraped_at, raw_page_html,
+                content_hash)
+               VALUES (4000, 'EN', NULL, 'press_release', 1,
+                       'Test', 'Body text', NULL, '2026-100', '2026-05-22',
+                       '["https://x/a.jpg"]', ?, '<raw>', NULL)""",
+            (now,)
+        )
+        conn.commit()
+        revisions.backfill_content_hashes(conn)
+        backfilled = conn.execute(
+            "SELECT content_hash FROM articles WHERE id=4000 AND language='EN'"
+        ).fetchone()[0]
+        # Now compute the same hash via compute_content_hash directly
+        expected = revisions.compute_content_hash(
+            "Test", "Body text", "2026-100", '["https://x/a.jpg"]')
+        self.assertEqual(backfilled, expected,
+            "Backfilled hash must match compute_content_hash — "
+            "otherwise the next scrape would see a phantom change")
+
+
 class SingleWriterInvariant(unittest.TestCase):
     """The hash-and-archive logic lives in db.insert_article. Any
     OTHER write path to the articles table would silently bypass it,
