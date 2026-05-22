@@ -873,10 +873,15 @@ class StrongKeywordInvariants(unittest.TestCase):
         added new keywords without adding test rows. The threshold
         is intentionally generous (>= half) — purpose is catching
         'forgot to add a test row entirely', not enforcing per-
-        keyword coverage. If the regex legitimately grows past the
-        ratio, bump the threshold (with a corresponding note in
-        the test that explains which keywords are intentionally
-        unpinned and why)."""
+        keyword coverage.
+
+        Limitation: counts unescaped `|` characters in the pattern
+        source. If a future maintainer adds a literal `\\|` to one of
+        the alternatives (legal but unusual), the count would inflate
+        and the test could pass with missing rows. Upgrade to AST-
+        walking only if that becomes a real problem — the behavioural
+        test_each_critical_keyword_actually_matches is the independent
+        safety net for the keywords we DO pin."""
         # Count alternatives in the compiled pattern source. Each
         # `|` separates an alternative; alternatives that share a
         # group count as one. A simple lower-bound: count the |s
