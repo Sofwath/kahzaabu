@@ -113,6 +113,36 @@ class HashStability(unittest.TestCase):
         h = revisions.compute_content_hash("t", "b", "r", "not-json")
         self.assertEqual(len(h), 64)
 
+    def test_image_query_string_stripped(self):
+        """CDN cache-busting tokens (?v=123, ?t=timestamp) on image
+        URLs must NOT trigger a phantom revision. Same image at a
+        different cache-bust token is logically the same image."""
+        h1 = revisions.compute_content_hash(
+            "t", "b", "r", '["https://x/a.jpg?v=1"]')
+        h2 = revisions.compute_content_hash(
+            "t", "b", "r", '["https://x/a.jpg?v=2"]')
+        h3 = revisions.compute_content_hash(
+            "t", "b", "r", '["https://x/a.jpg"]')
+        self.assertEqual(h1, h2,
+            "Different cache-bust tokens must not change the hash — "
+            "would create phantom revisions on every scrape if the "
+            "CDN rotates ?v=N tokens")
+        self.assertEqual(h2, h3,
+            "URL without query string must hash the same as URL with "
+            "query string (consistent normalisation)")
+
+    def test_image_path_change_still_triggers(self):
+        """Stripping query strings must NOT mask a real photo swap.
+        photo_v1.jpg → photo_v2.jpg is a genuine edit and must hash
+        differently."""
+        h1 = revisions.compute_content_hash(
+            "t", "b", "r", '["https://x/photo_v1.jpg"]')
+        h2 = revisions.compute_content_hash(
+            "t", "b", "r", '["https://x/photo_v2.jpg"]')
+        self.assertNotEqual(h1, h2,
+            "Different image paths must produce different hashes — "
+            "otherwise we'd miss genuine photo swaps")
+
 
 # ───────────────────────────────────────────────────────────────────
 # generate_diff_summary
@@ -322,6 +352,144 @@ class RevisionsAPI(unittest.TestCase):
     def test_get_revision_returns_none_for_missing(self):
         conn = _mkconn()
         self.assertIsNone(revisions.get_revision(conn, 9999999))
+
+
+# ───────────────────────────────────────────────────────────────────
+# unified_diff_for_revision — position-of-change context
+# ───────────────────────────────────────────────────────────────────
+
+class UnifiedDiffForRevision(unittest.TestCase):
+    """diff_summary on the revision row gives WHAT changed. This
+    helper gives WHERE — the actual diff hunks with line context.
+    Critical for long bodies where the operator can't eyeball-
+    compare the digest against the current article."""
+
+    def test_diff_shows_removed_and_added_lines(self):
+        conn = _mkconn()
+        db.insert_article(conn, _article(body=(
+            "Line one is unchanged.\n"
+            "The spokesperson said 4 schools will open.\n"
+            "Line three is unchanged.\n")))
+        db.insert_article(conn, _article(body=(
+            "Line one is unchanged.\n"
+            "The spokesperson said 1 school will open.\n"
+            "Line three is unchanged.\n")))
+        revs = revisions.list_revisions(conn, 100, "EN")
+        self.assertEqual(len(revs), 1)
+        diff = revisions.unified_diff_for_revision(conn, revs[0]["id"])
+        self.assertIsNotNone(diff)
+        # Unified diff has -/+ marker lines for the changed line
+        self.assertIn("-The spokesperson said 4 schools", diff)
+        self.assertIn("+The spokesperson said 1 school", diff)
+        # Unchanged lines appear as context (no marker)
+        self.assertIn("Line one is unchanged.", diff)
+
+    def test_diff_empty_when_body_unchanged(self):
+        """A revision can capture non-body changes (title, images).
+        For those, unified_diff_for_revision returns an empty
+        string — the CLI surfaces a "use revisions show" hint."""
+        conn = _mkconn()
+        db.insert_article(conn, _article(
+            body="Same body text", title="Old title"))
+        db.insert_article(conn, _article(
+            body="Same body text", title="New title"))
+        revs = revisions.list_revisions(conn, 100, "EN")
+        self.assertEqual(len(revs), 1)
+        diff = revisions.unified_diff_for_revision(conn, revs[0]["id"])
+        self.assertEqual(diff, "",
+            "Body-unchanged revision must return empty string so the "
+            "CLI knows to suggest `revisions show` for the field digest")
+
+    def test_diff_returns_none_for_missing_revision(self):
+        conn = _mkconn()
+        self.assertIsNone(revisions.unified_diff_for_revision(conn, 99999))
+
+    def test_diff_includes_provenance_in_header(self):
+        """Unified-diff header should identify article + revision id +
+        the observed/replaced timestamps — operators reading the diff
+        in isolation need to know which revision they're looking at."""
+        conn = _mkconn()
+        db.insert_article(conn, _article(body="version 1"))
+        db.insert_article(conn, _article(body="version 2"))
+        revs = revisions.list_revisions(conn, 100, "EN")
+        diff = revisions.unified_diff_for_revision(conn, revs[0]["id"])
+        # Article id + language + revision id in the header lines
+        self.assertIn("article 100", diff)
+        self.assertIn("EN", diff)
+        self.assertIn(f"revision {revs[0]['id']}", diff)
+
+
+# ───────────────────────────────────────────────────────────────────
+# Single-writer invariant (ADR 0015 Consequences)
+# ───────────────────────────────────────────────────────────────────
+
+class SingleWriterInvariant(unittest.TestCase):
+    """The hash-and-archive logic lives in db.insert_article. Any
+    OTHER write path to the articles table would silently bypass it,
+    leaving operators wondering why edits went untracked.
+
+    This test grep's for raw write SQL targeting the articles table
+    anywhere outside kahzaabu/db.py. If a future maintainer adds a
+    parallel writer (e.g., a JSON-restore path, a backup-importer),
+    the test fails with a pointer to ADR 0015 explaining why.
+
+    The structural alternative (SQLite UPDATE trigger) was rejected
+    in the ADR — triggers can't easily generate the diff_summary
+    from inside SQL. So enforcement is at the test level instead."""
+
+    def test_only_db_insert_article_writes_to_articles_table(self):
+        import re as _re
+        write_patterns = [
+            _re.compile(
+                r"\b(INSERT[^\"']*INTO|REPLACE[^\"']*INTO|UPDATE)\s+articles\b",
+                _re.IGNORECASE,
+            ),
+        ]
+        # Exclude:
+        #   - kahzaabu/db.py — canonical writer
+        #   - constitution_articles, article_revisions, article_fact_cards
+        #     — different tables that happen to share a prefix
+        #   - test files — fixtures can do raw writes
+        #   - schema strings (CREATE TABLE / CREATE INDEX)
+        offenders: list[tuple[str, int, str]] = []
+        for path in (ROOT / "kahzaabu").rglob("*.py"):
+            if path.name == "db.py":
+                continue  # the canonical writer
+            if "/legacy/" in str(path) or "/__pycache__/" in str(path):
+                continue
+            text = path.read_text()
+            for lineno, line in enumerate(text.splitlines(), start=1):
+                stripped = line.lstrip()
+                # Skip Python comments (the regex would otherwise match
+                # comments like "# then UPDATE articles with new content"
+                # in docstrings — those aren't actual write sites).
+                if stripped.startswith("#"):
+                    continue
+                # Skip lines that reference *_articles tables (constitution_articles, etc.)
+                if "constitution_articles" in line: continue
+                if "article_revisions" in line: continue
+                if "article_fact_cards" in line: continue
+                # Skip schema/CREATE statements
+                if "CREATE TABLE" in line.upper() or "CREATE INDEX" in line.upper():
+                    continue
+                for pat in write_patterns:
+                    if pat.search(line):
+                        offenders.append((str(path), lineno, line.strip()))
+
+        if offenders:
+            msg = "\n".join(
+                f"  {p}:{ln}  {snip[:100]}"
+                for (p, ln, snip) in offenders[:5]
+            )
+            self.fail(
+                "Parallel writers to the `articles` table detected — "
+                "these would bypass the hash-and-archive logic in "
+                "db.insert_article. See ADR 0015 for why. If the new "
+                "write path is intentional, route it through "
+                "db.insert_article OR move the hash-compare logic to "
+                "a shared helper.\n\n"
+                f"Offending sites:\n{msg}"
+            )
 
 
 if __name__ == "__main__":

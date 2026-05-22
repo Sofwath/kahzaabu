@@ -1051,3 +1051,34 @@ def revisions_show(ctx, revision_id, body):
         click.echo()
         click.echo("── archived body_text ──")
         click.echo(r["body_text"])
+
+
+@revisions.command(name="diff")
+@click.argument("revision_id", type=int)
+@click.option("-n", "--context", "context_lines", type=int, default=3,
+               help="Lines of context around each change (default: 3).")
+@click.pass_context
+def revisions_diff(ctx, revision_id, context_lines):
+    """Print a unified diff between the archived version and the current.
+
+    diff_summary on a revision row gives a one-line digest of WHAT
+    changed ("numbers: removed 4; added 1"). This command shows
+    WHERE in the body — the actual line context — so an operator
+    can verify the edit is fact-check-material without manually
+    comparing two bodies."""
+    from . import revisions as _rev
+    conn = ctx.obj["conn"]
+    diff = _rev.unified_diff_for_revision(conn, revision_id,
+                                            n_context=context_lines)
+    if diff is None:
+        click.echo(f"No revision with id {revision_id}.")
+        sys.exit(1)
+    if diff == "":
+        click.echo(
+            f"Revision #{revision_id}: body_text identical to current. "
+            "The archive captured this revision for a non-body change "
+            f"(title / reference / images). Use `kahzaabu revisions show "
+            f"{revision_id}` for the field-level digest."
+        )
+        return
+    click.echo(diff)

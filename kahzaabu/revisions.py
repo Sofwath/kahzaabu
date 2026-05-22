@@ -32,6 +32,23 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 
+def _strip_query_string(url: str) -> str:
+    """Drop everything after '?' in a URL.
+
+    CDNs commonly tack cache-busting tokens onto image URLs
+    (?v=1234, ?t=timestamp) that change between scrapes WITHOUT the
+    underlying photo changing. Stripping the query string lets the
+    hash see those as the same URL, suppressing phantom revisions.
+
+    A real photo SWAP changes the path itself (photo_v1.jpg →
+    photo_v2.jpg), which is preserved through this normalisation,
+    so genuine image edits still trigger correctly."""
+    if not url:
+        return ""
+    qm = url.find("?")
+    return url[:qm] if qm >= 0 else url
+
+
 def compute_content_hash(
     title: Optional[str],
     body_text: Optional[str],
@@ -44,22 +61,27 @@ def compute_content_hash(
     always produce the same hash. We normalise:
       - None → empty string (the field was missing, not "the field
         was 'None'")
-      - image_urls_json: parsed + sorted, so the same set of URLs
-        in different order still hashes the same (the press office
-        sometimes shuffles image order without editing other content)
+      - image_urls_json: parsed + sorted + query-strings stripped,
+        so the same set of URLs in different order with different
+        cache-bust tokens still hashes the same (the press office
+        sometimes shuffles photo order without editing content; the
+        CDN sometimes appends ?v=... tokens between scrapes)
 
     The hash is deterministic across processes / machines / Python
     versions — the only inputs are the canonical text encoding."""
     title = title or ""
     body_text = body_text or ""
     reference = reference or ""
-    # Normalise image URLs: parse, sort, re-dump. Order-insensitive.
+    # Normalise image URLs: parse, strip query strings, sort, re-dump.
+    # Order-insensitive + query-string-insensitive.
     images_normalised: list = []
     if image_urls_json:
         try:
             parsed = json.loads(image_urls_json)
             if isinstance(parsed, list):
-                images_normalised = sorted(str(x) for x in parsed)
+                images_normalised = sorted(
+                    _strip_query_string(str(x)) for x in parsed
+                )
         except (json.JSONDecodeError, ValueError):
             # Malformed JSON — hash the raw string so a change still
             # registers (don't silently treat as no-images).
@@ -220,6 +242,60 @@ def list_revisions(
                 ["id", "article_id", "language", "content_hash",
                  "title", "observed_at", "replaced_at", "diff_summary"])}
             for r in rows]
+
+
+def unified_diff_for_revision(
+    conn: sqlite3.Connection,
+    revision_id: int,
+    n_context: int = 3,
+) -> Optional[str]:
+    """Generate a unified diff (line-by-line, with line numbers) of
+    the body_text between the archived revision and the article's
+    CURRENT state.
+
+    Returns None if the revision_id doesn't exist. Returns an empty
+    string if the bodies are byte-identical (rare — the only way
+    that happens is if the revision was archived for non-body
+    reasons like a title change).
+
+    Diff format is Python's difflib.unified_diff output, which is the
+    standard `diff -u` shape any operator already knows how to read.
+
+    diff_summary on the revision row tells the operator WHAT shifted
+    at a digest level ("numbers: removed 4; added 1"); this function
+    tells them WHERE in the body — the position-of-change context
+    that motivated this helper."""
+    import difflib
+
+    rev = get_revision(conn, revision_id)
+    if rev is None:
+        return None
+
+    cur_row = conn.execute(
+        "SELECT body_text FROM articles WHERE id = ? AND language = ?",
+        (rev["article_id"], rev["language"]),
+    ).fetchone()
+    current_body = ""
+    if cur_row is not None:
+        # sqlite3.Row supports indexing; otherwise tuple
+        current_body = (cur_row[0] if not hasattr(cur_row, "keys")
+                          else cur_row["body_text"]) or ""
+
+    old_body = rev.get("body_text") or ""
+    if old_body == current_body:
+        return ""
+
+    diff_lines = difflib.unified_diff(
+        old_body.splitlines(),
+        current_body.splitlines(),
+        fromfile=f"article {rev['article_id']} ({rev['language']}) — "
+                 f"revision {revision_id} ({rev['observed_at'][:19]})",
+        tofile=f"article {rev['article_id']} ({rev['language']}) — "
+               f"current ({rev['replaced_at'][:19]} or later)",
+        n=n_context,
+        lineterm="",
+    )
+    return "\n".join(diff_lines)
 
 
 def get_revision(conn: sqlite3.Connection, revision_id: int) -> Optional[dict]:
