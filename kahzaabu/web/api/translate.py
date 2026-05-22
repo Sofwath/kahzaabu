@@ -50,6 +50,14 @@ class TranslateRequest(BaseModel):
     target_language: Optional[str] = Field(
         default="auto", pattern=r"^(EN|DV|auto)$",
     )
+    verify: bool = Field(
+        default=False,
+        description=(
+            "Run a back-translation pass and flag numbers / proper "
+            "nouns that drifted. Doubles the per-call cost; off by "
+            "default."
+        ),
+    )
 
 
 @router.post("/translate")
@@ -73,7 +81,11 @@ def translate(request: Request, req: TranslateRequest,
 
     from ...translator import translate as _do_translate
     try:
-        res = _do_translate(conn, req.text, target_lang=req.target_language)
+        res = _do_translate(
+            conn, req.text,
+            target_lang=req.target_language,
+            verify=req.verify,
+        )
     except ValueError as e:
         # detect_language thinks input is already in target_lang, etc.
         raise HTTPException(400, str(e))

@@ -342,6 +342,7 @@ def translate(
     target_lang: Optional[str] = None,
     llm: Any = None,
     model_alias: str = "sonnet",
+    verify: bool = False,
 ) -> dict:
     """End-to-end translate. See module docstring for the workflow.
 
@@ -431,7 +432,7 @@ def translate(
     )
     conn.commit()
 
-    return {
+    out = {
         "translation":         translation,
         "source_lang":         source_lang,
         "target_lang":         target_lang,
@@ -442,6 +443,18 @@ def translate(
         "cache_hit":           False,
         "disclaimer":          _DISCLAIMER,
     }
+    if verify:
+        # Round-trip back-translation. Doubles per-call cost but
+        # surfaces "grammatically valid but factually wrong" outputs
+        # — the worst failure mode for political text.
+        verification = verify_back_translation(
+            conn, text, translation,
+            source_lang=source_lang, target_lang=target_lang,
+            llm=llm, model_alias=model_alias,
+        )
+        out["verification"] = verification
+        out["cost_usd"] = out["cost_usd"] + verification["cost_usd"]
+    return out
 
 
 _DISCLAIMER = (
@@ -450,6 +463,116 @@ _DISCLAIMER = (
     "releases. NOT an official translation — review against the "
     "original before publishing or quoting."
 )
+
+
+# ── Back-translation verification (opt-in) ──────────────────────────
+
+
+_PROPER_NOUN_RE = re.compile(r"\b[A-Z][A-Za-z]{2,}\b")
+_NUMBER_RE = re.compile(r"\d[\d,]*\.?\d*")
+
+
+def verify_back_translation(
+    conn: sqlite3.Connection,
+    original_text: str,
+    translation: str,
+    *,
+    source_lang: str,
+    target_lang: str,
+    llm: Any = None,
+    model_alias: str = "sonnet",
+) -> dict:
+    """Round-trip semantic-preservation check (opt-in).
+
+    Translates the OUTPUT back to the SOURCE language, then compares
+    numbers + proper nouns (the high-value invariants for political
+    text — a "4 schools" that becomes "1 school" in either direction
+    is exactly the failure mode we want to catch).
+
+    Returns: {
+        "back_translation":  str,   # for the operator to read
+        "numbers_lost":      list,  # numbers in original missing from back
+        "numbers_added":     list,
+        "proper_nouns_lost": list,
+        "proper_nouns_added": list,
+        "passed":            bool,  # True iff lost+added are empty
+        "cost_usd":          float,
+    }
+
+    Doubles the per-translation cost when enabled (~$0.04 instead of
+    ~$0.02). Not on by default; CLI surfaces it as --verify, web UI
+    as a checkbox."""
+    if llm is None:
+        import anthropic
+        import os
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise RuntimeError("ANTHROPIC_API_KEY not configured")
+        llm = anthropic.Anthropic(api_key=api_key)
+
+    # Back-translate without few-shot — we want a STRAIGHT translation
+    # so we can compare apples-to-apples with the source. Few-shot
+    # would bias the back-translation toward the same exemplars that
+    # shaped the forward one.
+    target_name = "English" if source_lang == "EN" else "Dhivehi"
+    system = (
+        f"Translate the given text to {target_name}. Preserve all "
+        f"numbers, proper nouns, dates, and institutional names "
+        f"exactly. Output the translation only — no commentary."
+    )
+    resp = llm.messages.create(
+        model=pricing.model_id(model_alias), max_tokens=2000,
+        temperature=0.1,
+        system=system,
+        messages=[{"role": "user", "content": translation}],
+    )
+    back = "".join(
+        getattr(b, "text", "")
+        for b in resp.content if getattr(b, "type", None) == "text"
+    ).strip()
+    tokens_in = getattr(resp.usage, "input_tokens", 0)
+    tokens_out = getattr(resp.usage, "output_tokens", 0)
+    cost = pricing.cost(model_alias, tokens_in=tokens_in, tokens_out=tokens_out)
+
+    # Compare invariants. We only check FROM THE ORIGINAL'S side
+    # because comparing back-translation against the LLM-translated
+    # output would just measure round-trip consistency, not fidelity
+    # to the input.
+    orig_nums = set(_NUMBER_RE.findall(original_text))
+    back_nums = set(_NUMBER_RE.findall(back))
+    numbers_lost = sorted(orig_nums - back_nums)
+    numbers_added = sorted(back_nums - orig_nums)
+
+    # Proper nouns ONLY apply when the source was English (Thaana
+    # has no case). If source was DV, we skip the noun check.
+    if source_lang == "EN":
+        orig_pn = set(_PROPER_NOUN_RE.findall(original_text))
+        back_pn = set(_PROPER_NOUN_RE.findall(back))
+        # Drop stopwordy capitalisations ("The", "And", etc.)
+        stop = {"The", "And", "For", "But", "With", "From", "When",
+                 "Where", "What", "Why", "How", "Who", "This",
+                 "That", "These", "Those", "Today", "Yesterday",
+                 "Tomorrow", "Maldives", "Maldivian"}
+        orig_pn -= stop
+        back_pn -= stop
+        proper_nouns_lost = sorted(orig_pn - back_pn)
+        proper_nouns_added = sorted(back_pn - orig_pn)
+    else:
+        proper_nouns_lost = []
+        proper_nouns_added = []
+
+    passed = (not numbers_lost and not numbers_added
+              and not proper_nouns_lost and not proper_nouns_added)
+
+    return {
+        "back_translation":   back,
+        "numbers_lost":       numbers_lost,
+        "numbers_added":      numbers_added,
+        "proper_nouns_lost":  proper_nouns_lost,
+        "proper_nouns_added": proper_nouns_added,
+        "passed":             passed,
+        "cost_usd":           cost,
+    }
 
 
 # ── Glossary builder (one-shot batch job) ───────────────────────────

@@ -143,9 +143,19 @@ def backfill_articles_fts(conn: sqlite3.Connection,
 
 def _fts_sanitize(query: str) -> str:
     """Quote each token so FTS5 operator chars (AND/OR/NEAR/", etc.)
-    don't blow up the MATCH clause. Same approach as the sibling
-    constitution + factcheck modules."""
-    tokens = re.findall(r"[A-Za-z0-9']+", query)
+    don't blow up the MATCH clause.
+
+    Token alphabet: Latin (A-Za-z0-9') AND Thaana (U+0780..U+07BF).
+    The articles table indexes BOTH EN and DV bodies, so the sanitizer
+    must accept both scripts — earlier versions used only the Latin
+    range, which produced an empty quoted string for any Thaana query
+    and silently matched zero rows (caught empirically 2026-05-22).
+
+    Sibling modules (constitution, factcheck_search) index EN-only
+    content so they don't need the Thaana range, but keeping the
+    behaviour identical here is cheap and forward-compatible if those
+    ever gain DV columns."""
+    tokens = re.findall(r"[A-Za-z0-9'ހ-޿]+", query)
     if not tokens:
         return '""'
     return " ".join(f'"{t}"' for t in tokens)

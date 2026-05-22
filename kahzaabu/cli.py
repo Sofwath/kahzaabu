@@ -3,12 +3,45 @@ import csv
 import io
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
 import click
 
 from . import db, scraper
+
+
+def _load_hermes_env() -> None:
+    """Hydrate os.environ from ~/.hermes/.env on CLI startup.
+
+    Mirrors the loader in `hermes-plugin/__init__.py` and
+    `kahzaabu/web/app.py` so the CLI picks up ANTHROPIC_API_KEY,
+    KAHZAABU_DAILY_BUDGET_USD, etc. without operators having to
+    shell-export them. Operator's shell-exported values still win
+    (we never overwrite existing os.environ entries)."""
+    hermes_env = Path.home() / ".hermes" / ".env"
+    if not hermes_env.exists():
+        return
+    try:
+        for line in hermes_env.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = val
+    except Exception as e:
+        logging.getLogger(__name__).debug(
+            "kahzaabu CLI: env hydration skipped: %s", e)
+
+
+# Hydrate before any command runs — Click commands that need the
+# key (translate, ask, build-glossary, etc.) shouldn't have to
+# remember to call this.
+_load_hermes_env()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -1213,12 +1246,17 @@ def translate():
 @click.option("--target", "target_lang", default=None,
                type=click.Choice(["EN", "DV", "auto"]),
                help="Target language (default: opposite of detected source).")
+@click.option("--verify", is_flag=True, default=False,
+               help="Round-trip back-translate and flag numeric / "
+                    "proper-noun drift. Doubles cost but catches "
+                    "semantic errors LLMs make under formal register.")
 @click.pass_context
-def translate_text_cmd(ctx, input_text, target_lang):
+def translate_text_cmd(ctx, input_text, target_lang, verify):
     """Translate a single string. Source language is auto-detected."""
     from . import translator as _tr
     conn = ctx.obj["conn"]
-    res = _tr.translate(conn, input_text, target_lang=target_lang)
+    res = _tr.translate(conn, input_text, target_lang=target_lang,
+                          verify=verify)
     click.echo()
     click.echo(res["translation"])
     click.echo()
@@ -1228,6 +1266,25 @@ def translate_text_cmd(ctx, input_text, target_lang):
         f"{res['glossary_terms_used']} glossary term(s)  ·  "
         f"${res['cost_usd']:.4f}{'  (cached)' if res['cache_hit'] else ''}_"
     )
+    if "verification" in res:
+        v = res["verification"]
+        click.echo()
+        click.echo("── Back-translation verification ──")
+        click.echo(f"  passed: {'✓' if v['passed'] else '✗'}")
+        if v["numbers_lost"]:
+            click.echo(f"  numbers lost in round-trip: {v['numbers_lost']}")
+        if v["numbers_added"]:
+            click.echo(f"  numbers added in round-trip: {v['numbers_added']}")
+        if v["proper_nouns_lost"]:
+            click.echo(f"  proper nouns lost: {v['proper_nouns_lost']}")
+        if v["proper_nouns_added"]:
+            click.echo(f"  proper nouns added: {v['proper_nouns_added']}")
+        click.echo(f"  back-translation: {v['back_translation'][:200]}")
+        if not v["passed"]:
+            click.echo(
+                "  ⚠ Review carefully — round-trip lost/added an "
+                "invariant (number or proper noun). The forward "
+                "translation may be semantically off.")
 
 
 @translate.command(name="build-glossary")

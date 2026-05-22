@@ -166,6 +166,11 @@ div.translate-out.thaana { font-size: 18px; line-height: 1.7; }
                 <option value="EN">English</option>
                 <option value="DV">Dhivehi</option>
             </select>
+            <label style="display: flex; gap: 4px; align-items: center; cursor: pointer; font: var(--type-caption); color: var(--fg-dim);"
+                   title="Round-trip back-translate to flag numbers/proper nouns that drifted. Doubles cost.">
+                <input type="checkbox" id="verify-toggle" />
+                Verify (back-translate)
+            </label>
             <span class="translate-meta" id="char-count">0 / 4000</span>
         </div>
 
@@ -232,6 +237,7 @@ async function doTranslate() {
             body: JSON.stringify({
                 text: text,
                 target_language: $target.value,
+                verify: document.getElementById("verify-toggle").checked,
             }),
         });
         const body = await r.json();
@@ -266,6 +272,27 @@ function renderProvenance(res) {
         `<strong>Glossary terms applied:</strong> ${gl}<br>` +
         `<strong>Cost:</strong> $${cost}`;
     $provBody.appendChild(stats);
+    if (res.verification) {
+        const v = res.verification;
+        const vbox = document.createElement("div");
+        vbox.style.marginTop = "12px";
+        vbox.style.padding = "10px";
+        vbox.style.borderRadius = "4px";
+        vbox.style.borderLeft = "3px solid " + (v.passed ? "var(--good)" : "var(--deadline)");
+        vbox.style.background = v.passed ? "rgba(91,199,135,0.08)" : "rgba(240,160,75,0.08)";
+        let html = `<strong>Back-translation verification: ${v.passed ? '✓ PASSED' : '✗ FAILED'}</strong><br>`;
+        if (v.numbers_lost && v.numbers_lost.length)
+            html += `<br><strong>Numbers lost:</strong> ${v.numbers_lost.join(", ")}`;
+        if (v.numbers_added && v.numbers_added.length)
+            html += `<br><strong>Numbers added:</strong> ${v.numbers_added.join(", ")}`;
+        if (v.proper_nouns_lost && v.proper_nouns_lost.length)
+            html += `<br><strong>Proper nouns lost:</strong> ${v.proper_nouns_lost.join(", ")}`;
+        if (v.proper_nouns_added && v.proper_nouns_added.length)
+            html += `<br><strong>Proper nouns added:</strong> ${v.proper_nouns_added.join(", ")}`;
+        html += `<br><br><em>Back-translation:</em><br>${(v.back_translation || "").slice(0, 400)}`;
+        vbox.innerHTML = html;
+        $provBody.appendChild(vbox);
+    }
     if (res.disclaimer) {
         const dis = document.createElement("p");
         dis.className = "translate-meta";
