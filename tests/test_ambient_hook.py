@@ -46,6 +46,63 @@ from plugins.kahzaabu import hooks  # noqa: E402
 
 
 # ───────────────────────────────────────────────────────────────────
+# Module-level fixture: every test in this file runs against a
+# per-run TEMP DB, never the production data/kahzaabu.db.
+#
+# Without this, tests that call _mark_session_hot / _classify_match
+# with fixture session_ids ("cv-muizzu", "session-test", etc.) leaked
+# rows into the live ambient_hot_sessions table — discovered during
+# real-session smoke-testing 2026-05-22 (cv-* rows persisted after
+# the test run).
+# ───────────────────────────────────────────────────────────────────
+
+import os as _os_mod  # noqa: E402
+import sqlite3 as _sqlite3_mod  # noqa: E402
+import tempfile as _tempfile_mod  # noqa: E402
+
+_TEST_DB_PATH: Optional[Path] = None
+_ORIGINAL_KAHZAABU_DB_ENV: Optional[str] = None
+
+
+def setUpModule():
+    """Redirect KAHZAABU_DB to a per-run temp DB. Initialised with
+    the full schema so the ambient_hot_sessions table exists and
+    persistence calls go through normally."""
+    global _TEST_DB_PATH, _ORIGINAL_KAHZAABU_DB_ENV
+    fd = _tempfile_mod.NamedTemporaryFile(
+        prefix="kahzaabu-test-", suffix=".db", delete=False)
+    fd.close()
+    _TEST_DB_PATH = Path(fd.name)
+    # Initialise with the full schema so ambient_hot_sessions exists.
+    # Lazy import — kahzaabu.claims_db pulls in many modules.
+    from kahzaabu.claims_db import init_full_schema
+    conn = _sqlite3_mod.connect(str(_TEST_DB_PATH))
+    init_full_schema(conn)
+    conn.close()
+    _ORIGINAL_KAHZAABU_DB_ENV = _os_mod.environ.get("KAHZAABU_DB")
+    _os_mod.environ["KAHZAABU_DB"] = str(_TEST_DB_PATH)
+    # Hooks module caches DB-related state; clear so the redirect
+    # takes effect on the next call.
+    hooks._clear_followup_pattern_cache()
+    hooks._clear_sticky_state()
+
+
+def tearDownModule():
+    """Restore original KAHZAABU_DB env + remove the temp DB."""
+    global _TEST_DB_PATH, _ORIGINAL_KAHZAABU_DB_ENV
+    if _ORIGINAL_KAHZAABU_DB_ENV is None:
+        _os_mod.environ.pop("KAHZAABU_DB", None)
+    else:
+        _os_mod.environ["KAHZAABU_DB"] = _ORIGINAL_KAHZAABU_DB_ENV
+    if _TEST_DB_PATH is not None:
+        try:
+            _TEST_DB_PATH.unlink()
+        except FileNotFoundError:
+            pass
+        _TEST_DB_PATH = None
+
+
+# ───────────────────────────────────────────────────────────────────
 # Prefilter — the hot path, must be fast and high-precision
 # ───────────────────────────────────────────────────────────────────
 

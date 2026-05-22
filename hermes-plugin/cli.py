@@ -327,8 +327,13 @@ def _cmd_doctor(_args) -> int:
             print(f"                            run `hermes kahzaabu update` to populate")
         else:
             allow = ",".join(h["platform_allowlist"]) if h["platform_allowlist"] else "all"
+            # Show BOTH counts. The in-process count is 0 right after
+            # `hermes kahzaabu doctor` spawns (cold process); the
+            # persistent count is the cross-process truth.
+            in_proc = h["hot_sessions"]
+            pers = h.get("persistent_sessions", 0)
             print(f"  ambient hook         : enabled (platforms: {allow}, "
-                  f"hot sessions: {h['hot_sessions']})")
+                  f"hot sessions: {in_proc} in-proc, {pers} persistent)")
     except Exception as e:
         print(f"  ambient hook         : status unavailable ({e})")
 

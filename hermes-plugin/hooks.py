@@ -661,12 +661,33 @@ def hook_status() -> dict:
         enabled = True
 
     with _state_lock:
-        hot_count = len(_session_hits)
+        in_proc_count = len(_session_hits)
+
+    # Persistent count — the cross-process truth. In a multi-process
+    # hermes deployment the in-process count is "hot in THIS python
+    # process", which is often 0 immediately after process spawn even
+    # though sibling processes have active sessions. The persistent
+    # count shows what's actually live in the corpus.
+    persistent_count = 0
+    if db_path is not None:
+        try:
+            import time as _t
+            conn = sqlite3.connect(str(db_path), timeout=0.5)
+            try:
+                persistent_count = conn.execute(
+                    "SELECT COUNT(*) FROM ambient_hot_sessions "
+                    "WHERE hot_until > ?", (_t.time(),)
+                ).fetchone()[0]
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            pass
 
     return {
-        "enabled":            enabled,
-        "disable_reason":     disable_reason,
-        "platform_allowlist": allowlist,
-        "db_path":            str(db_path) if db_path else None,
-        "hot_sessions":       hot_count,
+        "enabled":              enabled,
+        "disable_reason":       disable_reason,
+        "platform_allowlist":   allowlist,
+        "db_path":              str(db_path) if db_path else None,
+        "hot_sessions":         in_proc_count,
+        "persistent_sessions":  persistent_count,
     }
