@@ -492,6 +492,11 @@ V2_SLICE15_MIGRATIONS = [
     # the scraper treats NULL == "we don't know" and stores the hash
     # without flagging a change (no false-positive on first observation).
     "ALTER TABLE articles ADD COLUMN content_hash TEXT",
+    # Slice 15B: when a source article gets revised, every fact_check
+    # whose source_article_ids includes it gets this timestamp set so
+    # an operator can list fact-checks pointing at potentially-stale
+    # source text. NULL = source unchanged since publication.
+    "ALTER TABLE fact_checks ADD COLUMN source_changed_at TEXT",
 ]
 
 VALID_VERDICT_LABELS = frozenset({

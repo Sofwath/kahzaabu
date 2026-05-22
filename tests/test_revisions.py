@@ -536,6 +536,102 @@ class BackfillContentHashes(unittest.TestCase):
             "otherwise the next scrape would see a phantom change")
 
 
+class FactCheckSourceFlag(unittest.TestCase):
+    """Slice 15B: when an article gets revised, fact-checks
+    referencing it get source_changed_at set so the operator can
+    triage which ones to re-verify against the new source text."""
+
+    def _insert_factcheck(self, conn, fc_id, source_article_ids: list):
+        import json
+        from datetime import datetime, timezone
+        conn.execute(
+            """INSERT INTO fact_checks (
+                id, category, claim, claim_date, topic, confidence,
+                source_article_ids, evidence_quotes, created_at,
+                published, verdict_label
+            ) VALUES (?, 'LIE', 'test', '2026-01-01', 'topic',
+                      'reviewed', ?, '[]', ?, 1, 'REFUTED')""",
+            (fc_id, json.dumps(source_article_ids),
+             datetime.now(timezone.utc).isoformat())
+        )
+        conn.commit()
+
+    def test_flag_set_when_referenced_article_revised(self):
+        conn = _mkconn()
+        self._insert_factcheck(conn, 500, [100])
+        db.insert_article(conn, _article(id_=100, body="v1"))
+        db.insert_article(conn, _article(id_=100, body="v2"))  # triggers archive
+        flagged = conn.execute(
+            "SELECT source_changed_at FROM fact_checks WHERE id=500"
+        ).fetchone()[0]
+        self.assertIsNotNone(flagged,
+            "Fact-check referencing the revised article must have "
+            "source_changed_at set — that's the whole point of the slice")
+
+    def test_unrelated_factchecks_not_flagged(self):
+        conn = _mkconn()
+        self._insert_factcheck(conn, 600, [200])  # references article 200
+        db.insert_article(conn, _article(id_=100, body="v1"))
+        db.insert_article(conn, _article(id_=100, body="v2"))  # revises 100
+        flagged = conn.execute(
+            "SELECT source_changed_at FROM fact_checks WHERE id=600"
+        ).fetchone()[0]
+        self.assertIsNone(flagged,
+            "Fact-check that does NOT reference the revised article "
+            "must remain unflagged — otherwise every revision would "
+            "flood the stale list with false positives")
+
+    def test_multiple_factchecks_referencing_same_article_all_flagged(self):
+        conn = _mkconn()
+        self._insert_factcheck(conn, 701, [100, 102])
+        self._insert_factcheck(conn, 702, [100])
+        db.insert_article(conn, _article(id_=100, body="v1"))
+        db.insert_article(conn, _article(id_=100, body="v2"))
+        n_flagged = conn.execute(
+            "SELECT COUNT(*) FROM fact_checks WHERE source_changed_at IS NOT NULL"
+        ).fetchone()[0]
+        self.assertEqual(n_flagged, 2,
+            "Both fact-checks referencing the revised article must be "
+            "flagged — operator needs to triage each independently")
+
+    def test_substring_false_positive_avoided(self):
+        """source_article_ids JSON contains '100' as a substring of
+        '1001'. The LIKE prefilter would match both, but JSON parse
+        must reject the false hit."""
+        conn = _mkconn()
+        self._insert_factcheck(conn, 800, [1001])  # NOT 100
+        db.insert_article(conn, _article(id_=100, body="v1"))
+        db.insert_article(conn, _article(id_=100, body="v2"))  # revises 100
+        flagged = conn.execute(
+            "SELECT source_changed_at FROM fact_checks WHERE id=800"
+        ).fetchone()[0]
+        self.assertIsNone(flagged,
+            "Fact-check referencing article 1001 must NOT be flagged "
+            "when article 100 is revised — substring matching would "
+            "cause false positives; JSON-parse confirmation prevents it")
+
+    def test_subsequent_revisions_update_the_timestamp(self):
+        """If the article gets edited again later, the flag should
+        update to point at the most recent affecting revision (not
+        stay frozen at the first edit timestamp)."""
+        import time
+        conn = _mkconn()
+        self._insert_factcheck(conn, 900, [100])
+        db.insert_article(conn, _article(id_=100, body="v1"))
+        db.insert_article(conn, _article(id_=100, body="v2"))
+        first_flag = conn.execute(
+            "SELECT source_changed_at FROM fact_checks WHERE id=900"
+        ).fetchone()[0]
+        time.sleep(0.01)  # ensure a different timestamp
+        db.insert_article(conn, _article(id_=100, body="v3"))
+        second_flag = conn.execute(
+            "SELECT source_changed_at FROM fact_checks WHERE id=900"
+        ).fetchone()[0]
+        self.assertGreater(second_flag, first_flag,
+            "Second revision must update the flag to the new "
+            "timestamp — operator should see the LATEST edit time")
+
+
 class SingleWriterInvariant(unittest.TestCase):
     """The hash-and-archive logic lives in db.insert_article. Any
     OTHER write path to the articles table would silently bypass it,

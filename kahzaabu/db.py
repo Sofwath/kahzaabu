@@ -64,6 +64,26 @@ def init_db(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def set_article_content_hash(
+    conn: sqlite3.Connection,
+    article_id: int,
+    language: str,
+    content_hash: str,
+) -> None:
+    """Hash-only UPDATE on articles. Used by the backfill (ADR 0015),
+    which intentionally bypasses the archive-revision logic — there's
+    no 'old version' to archive when the existing hash is NULL.
+
+    Kept in db.py so kahzaabu/db.py remains the only writer to the
+    articles table (per the single-writer invariant guarded by
+    tests/test_revisions.py::SingleWriterInvariant)."""
+    conn.execute(
+        "UPDATE articles SET content_hash = ? "
+        "WHERE id = ? AND language = ?",
+        (content_hash, article_id, language),
+    )
+
+
 def article_exists(conn: sqlite3.Connection, article_id: int, language: str) -> bool:
     row = conn.execute(
         "SELECT 1 FROM articles WHERE id = ? AND language = ?",

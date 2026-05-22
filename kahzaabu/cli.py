@@ -1114,3 +1114,57 @@ def revisions_backfill(ctx):
     )
     click.echo(
         "Subsequent scrapes will detect edits against these baselines.")
+
+
+@main.group(name="fact-checks")
+def fact_checks_grp():
+    """V2 Slice 15B — fact-check triage commands."""
+    pass
+
+
+@fact_checks_grp.command(name="stale")
+@click.option("--limit", type=int, default=50,
+               help="Max rows to show (default: 50).")
+@click.option("--since", default=None,
+               help="Only fact-checks flagged since YYYY-MM-DD.")
+@click.pass_context
+def fact_checks_stale(ctx, limit, since):
+    """List fact-checks whose source article has been edited since
+    the fact-check was published.
+
+    source_changed_at is set by archive_revision when an article
+    revision is detected; this command surfaces the affected
+    fact-checks so an operator can decide whether to re-verify
+    against the new source text."""
+    conn = ctx.obj["conn"]
+    sql = """
+        SELECT id, category, claim, source_article_ids,
+               claim_date, source_changed_at, published
+        FROM fact_checks
+        WHERE source_changed_at IS NOT NULL
+    """
+    params: list = []
+    if since:
+        sql += " AND source_changed_at >= ?"
+        params.append(since)
+    sql += " ORDER BY source_changed_at DESC LIMIT ?"
+    params.append(limit)
+    rows = conn.execute(sql, params).fetchall()
+    if not rows:
+        click.echo("No fact-checks have a flagged source.")
+        click.echo("(A source-article edit since publication would set "
+                    "fact_checks.source_changed_at. Either no edits have "
+                    "been detected yet, or no fact-checks reference an "
+                    "edited article.)")
+        return
+    click.echo(f"\n{len(rows)} fact-check(s) with edited sources:\n")
+    for r in rows:
+        click.echo(f"  fc#{r[0]:>4}  source changed {r[5][:19]}  "
+                    f"{'[unpublished]' if not r[6] else ''}")
+        click.echo(f"    category: {r[1]}  claim_date: {r[4]}")
+        click.echo(f"    source_articles: {r[3]}")
+        click.echo(f"    claim: {(r[2] or '')[:120]}")
+        click.echo()
+    click.echo("Use `kahzaabu revisions list <article_id>` to see the "
+                "edit history, then `kahzaabu verify --fact-check <id>` "
+                "to re-verify against the new source text.")

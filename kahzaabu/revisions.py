@@ -178,15 +178,17 @@ def archive_revision(
     old_row: dict,
     new_row: dict,
 ) -> int:
-    """Insert an article_revisions row capturing the OLD content.
+    """Insert an article_revisions row capturing the OLD content,
+    THEN flag every fact_check whose source_article_ids includes
+    this article with `source_changed_at = now()` (Slice 15B).
 
     Returns the inserted revision id. Caller is responsible for
     issuing the subsequent UPDATE/REPLACE on the articles row.
 
-    `old_row` must have the columns we archive (content_hash, title,
-    body_text, body_html, image_urls, reference, published_date,
-    observed_at — usually mapped from the prior `articles.scraped_at`).
-    `new_row` is used only to compute the diff_summary."""
+    The fact-check flagging is done in the same transaction as the
+    revision insert — so an operator running `kahzaabu fact-checks
+    stale` immediately after a scrape sees a consistent view (either
+    both the revision row and the flags appear, or neither does)."""
     now = datetime.now(timezone.utc).isoformat()
     summary = generate_diff_summary(old_row, new_row)
     cur = conn.execute(
@@ -204,13 +206,59 @@ def archive_revision(
             old_row.get("image_urls"),
             old_row.get("reference"),
             old_row.get("published_date"),
-            old_row.get("scraped_at") or now,  # when WE first saw the old
-            now,                                # when WE noticed the change
+            old_row.get("scraped_at") or now,
+            now,
             summary,
         ),
     )
+    flag_affected_factchecks(conn, article_id, now)
     conn.commit()
     return cur.lastrowid
+
+
+def flag_affected_factchecks(
+    conn: sqlite3.Connection,
+    article_id: int,
+    when: str,
+) -> int:
+    """Set source_changed_at on every fact-check whose
+    source_article_ids JSON array contains this article_id.
+
+    Returns the count of fact-checks flagged. source_article_ids is
+    stored as JSON (e.g. "[36702, 36742]"); we use LIKE-with-bracket
+    matching to avoid false-positive substring hits (36 vs 3677),
+    then JSON-parse to confirm. The LIKE prefilter is just to limit
+    the rows we have to parse.
+
+    Idempotent semantics: a fact-check already flagged gets its
+    timestamp UPDATED to the latest 'when' — this keeps the flag
+    pointing at the most recent affecting revision, which is what
+    an operator wants for triage."""
+    import json as _json
+    # LIKE prefilter — bracket characters disambiguate "36" from "36702"
+    # when both appear in the JSON. We then parse to confirm membership.
+    candidates = conn.execute(
+        """SELECT id, source_article_ids
+           FROM fact_checks
+           WHERE source_article_ids LIKE ?""",
+        (f"%{article_id}%",),
+    ).fetchall()
+    flagged = 0
+    for r in candidates:
+        fc_id = r[0] if not hasattr(r, "keys") else r["id"]
+        raw = r[1] if not hasattr(r, "keys") else r["source_article_ids"]
+        try:
+            ids = _json.loads(raw or "[]")
+        except (TypeError, _json.JSONDecodeError):
+            continue
+        if article_id not in ids:
+            continue
+        conn.execute(
+            "UPDATE fact_checks SET source_changed_at = ? WHERE id = ?",
+            (when, fc_id),
+        )
+        flagged += 1
+    return flagged
 
 
 def backfill_content_hashes(
@@ -247,14 +295,14 @@ def backfill_content_hashes(
         ).fetchall()
         if not rows:
             break
+        # Routed through db.set_article_content_hash to preserve the
+        # single-writer invariant (see ADR 0015 + the regression test
+        # in tests/test_revisions.py::SingleWriterInvariant).
+        from kahzaabu import db as _db
         for r in rows:
             id_, lang, title, body, ref, images = r
             h = compute_content_hash(title, body, ref, images)
-            conn.execute(
-                "UPDATE articles SET content_hash = ? "
-                "WHERE id = ? AND language = ?",
-                (h, id_, lang),
-            )
+            _db.set_article_content_hash(conn, id_, lang, h)
             updated += 1
             if progress_cb is not None and updated % 500 == 0:
                 progress_cb(updated, total)
