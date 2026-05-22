@@ -172,6 +172,75 @@ The plugin fails open: no Langfuse SDK / no credentials → silent no-op. See `~
 
 ---
 
+## Live-testing the ambient hook
+
+Unit tests cover the hook's logic but won't catch issues that show up only in a real hermes process (different `session_id` handling, agent behaviour around injected context, file-system side-effects). Three rules from past live-test runs to avoid stepping on the same rakes:
+
+### Rule 1 — Use read-only questions
+
+The agent will sometimes act on imperative prompts. `Write me a Python function that reverses a list` caused Claude Haiku to literally write `reverse_list.py` to the working tree. The file then got accidentally staged in the next git commit (cleaned up in `120c6a3`).
+
+Use questions, not commands. Phrasing examples:
+
+| ✅ Safe | ❌ Risky |
+|---|---|
+| "What did Muizzu announce this week?" | "Save Muizzu's announcements to a file." |
+| "What's the syntax to reverse a list in Python?" | "Write me a function that reverses a list." |
+| "How does kahzaabu cite fact-checks?" | "Generate a fact-check for this claim." |
+
+Run `git status` before every commit during a live-test session. If a `.py` / `.md` / `.json` you didn't intend appears, delete or move it out of the repo before staging.
+
+### Rule 2 — Tests must never touch `data/kahzaabu.db`
+
+The pre-existing `_mark_session_hot` writes to whatever DB `_resolve_db_path()` finds — production by default. Earlier runs leaked 8 fixture session IDs (`cv-muizzu`, `cv-maldiv`, …) into `ambient_hot_sessions`. Fixed structurally: `tests/test_ambient_hook.py` has `setUpModule` / `tearDownModule` that redirect `KAHZAABU_DB` to a per-run tempfile.
+
+When adding a NEW test file that calls hook internals, follow the same pattern (copy the `setUpModule` block from `test_ambient_hook.py`).
+
+After a live-test session, sanity-check the production DB:
+
+```bash
+sqlite3 data/kahzaabu.db \
+  "SELECT session_id, hot_until FROM ambient_hot_sessions WHERE session_id LIKE 'cv-%' OR session_id LIKE 'session-%' OR session_id LIKE 'crossproc-%'"
+```
+
+Any test-fixture IDs that show up are leaks — delete them.
+
+### Rule 3 — Sticky-session needs interactive hermes, not `-z --resume`
+
+Hermes' `-z` (one-shot) mode generates a fresh `session_id` for each invocation, even when paired with `--resume SID`. The `--resume` flag loads the prior conversation's *content* but the new turn lives under a new ID.
+
+Concrete: turn 1 `hermes -z "What did Muizzu announce?"` (session `…68081e`) marks `…68081e` hot in the persistent DB. Turn 2 `hermes -z --resume …68081e "what about housing?"` runs under a NEW session `…1d6b38` whose hot-row doesn't exist → sticky-session path doesn't fire.
+
+To live-test the sticky path you need session_id stability — use interactive mode:
+
+```bash
+hermes chat
+> What did Muizzu announce about the JSC?     # turn 1: strong → marks hot
+> what about housing then?                    # turn 2: same session_id → sticky fires
+```
+
+Or verify directly without hermes (what unit tests do):
+
+```bash
+# After the first session marks itself hot, the hook will inject
+# even when called from a sibling process with the same session_id.
+.venv/bin/python -c "
+from plugins.kahzaabu.hooks import on_pre_llm_call
+r = on_pre_llm_call(session_id='<hot-session-id>', user_message='what about housing?')
+print(r['context'][:200] if r else 'no match')
+"
+```
+
+### Verifying the hook fired
+
+Three live signals, in decreasing strength:
+
+1. **Agent's text response** — if it mentions specifics from the archive (`presidency.gov.mv`, document numbers like `2026-287`, real article dates, "based on the kahzaabu archive"), the hook fired and the agent used the injected context.
+2. **`hermes kahzaabu doctor`** — the line `ambient hook : enabled (platforms: all, hot sessions: N in-proc, M persistent)` shows the cross-process count after the run.
+3. **Direct DB inspection** — `SELECT session_id, hot_until FROM ambient_hot_sessions ORDER BY hot_until DESC LIMIT 5`.
+
+---
+
 ## Status
 
 - ✅ All 9 tools wired and tested via `hermes chat`
