@@ -8,7 +8,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "verify": "node verify-vendored-libs.mjs"
+    "verify": "node verify-vendored-libs.mjs",
+    "ui-smoke": "node ui-smoke.mjs"
   },
   "devDependencies": {
     "jsdom": "^25.0.0"

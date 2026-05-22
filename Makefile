@@ -6,7 +6,7 @@
 # just a discoverable index. `make help` lists everything.
 
 .DEFAULT_GOAL := help
-.PHONY: help test ci-dry-run js-verify check-updates check-links \
+.PHONY: help test ci-dry-run js-verify ui-smoke check-updates check-links \
         backup restore audit transparency-report docker-build \
         docker-lean docker-cpu eval clean-images
 
@@ -18,6 +18,7 @@ help:
 	@echo "  make test                 Full Python test suite ($(shell ls tests/test_*.py 2>/dev/null | wc -l | tr -d ' ') test files)"
 	@echo "  make ci-dry-run           Run the workflow in a fresh worktree"
 	@echo "  make js-verify            Verify vendored JS libs against real call sites"
+	@echo "  make ui-smoke             Full-page smoke test (needs live web server)"
 	@echo "  make eval                 Golden-set quality eval (ADR 0008)"
 	@echo
 	@echo "  MAINTENANCE"
@@ -51,6 +52,13 @@ js-verify:
 	@cd scripts/js-verify && \
 	  if [ ! -d node_modules ]; then npm install --silent --no-audit --no-fund; fi && \
 	  npm run verify
+
+## ui-smoke: load every web route in headless DOM + assert content renders
+##           (requires a live server; defaults to HOST=http://127.0.0.1:8765)
+ui-smoke:
+	@cd scripts/js-verify && \
+	  if [ ! -d node_modules ]; then npm install --silent --no-audit --no-fund; fi && \
+	  HOST=$${HOST:-http://127.0.0.1:8765} node ui-smoke.mjs
 
 ## check-updates: scan npm registry for newer versions of vendored libs
 check-updates:
