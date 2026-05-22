@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Render the daily kahzaabu digest at 09:00 local time and write it
+  to ~/Documents/kahzaabu-digest-YYYY-MM-DD.md.
+
+  This is for macOS operators who don't run hermes as a daemon.
+  hermes-managed scheduling alternative:
+
+      hermes cron create \
+          --schedule "0 9 * * *" \
+          --command 'kahzaabu digest --output ~/Documents/kahzaabu-digest.md' \
+          --label kahzaabu-daily-digest
+
+  Either path: pure-read against SQLite (no LLM cost, no network).
+
+  Install (launchd path):
+    1. Edit the paths below to match your environment (REPLACE_ME).
+    2. cp scripts/com.kahzaabu.daily-digest.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.kahzaabu.daily-digest.plist
+
+  To run immediately:
+    launchctl start com.kahzaabu.daily-digest
+
+  Logs:
+    /tmp/kahzaabu.digest.{out,err}.log
+
+  To stop:
+    launchctl unload ~/Library/LaunchAgents/com.kahzaabu.daily-digest.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.kahzaabu.daily-digest</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/sh</string>
+        <string>-c</string>
+        <!-- Adjust path to the kahzaabu .venv-installed CLI. -->
+        <string>/REPLACE_ME/kahzaabu/.venv/bin/kahzaabu digest --hours 24 --output "$HOME/Documents/kahzaabu-digest-$(date +%Y-%m-%d).md"</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/REPLACE_ME/kahzaabu</string>
+
+    <!-- 09:00 local time, every day. Adjust if you want a different
+         hour or weekly cadence (use Weekday key). -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/kahzaabu.digest.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/kahzaabu.digest.err.log</string>
+
+    <!-- Don't relaunch if it exits with non-zero — a transient SQLite
+         lock would otherwise loop forever. -->
+    <key>RunAtLoad</key>
+    <false/>
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>

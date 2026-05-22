@@ -1168,3 +1168,29 @@ def fact_checks_stale(ctx, limit, since):
     click.echo("Use `kahzaabu revisions list <article_id>` to see the "
                 "edit history, then `kahzaabu verify --fact-check <id>` "
                 "to re-verify against the new source text.")
+
+
+@main.command(name="digest")
+@click.option("--hours", type=int, default=24,
+               help="Window in hours (default 24).")
+@click.option("--output", type=click.Path(), default=None,
+               help="Write to this path instead of stdout.")
+@click.pass_context
+def digest_cmd(ctx, hours, output):
+    """Slice F — short markdown digest of the last N hours.
+
+    Sections: new articles, new fact-checks, article edits detected
+    by the revision-tracking pipeline, and fact-checks whose sources
+    have changed.
+
+    Pure read against SQLite — no LLM cost. Intended to run daily
+    via launchd (see scripts/com.kahzaabu.daily-digest.plist) or
+    `hermes cron create --command 'kahzaabu digest --output …'`.
+    """
+    from .digest import render_digest, write_digest
+    conn = ctx.obj["conn"]
+    if output:
+        path = write_digest(conn, output, window_hours=hours)
+        click.echo(f"Wrote {path}")
+    else:
+        click.echo(render_digest(conn, window_hours=hours))
