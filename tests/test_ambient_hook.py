@@ -172,13 +172,26 @@ class HookReturnContract(unittest.TestCase):
             self.assertIn("Ambient kahzaabu context", r["context"])
             self.assertIn("Reminder", r["context"])
 
-    def test_defensive_no_db_returns_none(self):
-        """If the DB is missing the hook must return None — never
-        propagate an exception into the hermes turn."""
+    def test_defensive_no_db_returns_setup_hint_then_none(self):
+        """If the DB is missing, the FIRST match returns a one-time
+        setup-hint context dict (so the user learns about the setup
+        gap in their actual chat). Subsequent matches return None
+        (silent no-op — avoids flooding the conversation)."""
+        hooks._reset_db_missing_warning()
         with patch.object(hooks, "_resolve_db_path", return_value=None):
-            r = hooks.on_pre_llm_call(
+            r1 = hooks.on_pre_llm_call(
                 user_message="What did Muizzu announce yesterday?")
-            self.assertIsNone(r)
+            r2 = hooks.on_pre_llm_call(
+                user_message="Tell me about Muizzu's JSC reforms")
+        self.assertIsInstance(r1, dict,
+            "First match-without-DB must return a context dict so the "
+            "user sees the setup hint in their reply, not just a log "
+            "message they probably won't read")
+        self.assertIn("context", r1)
+        self.assertIn("setup", r1["context"].lower())
+        self.assertIsNone(r2,
+            "Second match-without-DB must be silent (otherwise "
+            "every user turn would re-inject the hint)")
 
     def test_defensive_search_throws_returns_none(self):
         """If the search modules throw (e.g., a corrupt DB), the hook
@@ -357,7 +370,7 @@ class DBMissingWarning(unittest.TestCase):
         """The warning fires only on the FIRST match-without-DB, then
         stays quiet so the log doesn't flood. We assert by checking
         the module-level flag is set after the first call — a second
-        call would short-circuit (see _warn_db_missing_once)."""
+        call would short-circuit (see _handle_db_missing_once)."""
         with patch.object(hooks, "_resolve_db_path", return_value=None):
             with self.assertLogs("plugins.kahzaabu.hooks",
                                   level="WARNING") as cm:
@@ -371,7 +384,7 @@ class DBMissingWarning(unittest.TestCase):
                     f"got: {cm.output}")
 
             # Confirm the flag is set — guarantees a second call
-            # would short-circuit inside _warn_db_missing_once.
+            # would short-circuit inside _handle_db_missing_once.
             self.assertTrue(hooks._db_missing_warned,
                 "First warning must set the once-only flag so a "
                 "second invocation skips the log call entirely")
@@ -425,6 +438,185 @@ class HookStatusDiagnostic(unittest.TestCase):
             s = hooks.hook_status()
             self.assertEqual(sorted(s["platform_allowlist"]),
                               ["cli", "telegram"])
+
+
+# ───────────────────────────────────────────────────────────────────
+# Corpus-derived follow-up vocabulary (Concern 1 follow-up)
+# ───────────────────────────────────────────────────────────────────
+
+class CorpusDerivedFollowupVocab(unittest.TestCase):
+    """The sticky-session follow-up regex should pull discrete topic
+    tokens from the live fact_checks.topic column, on top of the
+    hardcoded baseline. New topics added by the pipeline propagate
+    without a hand edit."""
+
+    def setUp(self):
+        hooks._clear_followup_pattern_cache()
+        hooks._clear_sticky_state()
+        hooks._reset_db_missing_warning()
+
+    def test_corpus_topics_appear_in_pattern(self):
+        """Build a fixture DB with a non-baseline topic, then check
+        the pattern matches it."""
+        import sqlite3
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = Path(f.name)
+        try:
+            from kahzaabu.claims_db import init_full_schema
+            conn = sqlite3.connect(str(db_path))
+            init_full_schema(conn)
+            # Insert a fact_check with a topic that's NOT in the baseline.
+            conn.execute(
+                "INSERT INTO fact_checks "
+                "(id, category, claim, claim_date, topic, confidence, "
+                " source_article_ids, evidence_quotes, created_at, "
+                " published, verdict_label) VALUES "
+                "(?, 'LIE', 'test', '2026-01-01', 'cryptocurrency_regulation', "
+                " 'reviewed', '[]', '[]', '2026-01-01T00:00:00Z', 1, 'REFUTED')",
+                (9999,)
+            )
+            conn.commit()
+            conn.close()
+            with patch.dict("os.environ", {"KAHZAABU_DB": str(db_path)}):
+                # Force rebuild of the cached pattern against this DB.
+                hooks._clear_followup_pattern_cache()
+                pat = hooks._followup_pattern()
+                # Both corpus words should be matchable
+                self.assertTrue(pat.search("any updates on cryptocurrency?"),
+                    "Corpus-derived 'cryptocurrency' (from the topic) must "
+                    "match the sticky-session follow-up pattern")
+                self.assertTrue(pat.search("what about regulation?"),
+                    "Corpus-derived 'regulation' (from the topic) must "
+                    "match the sticky-session follow-up pattern")
+        finally:
+            db_path.unlink(missing_ok=True)
+
+    def test_pattern_falls_back_to_baseline_when_no_db(self):
+        """Without a DB the pattern must still work — only the
+        baseline keywords are available, but they should still
+        match the common cases."""
+        with patch.object(hooks, "_resolve_db_path", return_value=None):
+            hooks._clear_followup_pattern_cache()
+            pat = hooks._followup_pattern()
+            # Baseline keywords still fire
+            self.assertTrue(pat.search("what about the housing scheme?"))
+            self.assertTrue(pat.search("any updates on the election?"))
+
+
+# ───────────────────────────────────────────────────────────────────
+# Cross-process hot-session persistence (Concern 2 follow-up)
+# ───────────────────────────────────────────────────────────────────
+
+class CrossProcessHotSessions(unittest.TestCase):
+    """When the DB is available, hot-session state must survive a
+    process restart (or be visible to a sibling process). This is
+    what makes the sticky path work in multi-process hermes deployments
+    where adapter platforms run as separate processes."""
+
+    def setUp(self):
+        hooks._clear_sticky_state()
+        hooks._reset_db_missing_warning()
+
+    def tearDown(self):
+        hooks._clear_sticky_state()
+
+    def test_persisted_to_sqlite_when_db_available(self):
+        """Marking a session hot should write a row to
+        ambient_hot_sessions when the DB is present."""
+        import sqlite3
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = Path(f.name)
+        try:
+            from kahzaabu.claims_db import init_full_schema
+            conn = sqlite3.connect(str(db_path))
+            init_full_schema(conn)
+            conn.close()
+            with patch.dict("os.environ", {"KAHZAABU_DB": str(db_path)}):
+                hooks._mark_session_hot("crossproc-1")
+                # Read the row back from a separate connection
+                conn = sqlite3.connect(str(db_path))
+                row = conn.execute(
+                    "SELECT session_id, hot_until FROM ambient_hot_sessions "
+                    "WHERE session_id = ?",
+                    ("crossproc-1",)
+                ).fetchone()
+                conn.close()
+                self.assertIsNotNone(row,
+                    "_mark_session_hot must persist to "
+                    "ambient_hot_sessions when a DB is available")
+                self.assertEqual(row[0], "crossproc-1")
+                import time as _t
+                self.assertGreater(row[1], _t.time(),
+                    "hot_until must be in the future")
+        finally:
+            db_path.unlink(missing_ok=True)
+
+    def test_simulated_separate_process_sees_hot_session(self):
+        """Wipe in-memory state to simulate a sibling process that
+        hasn't seen the session before, then verify _is_session_hot
+        still returns True via the DB read."""
+        import sqlite3
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = Path(f.name)
+        try:
+            from kahzaabu.claims_db import init_full_schema
+            conn = sqlite3.connect(str(db_path))
+            init_full_schema(conn)
+            conn.close()
+            with patch.dict("os.environ", {"KAHZAABU_DB": str(db_path)}):
+                hooks._mark_session_hot("crossproc-2")
+                # Simulate sibling process — wipe in-memory dict
+                with hooks._state_lock:
+                    hooks._session_hits.clear()
+                # The "sibling" should still see the hot session
+                self.assertTrue(hooks._is_session_hot("crossproc-2"),
+                    "After wiping in-memory state, _is_session_hot "
+                    "must still return True via the SQLite read — "
+                    "this is what makes cross-process stickiness work")
+        finally:
+            db_path.unlink(missing_ok=True)
+
+    def test_expired_rows_garbage_collected_on_read(self):
+        """Lazy GC: when reading, drop any rows whose hot_until is
+        in the past. Prevents the table from growing unboundedly."""
+        import sqlite3
+        import tempfile
+        import time as _t
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = Path(f.name)
+        try:
+            from kahzaabu.claims_db import init_full_schema
+            conn = sqlite3.connect(str(db_path))
+            init_full_schema(conn)
+            # Manually insert an expired row + a fresh one
+            conn.execute(
+                "INSERT INTO ambient_hot_sessions VALUES (?, ?)",
+                ("expired-session", _t.time() - 60))
+            conn.execute(
+                "INSERT INTO ambient_hot_sessions VALUES (?, ?)",
+                ("fresh-session", _t.time() + 600))
+            conn.commit()
+            conn.close()
+            with patch.dict("os.environ", {"KAHZAABU_DB": str(db_path)}):
+                with hooks._state_lock:
+                    hooks._session_hits.clear()
+                # Trigger lazy GC by querying the expired session
+                self.assertFalse(hooks._is_session_hot("expired-session"))
+                # Confirm the expired row was GC'd
+                conn = sqlite3.connect(str(db_path))
+                cnt = conn.execute(
+                    "SELECT COUNT(*) FROM ambient_hot_sessions "
+                    "WHERE session_id = 'expired-session'"
+                ).fetchone()[0]
+                conn.close()
+                self.assertEqual(cnt, 0,
+                    "Lazy GC must drop expired rows on read — "
+                    "otherwise the table grows unboundedly over time")
+        finally:
+            db_path.unlink(missing_ok=True)
 
 
 # ───────────────────────────────────────────────────────────────────

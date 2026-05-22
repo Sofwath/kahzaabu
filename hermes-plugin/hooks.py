@@ -111,23 +111,27 @@ _MALDIVIAN_ANCHOR = re.compile(
     re.IGNORECASE,
 )
 
-# BROADER pattern used ONLY for the sticky-session follow-up path.
-# Once a session is already on-topic, a loose follow-up like
-# "what about housing?" / "did anything happen with the JSC?" /
-# "what's the court ruling?" should still inject context. This
-# pattern matches the kinds of topic-words that come up in Maldivian
-# political conversations — but is intentionally not used for cold-
-# session classification (would flood unrelated chats otherwise).
-_FOLLOWUP_TOPICS = re.compile(
-    r"\b("
-    r"housing|education|foreign|election|debt|court|judic|cabinet|"
-    r"ministry|parliament|legislation|policy|gdp|reserves|"
-    r"defense|security|healthcare|scheme|project|target|promise|"
-    r"commission|amendment|appoint|reshuffle|tourism|fisheries|"
-    r"sovereignty|treaty|aid|loan|infrastructure|airport|reclamation"
-    r")\b",
-    re.IGNORECASE,
-)
+# Sticky-session follow-up pattern. The "baseline" set is hardcoded
+# so the hook works correctly on a fresh DB before the pipeline runs
+# (otherwise a new install would have a degraded sticky-session path
+# until the first scrape). The CORPUS-DERIVED set is computed once
+# from the live DB at first-fire and unioned on top — see
+# `_compute_followup_pattern()` below. Maintainers get self-updating
+# topic coverage; the hook stays robust to an empty/missing DB.
+_FOLLOWUP_BASELINE_WORDS = frozenset({
+    "housing", "education", "foreign", "election", "debt", "court",
+    "judic", "cabinet", "ministry", "parliament", "legislation",
+    "policy", "gdp", "reserves", "defense", "security", "healthcare",
+    "scheme", "project", "target", "promise", "commission",
+    "amendment", "appoint", "reshuffle", "tourism", "fisheries",
+    "sovereignty", "treaty", "aid", "loan", "infrastructure",
+    "airport", "reclamation",
+})
+
+# Filled lazily by _followup_pattern() — cached for the process
+# lifetime. Tests can wipe via _clear_followup_pattern_cache().
+_followup_pattern_cache: Optional[re.Pattern] = None
+_followup_words_cache: Optional[frozenset[str]] = None
 
 # Soft cap on injected context size — agents do better with concise
 # context than a wall of text. 1.5KB is enough for 3 fact-checks +
@@ -170,10 +174,11 @@ def _is_relevant(user_message: str, session_id: str = "") -> bool:
         return True
 
     # Path 3 — sticky session (loose follow-up in an already-hot session).
-    # Uses the broader _FOLLOWUP_TOPICS pattern, which is too permissive
-    # to use for cold-session classification but the right granularity
-    # for follow-up turns where we already know the topic.
-    if session_id and _is_session_hot(session_id) and _FOLLOWUP_TOPICS.search(user_message):
+    # Uses the broader follow-up pattern (baseline keywords ∪ topics
+    # pulled from the live DB at first fire) — too permissive for
+    # cold-session classification, but the right granularity for
+    # follow-up turns where we already know the topic.
+    if session_id and _is_session_hot(session_id) and _followup_pattern().search(user_message):
         # Refresh the TTL — the session is still on-topic.
         _mark_session_hot(session_id)
         return True
@@ -182,35 +187,192 @@ def _is_relevant(user_message: str, session_id: str = "") -> bool:
 
 
 def _mark_session_hot(session_id: str) -> None:
-    """Record (or refresh) that the given session is on-topic. Bounded
-    LRU eviction prevents runaway growth."""
+    """Record (or refresh) that the given session is on-topic.
+
+    Writes both to in-memory state AND (best-effort) to the
+    persistent ambient_hot_sessions table. Cross-process consistency:
+    a strong match on platform A (e.g. CLI) makes the session hot
+    on platform B (e.g. Telegram) inside the same hermes deployment.
+
+    Bounded LRU eviction on the in-memory dict prevents runaway
+    growth; SQLite handles its own row count.
+    """
     if not session_id:
         return
     now = time.monotonic()
     with _state_lock:
         _session_hits[session_id] = now
         if len(_session_hits) > _STICKY_MAX_ENTRIES:
-            # Drop the oldest 10% of entries
             n_drop = max(1, _STICKY_MAX_ENTRIES // 10)
             for k in sorted(_session_hits, key=_session_hits.get)[:n_drop]:
                 _session_hits.pop(k, None)
+    # Persistent write — best effort. If the DB is missing or
+    # locked we fall back to in-memory-only (already done above).
+    db_path = _resolve_db_path()
+    if db_path is None:
+        return
+    try:
+        # Wall-clock unix timestamp for cross-process comparability
+        # (time.monotonic() is per-process; can't share across procs).
+        import time as _t
+        hot_until = _t.time() + _STICKY_TTL_SECONDS
+        conn = sqlite3.connect(str(db_path), timeout=0.5)
+        try:
+            conn.execute(
+                "INSERT INTO ambient_hot_sessions (session_id, hot_until) "
+                "VALUES (?, ?) "
+                "ON CONFLICT(session_id) DO UPDATE SET hot_until = excluded.hot_until",
+                (session_id, hot_until),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except sqlite3.Error as e:
+        # Common cases: DB locked by another writer, table missing
+        # (legacy DB without the migration). Both are recoverable —
+        # the in-memory path above keeps the hook working.
+        logger.debug("ambient: persistent hot-session write failed: %s", e)
 
 
 def _is_session_hot(session_id: str) -> bool:
-    """True if the session has a fresh strong-match within the TTL."""
+    """True if the session has a fresh strong-match within the TTL.
+
+    Checks in-memory first (cheap; same-process). Falls through to
+    SQLite (cross-process). Lazy GC: while we're here for a read,
+    drop any rows whose hot_until is in the past."""
     if not session_id:
         return False
+    # In-memory check — same process, sub-microsecond.
     with _state_lock:
         last = _session_hits.get(session_id)
-    if last is None:
+    if last is not None and (time.monotonic() - last) < _STICKY_TTL_SECONDS:
+        return True
+    # Persistent check — cross-process.
+    db_path = _resolve_db_path()
+    if db_path is None:
         return False
-    return (time.monotonic() - last) < _STICKY_TTL_SECONDS
+    try:
+        import time as _t
+        now = _t.time()
+        conn = sqlite3.connect(str(db_path), timeout=0.5)
+        try:
+            row = conn.execute(
+                "SELECT hot_until FROM ambient_hot_sessions WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            if row[0] >= now:
+                # Mirror into in-memory so subsequent checks in this
+                # process avoid the DB round-trip.
+                with _state_lock:
+                    _session_hits[session_id] = time.monotonic()
+                return True
+            # Expired — lazy GC. Drop this row and any others in the
+            # past while we hold the connection (cheap).
+            conn.execute(
+                "DELETE FROM ambient_hot_sessions WHERE hot_until < ?",
+                (now,),
+            )
+            conn.commit()
+            return False
+        finally:
+            conn.close()
+    except sqlite3.Error as e:
+        logger.debug("ambient: persistent hot-session read failed: %s", e)
+        return False
 
 
 def _clear_sticky_state() -> None:
-    """Test helper — wipe sticky-session memory. Not used in production."""
+    """Test helper — wipe sticky-session memory AND persistent state.
+    Not used in production."""
     with _state_lock:
         _session_hits.clear()
+    db_path = _resolve_db_path()
+    if db_path is None:
+        return
+    try:
+        conn = sqlite3.connect(str(db_path), timeout=0.5)
+        try:
+            conn.execute("DELETE FROM ambient_hot_sessions")
+            conn.commit()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        pass
+
+
+def _compute_followup_words(db_path: Optional[Path]) -> frozenset[str]:
+    """Build the corpus-derived follow-up vocabulary.
+
+    Pulls the `fact_checks.topic` column (which is a discrete
+    categorical like "fiscal_debt", "diplomatic_india_china") and
+    splits on underscores. Yields tokens like {fiscal, debt,
+    diplomatic, india, china, ...} — clean signal, no need for
+    stopword filtering.
+
+    Falls back gracefully: empty set if DB missing or query fails,
+    so the baseline keyword list still works."""
+    if db_path is None or not db_path.exists():
+        return frozenset()
+    try:
+        conn = sqlite3.connect(str(db_path))
+        try:
+            rows = conn.execute(
+                "SELECT DISTINCT topic FROM fact_checks "
+                "WHERE published = 1 AND topic IS NOT NULL "
+                "AND topic != ''"
+            ).fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error as e:
+        logger.debug("corpus follow-up vocab build failed: %s", e)
+        return frozenset()
+    words: set[str] = set()
+    for (topic,) in rows:
+        # Split on underscore or whitespace; keep tokens that are
+        # at least 4 chars (matches our prefilter's general bias).
+        for tok in re.split(r"[_\s]+", topic.lower()):
+            if len(tok) >= 4:
+                words.add(tok)
+    return frozenset(words)
+
+
+def _followup_pattern() -> re.Pattern:
+    """Return the compiled sticky-session follow-up pattern.
+
+    Built once from BASELINE ∪ CORPUS-DERIVED words and cached.
+    Tests can drop the cache via _clear_followup_pattern_cache()."""
+    global _followup_pattern_cache, _followup_words_cache
+    if _followup_pattern_cache is not None:
+        return _followup_pattern_cache
+    with _state_lock:
+        if _followup_pattern_cache is not None:  # double-checked
+            return _followup_pattern_cache
+        corpus = _compute_followup_words(_resolve_db_path())
+        all_words = _FOLLOWUP_BASELINE_WORDS | corpus
+        # Sort by length DESC so longer alternatives win in the OR
+        # group (avoids "judic" shadowing "judicial" mid-alternation
+        # quirks across regex engines).
+        sorted_words = sorted(all_words, key=lambda w: (-len(w), w))
+        pat = r"\b(" + "|".join(re.escape(w) for w in sorted_words) + r")\b"
+        _followup_pattern_cache = re.compile(pat, re.IGNORECASE)
+        _followup_words_cache = frozenset(all_words)
+        logger.debug(
+            "kahzaabu sticky follow-up vocab: %d words "
+            "(baseline %d + corpus %d)",
+            len(all_words), len(_FOLLOWUP_BASELINE_WORDS), len(corpus),
+        )
+    return _followup_pattern_cache
+
+
+def _clear_followup_pattern_cache() -> None:
+    """Test helper — drop the cached follow-up pattern so the next
+    call rebuilds it (e.g. after fixture DB changes)."""
+    global _followup_pattern_cache, _followup_words_cache
+    with _state_lock:
+        _followup_pattern_cache = None
+        _followup_words_cache = None
 
 
 def _platform_allowed(platform: str) -> bool:
@@ -248,20 +410,30 @@ def _resolve_db_path() -> Optional[Path]:
     return p if p.exists() else None
 
 
-def _warn_db_missing_once() -> None:
-    """Log a helpful 'run setup' hint ONCE per process when the hook's
-    match path finds no DB. Silent on every subsequent miss so the log
-    doesn't get flooded — but the operator sees the message the first
-    time a Maldivian-politics topic comes up in conversation.
+def _handle_db_missing_once() -> Optional[dict]:
+    """Called when the hook's match path finds no DB.
 
-    Without this, a misconfigured install (plugin enabled but pipeline
-    never run) silently no-ops forever and the operator never finds out
-    why the ambient context isn't showing up."""
+    On the FIRST such occurrence per process, returns a context-dict
+    that the agent will see in its incoming context — so the user can
+    learn about the setup gap in their actual chat reply, not just via
+    a log message they probably won't read. Also logs a single WARNING
+    for the operator.
+
+    On every subsequent miss, returns None — silent on the log side
+    (so it doesn't flood) AND silent in the chat (so the user doesn't
+    see the same hint every turn).
+
+    Returning {"context": ...} for an unpopulated archive is a soft
+    nudge: the agent can mention the setup gap naturally if it's
+    relevant ("by the way, the archive isn't populated yet — run
+    `hermes kahzaabu setup` to enable the fact-check cross-references")
+    or ignore it if the user's question doesn't depend on the archive."""
     global _db_missing_warned
     with _state_lock:
         if _db_missing_warned:
-            return
+            return None
         _db_missing_warned = True
+
     logger.warning(
         "kahzaabu ambient hook: matched a Maldivian-politics topic, but "
         "no kahzaabu DB found. Run `hermes kahzaabu setup` to populate "
@@ -269,6 +441,17 @@ def _warn_db_missing_once() -> None:
         "KAHZAABU_AMBIENT_DISABLE=1 in ~/.hermes/.env to silence this "
         "and skip future hook dispatches."
     )
+    return {"context": (
+        "[Kahzaabu ambient hook — heads-up: this message mentions a "
+        "Maldivian-politics topic, and the kahzaabu fact-check archive "
+        "is enabled but not yet populated on this machine. The archive "
+        "would normally inject relevant fact-checks + constitution "
+        "articles here. To enable that, run "
+        "`hermes kahzaabu setup` (or `hermes kahzaabu update` if "
+        "setup is already done). This notice is shown once per "
+        "hermes process. Set KAHZAABU_AMBIENT_DISABLE=1 in "
+        "~/.hermes/.env to suppress entirely.]"
+    )}
 
 
 def _reset_db_missing_warning() -> None:
@@ -338,8 +521,10 @@ def on_pre_llm_call(
     try:
         db_path = _resolve_db_path()
         if db_path is None:
-            _warn_db_missing_once()
-            return None
+            # Returns either a one-time "you need to run setup" inline
+            # hint (first occurrence per process) or None (subsequent
+            # occurrences — silent, so the log + user don't get flooded).
+            return _handle_db_missing_once()
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row

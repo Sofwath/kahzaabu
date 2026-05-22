@@ -445,6 +445,20 @@ V2_SLICE12_MIGRATIONS = [
     "ALTER TABLE fact_checks ADD COLUMN git_sha_at_publication TEXT",
 ]
 
+# Slice 14 — Hermes plugin ambient-hook sticky-session state.
+# Cross-process persistence so a strong-keyword match on one platform
+# (e.g. CLI) marks the session hot for follow-ups on another platform
+# (e.g. Telegram DM). Single tiny table; the hook does upserts with
+# `hot_until` set to now + TTL. Lazy GC: lookups drop expired rows.
+V2_SLICE14_AMBIENT_HOOK_SCHEMA = """
+CREATE TABLE IF NOT EXISTS ambient_hot_sessions (
+    session_id TEXT PRIMARY KEY,
+    hot_until  REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ambient_hot_until
+    ON ambient_hot_sessions(hot_until);
+"""
+
 VALID_VERDICT_LABELS = frozenset({
     "SUPPORTED", "REFUTED", "NOT_ENOUGH_EVIDENCE", "CONFLICTING_EVIDENCE",
 })
@@ -503,6 +517,7 @@ def init_claims_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(V2_SLICE2_SCHEMA)
     conn.executescript(V2_SLICE3_SCHEMA)
     conn.executescript(V2_SLICE4_SCHEMA)
+    conn.executescript(V2_SLICE14_AMBIENT_HOOK_SCHEMA)
     # Apply phase-3 ALTERs + V2 migrations idempotently
     for sql in (PUBLISH_MIGRATIONS + V2_SLICE1_MIGRATIONS
                 + V2_SLICE3_MIGRATIONS + V2_SLICE5_MIGRATIONS
