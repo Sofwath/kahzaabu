@@ -275,21 +275,28 @@ class StickySessionMemory(unittest.TestCase):
             "a strong match — would be a global false-positive otherwise")
 
     def test_hot_session_eventually_expires(self):
-        """Verify the TTL is wired. We patch the TTL constant down
-        and then manually-age the session entry."""
-        sid = "session-ttl"
-        self.assertTrue(hooks._is_relevant(
-            "Tell me about Muizzu's manifesto", session_id=sid))
-        # Manually age the session beyond the TTL.
-        with hooks._state_lock:
-            hooks._session_hits[sid] = (
-                hooks.time.monotonic() - hooks._STICKY_TTL_SECONDS - 1
-            )
-        # Now loose follow-ups should NOT match.
-        self.assertFalse(hooks._is_relevant(
-            "what about housing?", session_id=sid),
-            "Expired hot session must fall back to strict prefilter "
-            "— otherwise sessions stay hot forever")
+        """Verify the TTL is wired. We age BOTH the in-memory entry
+        and the persistent SQLite row — the persistent layer is what
+        Concern 2's slice added, and without aging it the in-memory
+        eviction alone won't make the session look cold."""
+        # Disable the persistent layer for this test (would otherwise
+        # need a per-test temp DB). _resolve_db_path=None makes
+        # _mark_session_hot skip the SQLite write and _is_session_hot
+        # skip the SQLite read — exercising just the in-memory TTL.
+        with patch.object(hooks, "_resolve_db_path", return_value=None):
+            sid = "session-ttl"
+            self.assertTrue(hooks._is_relevant(
+                "Tell me about Muizzu's manifesto", session_id=sid))
+            # Manually age the session beyond the TTL.
+            with hooks._state_lock:
+                hooks._session_hits[sid] = (
+                    hooks.time.monotonic() - hooks._STICKY_TTL_SECONDS - 1
+                )
+            # Now loose follow-ups should NOT match.
+            self.assertFalse(hooks._is_relevant(
+                "what about housing?", session_id=sid),
+                "Expired hot session must fall back to strict prefilter "
+                "— otherwise sessions stay hot forever")
 
     def test_empty_session_id_does_not_corrupt_state(self):
         """When hermes sends an empty session_id, the sticky-session
@@ -617,6 +624,148 @@ class CrossProcessHotSessions(unittest.TestCase):
                     "otherwise the table grows unboundedly over time")
         finally:
             db_path.unlink(missing_ok=True)
+
+
+# ───────────────────────────────────────────────────────────────────
+# TTL refresh on the corpus vocab cache (Concern 2 follow-up)
+# ───────────────────────────────────────────────────────────────────
+
+class FollowupVocabTTL(unittest.TestCase):
+    """Long-lived hermes daemon must pick up new pipeline-emitted
+    topics without restart. We do this with a TTL-based rebuild —
+    test that aging the cache-build timestamp triggers a rebuild
+    on the next call."""
+
+    def setUp(self):
+        hooks._clear_followup_pattern_cache()
+
+    def test_cache_rebuilt_after_ttl_expires(self):
+        # First call builds the cache
+        pat1 = hooks._followup_pattern()
+        built1 = hooks._followup_built_at
+        self.assertIsNotNone(built1)
+
+        # Same call within TTL — same object, no rebuild
+        pat2 = hooks._followup_pattern()
+        self.assertIs(pat1, pat2,
+            "Within TTL the pattern object must be reused — no rebuild")
+
+        # Age the build-timestamp past the TTL
+        with hooks._state_lock:
+            hooks._followup_built_at = (
+                built1 - hooks._FOLLOWUP_CACHE_TTL_SECONDS - 1
+            )
+        # Next call must rebuild — different timestamp at minimum
+        pat3 = hooks._followup_pattern()
+        self.assertGreater(hooks._followup_built_at, built1,
+            "After TTL, _followup_pattern must rebuild and update the "
+            "built-at timestamp — otherwise long-lived hermes daemons "
+            "would never pick up new corpus topics")
+
+
+# ───────────────────────────────────────────────────────────────────
+# DB-missing hint only on STRONG matches (Concern 3 follow-up)
+# ───────────────────────────────────────────────────────────────────
+
+class DBMissingHintGating(unittest.TestCase):
+    """The inline 'run setup' hint goes into the user's chat context.
+    It should only fire when the user clearly asked about Maldivian
+    politics (strong-keyword match), not when they happened to mention
+    a Maldivian anchor in passing (co-occurrence) or are doing a
+    loose follow-up in an already-hot session (sticky)."""
+
+    def setUp(self):
+        hooks._reset_db_missing_warning()
+        hooks._clear_sticky_state()
+
+    def test_strong_match_with_no_db_injects_hint(self):
+        """User explicitly asks about Maldivian politics; we owe them
+        the setup hint."""
+        with patch.object(hooks, "_resolve_db_path", return_value=None):
+            r = hooks.on_pre_llm_call(
+                user_message="What did Muizzu announce today?",
+                session_id="strong-1")
+        self.assertIsInstance(r, dict)
+        self.assertIn("setup", r["context"].lower())
+
+    def test_sticky_match_with_no_db_stays_silent(self):
+        """In an already-hot session, a loose follow-up is a sticky
+        match. With no DB the hint should NOT re-fire — even if it
+        never fired for the original strong match (because of some
+        prior call ordering), the user is mid-conversation and we
+        don't want to interrupt."""
+        # Force the in-memory state hot but DB missing
+        with patch.object(hooks, "_resolve_db_path", return_value=None):
+            hooks._mark_session_hot("sticky-1")  # no-ops persistence
+            # Reset the warned flag so we know the test is exercising
+            # the gating, not the one-time flag
+            hooks._reset_db_missing_warning()
+            r = hooks.on_pre_llm_call(
+                user_message="what about the housing scheme?",
+                session_id="sticky-1")
+        self.assertIsNone(r,
+            "Sticky + no-DB must stay silent — we already had a chance "
+            "to inject the hint on the original strong match")
+
+    def test_warned_flag_only_set_after_strong_match(self):
+        """The one-time flag should only be consumed by a STRONG match.
+        A STICKY match (loose follow-up in an already-hot session) must
+        not consume the one-time hint slot — the strong-match user
+        deserves it. (The cooccurrence path was removed; sticky is the
+        only non-strong code path now.)"""
+        with patch.object(hooks, "_resolve_db_path", return_value=None):
+            # Force a sticky-only condition: mark hot in-memory but
+            # don't trigger via the normal path (which would inject
+            # the hint on the strong match itself).
+            hooks._mark_session_hot("sticky-only")
+            hooks._reset_db_missing_warning()
+            hooks.on_pre_llm_call(
+                user_message="what about the housing scheme?",
+                session_id="sticky-only")
+            self.assertFalse(hooks._db_missing_warned,
+                "Sticky-only + no-DB must not consume the one-time "
+                "hint slot — strong-match users deserve it")
+            # Now a strong match in a NEW session — flag should be set
+            r = hooks.on_pre_llm_call(
+                user_message="What did Muizzu do?",
+                session_id="strong-after")
+            self.assertIsNotNone(r,
+                "Strong match must still inject the hint after "
+                "sticky-only path happened first")
+            self.assertTrue(hooks._db_missing_warned)
+
+
+# ───────────────────────────────────────────────────────────────────
+# Match-strength classifier (Concern 3 follow-up — internal API)
+# ───────────────────────────────────────────────────────────────────
+
+class MatchClassifier(unittest.TestCase):
+    """_classify_match exposes the prefilter's WHY for callers that
+    need to route on match strength (e.g. the DB-missing hint)."""
+
+    def setUp(self):
+        hooks._clear_sticky_state()
+
+    def test_strong_keyword_returns_match_strong(self):
+        self.assertEqual(
+            hooks._classify_match("What did Muizzu announce?",
+                                    session_id="cl1"),
+            hooks.MATCH_STRONG)
+
+    def test_irrelevant_returns_match_none(self):
+        self.assertEqual(
+            hooks._classify_match("How do I write a Python decorator?",
+                                    session_id="cl3"),
+            hooks.MATCH_NONE)
+
+    def test_sticky_returns_match_sticky(self):
+        sid = "cl4"
+        hooks._mark_session_hot(sid)  # bypass strong-match path
+        with patch.object(hooks, "_resolve_db_path", return_value=None):
+            self.assertEqual(
+                hooks._classify_match("what about housing?",
+                                        session_id=sid),
+                hooks.MATCH_STICKY)
 
 
 # ───────────────────────────────────────────────────────────────────

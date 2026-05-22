@@ -99,17 +99,16 @@ _AMBIENT_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
-# Secondary pattern: "manifesto" / "fact-check" / "president" are too
-# common standalone. Require co-occurrence with a Maldivian anchor in
-# the same message — implemented as two regexes that both must match.
-_GENERIC_TERMS = re.compile(
-    r"\b(manifesto|fact[\s-]?check|president|housing\s+scheme|amendment)\b",
-    re.IGNORECASE,
-)
-_MALDIVIAN_ANCHOR = re.compile(
-    r"(\bmuizzu|\bkahzaabu|\bmaldiv|\bmajlis\b|\batoll|\braajje\b)",
-    re.IGNORECASE,
-)
+# Note: an earlier "co-occurrence" path (generic-term + Maldivian-
+# anchor pair) was removed 2026-05-22. Every token in the anchor
+# regex was also a strong keyword, so the strong path always
+# preempted it — the co-occurrence path was effectively dead code
+# and confused the DB-missing-hint gating logic (which wanted to
+# distinguish strong from co-occurrence, but in practice "co-
+# occurrence" meant "never"). Reintroduce only if we add WEAK
+# anchor terms — specific atoll/island names (Addu, Faafu, etc.)
+# that aren't in _AMBIENT_KEYWORDS but should imply Maldivian
+# context when paired with a political-sounding generic term.
 
 # Sticky-session follow-up pattern. The "baseline" set is hardcoded
 # so the hook works correctly on a fresh DB before the pipeline runs
@@ -128,10 +127,17 @@ _FOLLOWUP_BASELINE_WORDS = frozenset({
     "airport", "reclamation",
 })
 
-# Filled lazily by _followup_pattern() — cached for the process
-# lifetime. Tests can wipe via _clear_followup_pattern_cache().
+# Filled lazily by _followup_pattern() — cached with a TTL so a
+# long-lived hermes daemon picks up new topics from the pipeline
+# without a restart. Tests can wipe via _clear_followup_pattern_cache().
 _followup_pattern_cache: Optional[re.Pattern] = None
 _followup_words_cache: Optional[frozenset[str]] = None
+_followup_built_at: Optional[float] = None
+
+# 6 hours. The pipeline typically runs daily so worst-case staleness
+# is bounded at ~6h; refresh cost is one COUNT-DISTINCT query so
+# the overhead is negligible.
+_FOLLOWUP_CACHE_TTL_SECONDS = 6 * 60 * 60
 
 # Soft cap on injected context size — agents do better with concise
 # context than a wall of text. 1.5KB is enough for 3 fact-checks +
@@ -139,51 +145,45 @@ _followup_words_cache: Optional[frozenset[str]] = None
 _MAX_CONTEXT_CHARS = 1500
 
 
-def _is_relevant(user_message: str, session_id: str = "") -> bool:
-    """Fast prefilter. Sub-10ms target.
+# Match-strength enum. Used by both _is_relevant (which returns bool)
+# and _classify_match (which returns the strength) so callers that
+# care about why we matched can route accordingly. The DB-missing
+# hint, for example, only fires on STRONG matches — sticky matches
+# stay silent because we either already had a chance to inject the
+# hint on the original strong match, or this session never had one.
+MATCH_NONE = 0
+MATCH_STRONG = 1   # high-precision keyword (Muizzu, JSC, Maldiv, …)
+MATCH_STICKY = 2   # session is already hot; loose follow-up
 
-    Returns True when the message warrants kahzaabu context. Three
-    paths, from strictest to loosest:
 
-      1. Strong keyword path (always fires) — a high-precision Maldivian
-         keyword appears (Muizzu, JSC, Maldiv, Majlis, …). Also marks
-         the session as "hot" so subsequent looser follow-ups still
-         match.
+def _classify_match(user_message: str, session_id: str = "") -> int:
+    """Return MATCH_NONE / STRONG / STICKY.
 
-      2. Co-occurrence path — both a generic term (president, manifesto,
-         amendment) AND a Maldivian anchor appear. Disambiguates
-         "the President said …" from "the French president said …".
-
-      3. Sticky-session path — the session is currently "hot" (saw a
-         strong match within _STICKY_TTL_SECONDS) AND the message
-         contains any generic term. This is how "what did he do
-         about housing?" follow-ups still get context even though
-         "he" / "housing" alone wouldn't trip the strict prefilter.
-    """
+    Side-effect: STRONG matches mark the session hot.
+    STICKY matches refresh the TTL. This is the single authority
+    on prefilter classification — _is_relevant is a thin truthy
+    wrapper."""
     if not user_message or len(user_message) < 8:
-        return False
+        return MATCH_NONE
 
-    # Path 1 — strong keyword
     if _AMBIENT_KEYWORDS.search(user_message):
         _mark_session_hot(session_id)
-        return True
+        return MATCH_STRONG
 
-    # Path 2 — co-occurrence
-    if _GENERIC_TERMS.search(user_message) and _MALDIVIAN_ANCHOR.search(user_message):
-        _mark_session_hot(session_id)
-        return True
-
-    # Path 3 — sticky session (loose follow-up in an already-hot session).
-    # Uses the broader follow-up pattern (baseline keywords ∪ topics
-    # pulled from the live DB at first fire) — too permissive for
-    # cold-session classification, but the right granularity for
-    # follow-up turns where we already know the topic.
     if session_id and _is_session_hot(session_id) and _followup_pattern().search(user_message):
-        # Refresh the TTL — the session is still on-topic.
         _mark_session_hot(session_id)
-        return True
+        return MATCH_STICKY
 
-    return False
+    return MATCH_NONE
+
+
+def _is_relevant(user_message: str, session_id: str = "") -> bool:
+    """Backwards-compat truthy wrapper around _classify_match.
+
+    Existing callers and tests treat the prefilter as a boolean;
+    this preserves that surface while internal callers can use
+    _classify_match for finer routing."""
+    return _classify_match(user_message, session_id=session_id) != MATCH_NONE
 
 
 def _mark_session_hot(session_id: str) -> None:
@@ -341,13 +341,22 @@ def _compute_followup_words(db_path: Optional[Path]) -> frozenset[str]:
 def _followup_pattern() -> re.Pattern:
     """Return the compiled sticky-session follow-up pattern.
 
-    Built once from BASELINE ∪ CORPUS-DERIVED words and cached.
-    Tests can drop the cache via _clear_followup_pattern_cache()."""
-    global _followup_pattern_cache, _followup_words_cache
-    if _followup_pattern_cache is not None:
-        return _followup_pattern_cache
+    Built from BASELINE ∪ CORPUS-DERIVED words. Cached with a TTL
+    (_FOLLOWUP_CACHE_TTL_SECONDS) so a long-running hermes daemon
+    picks up new pipeline-emitted topics without a restart. Tests
+    can drop the cache via _clear_followup_pattern_cache()."""
+    global _followup_pattern_cache, _followup_words_cache, _followup_built_at
+    now = time.monotonic()
+    # Fast path: cache fresh — no lock needed for a single read
+    # because Python's GIL keeps reference reads atomic.
+    if _followup_pattern_cache is not None and _followup_built_at is not None:
+        if (now - _followup_built_at) < _FOLLOWUP_CACHE_TTL_SECONDS:
+            return _followup_pattern_cache
+    # Slow path: rebuild under the lock (double-checked).
     with _state_lock:
-        if _followup_pattern_cache is not None:  # double-checked
+        if (_followup_pattern_cache is not None
+                and _followup_built_at is not None
+                and (now - _followup_built_at) < _FOLLOWUP_CACHE_TTL_SECONDS):
             return _followup_pattern_cache
         corpus = _compute_followup_words(_resolve_db_path())
         all_words = _FOLLOWUP_BASELINE_WORDS | corpus
@@ -358,10 +367,12 @@ def _followup_pattern() -> re.Pattern:
         pat = r"\b(" + "|".join(re.escape(w) for w in sorted_words) + r")\b"
         _followup_pattern_cache = re.compile(pat, re.IGNORECASE)
         _followup_words_cache = frozenset(all_words)
+        _followup_built_at = now
         logger.debug(
             "kahzaabu sticky follow-up vocab: %d words "
-            "(baseline %d + corpus %d)",
+            "(baseline %d + corpus %d) — TTL %ds",
             len(all_words), len(_FOLLOWUP_BASELINE_WORDS), len(corpus),
+            _FOLLOWUP_CACHE_TTL_SECONDS,
         )
     return _followup_pattern_cache
 
@@ -369,10 +380,11 @@ def _followup_pattern() -> re.Pattern:
 def _clear_followup_pattern_cache() -> None:
     """Test helper — drop the cached follow-up pattern so the next
     call rebuilds it (e.g. after fixture DB changes)."""
-    global _followup_pattern_cache, _followup_words_cache
+    global _followup_pattern_cache, _followup_words_cache, _followup_built_at
     with _state_lock:
         _followup_pattern_cache = None
         _followup_words_cache = None
+        _followup_built_at = None
 
 
 def _platform_allowed(platform: str) -> bool:
@@ -512,8 +524,13 @@ def on_pre_llm_call(
     if not _platform_allowed(platform):
         return None
 
-    # Prefilter (with sticky-session context for follow-up turns).
-    if not _is_relevant(user_message, session_id=session_id):
+    # Classify the prefilter match. STRONG means a high-precision
+    # Maldivian keyword fired (the user is clearly asking about
+    # Maldivian politics). COOCCURRENCE / STICKY are softer — same
+    # message-level relevance but lower confidence the user wants
+    # an interruption from us if the DB is missing.
+    strength = _classify_match(user_message, session_id=session_id)
+    if strength == MATCH_NONE:
         return None
 
     # We're in the match path. Open the DB lazily — the prefilter
@@ -521,10 +538,13 @@ def on_pre_llm_call(
     try:
         db_path = _resolve_db_path()
         if db_path is None:
-            # Returns either a one-time "you need to run setup" inline
-            # hint (first occurrence per process) or None (subsequent
-            # occurrences — silent, so the log + user don't get flooded).
-            return _handle_db_missing_once()
+            # Inject the one-time "run setup" hint ONLY on STRONG
+            # matches. Soft co-occurrence/sticky matches stay silent
+            # to avoid injecting setup chatter into chats where the
+            # user mentioned a Maldivian topic only in passing.
+            if strength == MATCH_STRONG:
+                return _handle_db_missing_once()
+            return None
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
