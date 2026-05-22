@@ -213,6 +213,12 @@ def register(ctx) -> None:
         description="Fetch a single fact-check by ID with web evidence",
         args_hint="<id>",
     )
+    ctx.register_command(
+        name="kahzaabu-translate",
+        handler=_slash_translate,
+        description="Translate EN↔DV in the press office's distinctive style (Slice 16, ADR 0016)",
+        args_hint="<text>",
+    )
 
     # Register the pre_llm_call ambient-context hook unless opted out.
     # The hook itself short-circuits on KAHZAABU_AMBIENT_DISABLE, but
@@ -221,10 +227,10 @@ def register(ctx) -> None:
     if not os.environ.get("KAHZAABU_AMBIENT_DISABLE"):
         from plugins.kahzaabu.hooks import on_pre_llm_call
         ctx.register_hook("pre_llm_call", on_pre_llm_call)
-        logger.info("kahzaabu plugin registered: 13 tools + `hermes kahzaabu` CLI "
+        logger.info("kahzaabu plugin registered: 14 tools + `hermes kahzaabu` CLI "
                     "+ /kahzaabu slash command + pre_llm_call ambient hook")
     else:
-        logger.info("kahzaabu plugin registered: 13 tools + `hermes kahzaabu` CLI "
+        logger.info("kahzaabu plugin registered: 14 tools + `hermes kahzaabu` CLI "
                     "+ /kahzaabu slash command (ambient hook DISABLED via env)")
 
 
@@ -397,3 +403,30 @@ def _slash_factcheck(raw_args: str) -> str:
         for ev in evidence[:3]:
             lines.append(f"  • {ev.get('relevance', '?')}: {(ev.get('url') or ev.get('title', ''))[:80]}")
     return "\n".join(lines)
+
+
+def _slash_translate(raw_args: str) -> str:
+    """/kahzaabu-translate <text> — press-office-style EN↔DV
+    translation. Source language is auto-detected from the input."""
+    import json
+    raw_args = (raw_args or "").strip()
+    if not raw_args:
+        return ("Usage: /kahzaabu-translate <text>\n"
+                "Example: /kahzaabu-translate The President met with the Cabinet today.")
+    from plugins.kahzaabu.tools import handle_translate
+    out = json.loads(handle_translate({"text": raw_args, "target_language": "auto"}))
+    if "error" in out:
+        return f"❌ {out['error']}"
+    translation = out.get("translation", "(no translation)")
+    src = out.get("source_lang", "?")
+    tgt = out.get("target_lang", "?")
+    n_ex = len(out.get("exemplar_ids") or [])
+    n_gl = out.get("glossary_terms_used", 0)
+    cost = out.get("cost_usd", 0.0)
+    cached = " (cached)" if out.get("cache_hit") else ""
+    return (
+        f"{translation}\n\n"
+        f"— _{src} → {tgt}  ·  {n_ex} exemplar(s), {n_gl} glossary term(s)  "
+        f"·  ${cost:.4f}{cached}_\n"
+        f"— _Reference-implementation output — review before publishing._"
+    )

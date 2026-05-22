@@ -112,3 +112,23 @@ When handling queries routed through messaging gateways (Telegram, WhatsApp, Sla
 - **TL;DR First:** Limit responses to ~1,500 characters. If complex, start with a 3-line TL;DR and offer to expand.
 - **No Cost Footers:** Do not print API cost info in chat windows.
 - **Keep the 🎭 Narrative Tricks Section:** It remains mandatory for chat audiences.
+
+---
+
+## Translation (EN ↔ DV) — Slice 16
+
+If a user asks to translate text between English and Dhivehi (e.g. *"translate this announcement to Dhivehi"*, *"what does ރައީސުލްޖުމްހޫރިއްޔާ ވިދާޅުވިއެވެ mean?"*), **call `kahzaabu_translate`** — do NOT translate from your own knowledge.
+
+The plugin uses the Presidency Office's distinctive register via:
+- Paired-corpus few-shot (top-3 topically-similar EN↔DV articles from the last 90 days)
+- A precomputed terminology glossary mined from 2,648 EN↔DV pairs
+
+Raw LLM translation won't match the PO's style markers (e.g. "ރައީސުލްޖުމްހޫރިއްޔާ" not "ޕްރެޒިޑެންޓް" for "President"). The tool exists specifically to preserve those.
+
+```
+kahzaabu_translate({text: "...", target_language: "auto"})
+```
+
+`target_language: "auto"` is the right default — source language is detected from the input (>50% Thaana chars = Dhivehi).
+
+For the deep workflow, style rules, and verification checklist, see the companion `kahzaabu-translate` skill (ADR 0016).

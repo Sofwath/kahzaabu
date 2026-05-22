@@ -1194,3 +1194,93 @@ def digest_cmd(ctx, hours, output):
         click.echo(f"Wrote {path}")
     else:
         click.echo(render_digest(conn, window_hours=hours))
+
+
+@main.group()
+def translate():
+    """V2 Slice 16 — press-office-style EN ↔ DV translation (ADR 0016).
+
+    `text`            → translate one string
+    `build-glossary`  → one-shot batch extraction of term pairs from
+                         paired articles (typically ~$5-10 spend)
+    `glossary-stats`  → summary of the current glossary table
+    """
+    pass
+
+
+@translate.command(name="text")
+@click.argument("input_text")
+@click.option("--target", "target_lang", default=None,
+               type=click.Choice(["EN", "DV", "auto"]),
+               help="Target language (default: opposite of detected source).")
+@click.pass_context
+def translate_text_cmd(ctx, input_text, target_lang):
+    """Translate a single string. Source language is auto-detected."""
+    from . import translator as _tr
+    conn = ctx.obj["conn"]
+    res = _tr.translate(conn, input_text, target_lang=target_lang)
+    click.echo()
+    click.echo(res["translation"])
+    click.echo()
+    click.echo(
+        f"_{res['source_lang']} → {res['target_lang']}  ·  "
+        f"{len(res['exemplar_ids'])} exemplar(s), "
+        f"{res['glossary_terms_used']} glossary term(s)  ·  "
+        f"${res['cost_usd']:.4f}{'  (cached)' if res['cache_hit'] else ''}_"
+    )
+
+
+@translate.command(name="build-glossary")
+@click.option("--budget", "budget_usd", type=float, default=10.0,
+               help="USD spend cap (default: 10.00).")
+@click.option("--sample-size", type=int, default=200,
+               help="Max paired articles to mine (default: 200).")
+@click.pass_context
+def build_glossary_cmd(ctx, budget_usd, sample_size):
+    """One-shot extraction of EN↔DV term pairs from paired articles.
+
+    Idempotent w.r.t. extracted_by model: re-running with the same
+    model clears the previous LLM-extracted rows and writes fresh.
+    Manual edits (extracted_by='manual') are preserved.
+
+    Cost: ~$0.05 per paired article, capped by --budget."""
+    from . import translator as _tr
+    conn = ctx.obj["conn"]
+    click.echo(f"Mining up to {sample_size} paired articles "
+                f"(budget cap: ${budget_usd:.2f})…")
+
+    def _p(done, total, cost):
+        click.echo(f"  {done}/{total}  (${cost:.2f} so far)")
+
+    result = _tr.build_glossary(
+        conn, sample_size=sample_size, budget_usd=budget_usd,
+        progress_cb=_p,
+    )
+    click.echo()
+    click.echo(f"Done.  pairs_in_db = {result['pairs_in_db']}  "
+                f"pairs_processed = {result['pairs_processed']}  "
+                f"cost = ${result['cost_usd']:.2f}")
+
+
+@translate.command(name="glossary-stats")
+@click.option("--sample", type=int, default=10,
+               help="Sample N rows to display (default: 10).")
+@click.pass_context
+def glossary_stats_cmd(ctx, sample):
+    """Counts + top-N highest-frequency term pairs."""
+    conn = ctx.obj["conn"]
+    n = conn.execute(
+        "SELECT COUNT(*) FROM translation_glossary").fetchone()[0]
+    if n == 0:
+        click.echo("Glossary is empty. Run `kahzaabu translate "
+                    "build-glossary` to populate.")
+        return
+    click.echo(f"\n{n} term pair(s) in translation_glossary\n")
+    rows = conn.execute(
+        "SELECT en_term, dv_term, domain, freq, confidence "
+        "FROM translation_glossary ORDER BY freq DESC LIMIT ?",
+        (sample,)).fetchall()
+    click.echo(f"Top {len(rows)} by frequency:")
+    for r in rows:
+        click.echo(f"  [{r[2] or '-':<11}] freq={r[3]:>3}  conf={r[4]:.2f}  "
+                    f"{r[0]:<40}  ↔  {r[1]}")

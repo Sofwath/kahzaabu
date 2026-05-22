@@ -1,0 +1,385 @@
+# SPDX-License-Identifier: Apache-2.0
+"""Tests for kahzaabu/translator.py — press-office-style EN ↔ DV
+translation (Slice 16, ADR 0016).
+
+Layers:
+  1. detect_language — pure function, no DB
+  2. select_few_shot — DB read against articles + articles_fts
+  3. select_glossary_subset — DB read against translation_glossary
+  4. translate() with mocked LLM — full pipeline
+  5. Cache hit — second call reads from translation_runs
+"""
+from __future__ import annotations
+
+import json
+import sqlite3
+import sys
+import unittest
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from kahzaabu import db, translator
+from kahzaabu.claims_db import init_full_schema
+
+
+def _mkconn() -> sqlite3.Connection:
+    """Fresh in-memory DB with the full schema (incl. articles_fts +
+    translation_glossary + translation_runs)."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    init_full_schema(conn)
+    return conn
+
+
+def _insert_paired_article(
+    conn,
+    *,
+    en_id, dv_id,
+    en_title, en_body,
+    dv_body,
+    published_date,
+):
+    """Helper: insert an EN/DV paired article. The FTS triggers
+    backfill_articles_fts automatically."""
+    db.insert_article(conn, db.Article(
+        id=en_id, language="EN", paired_id=dv_id,
+        category="press_release", category_id=1,
+        title=en_title, body_text=en_body, body_html=f"<p>{en_body}</p>",
+        reference=f"2026-{en_id}", published_date=published_date,
+        image_urls=[], raw_page_html="<html/>"))
+    db.insert_article(conn, db.Article(
+        id=dv_id, language="DV", paired_id=en_id,
+        category="press_release", category_id=1,
+        title="DV " + en_title, body_text=dv_body,
+        body_html=f"<p>{dv_body}</p>",
+        reference=f"2026-{en_id}", published_date=published_date,
+        image_urls=[], raw_page_html="<html/>"))
+
+
+# ───────────────────────────────────────────────────────────────────
+# Language detection
+# ───────────────────────────────────────────────────────────────────
+
+class LanguageDetection(unittest.TestCase):
+    def test_pure_latin_is_en(self):
+        self.assertEqual(translator.detect_language(
+            "The President met with the Cabinet today."), "EN")
+
+    def test_pure_thaana_is_dv(self):
+        # "The President said" in Thaana
+        self.assertEqual(translator.detect_language(
+            "ރައީސުލްޖުމްހޫރިއްޔާ ވިދާޅުވިއެވެ"), "DV")
+
+    def test_empty_defaults_to_en(self):
+        self.assertEqual(translator.detect_language(""), "EN")
+        self.assertEqual(translator.detect_language(None), "EN")
+
+    def test_mostly_thaana_with_some_english_is_dv(self):
+        # Thaana paragraph with one English number/proper noun
+        # mid-sentence — the press office mixes the two routinely.
+        text = ("ރައީސުލްޖުމްހޫރިއްޔާ ޑރ. މުޢިއްޒު 2026 ވަނަ "
+                "އަހަރުގެ ޤައުމީ ދުވަސް ފާހަގަކުރައްވައި ވިދާޅުވިއެވެ")
+        self.assertEqual(translator.detect_language(text), "DV",
+            "Dominant-Thaana text with English numerals must still "
+            "classify as DV — the corpus is full of this pattern")
+
+    def test_only_whitespace_defaults_to_en(self):
+        self.assertEqual(translator.detect_language("   \n  \t"), "EN")
+
+
+# ───────────────────────────────────────────────────────────────────
+# Few-shot selection
+# ───────────────────────────────────────────────────────────────────
+
+class FewShotSelection(unittest.TestCase):
+    def setUp(self):
+        self.conn = _mkconn()
+        # Three paired articles. (1) recent + topic-similar to JSC,
+        # (2) recent + unrelated topic, (3) older + topic-similar
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        old = (datetime.now(timezone.utc) - timedelta(days=180)
+               ).strftime("%Y-%m-%d")
+        _insert_paired_article(
+            self.conn, en_id=1001, dv_id=1002,
+            en_title="JSC appointment", published_date=today,
+            en_body="The President appointed a new Judicial Service Commission member today.",
+            dv_body="ޝަރުޢީ ޚިދުމަތާ ބެހޭ ކޮމިޝަން DV body",
+        )
+        _insert_paired_article(
+            self.conn, en_id=1003, dv_id=1004,
+            en_title="Cabinet reshuffle", published_date=today,
+            en_body="The President announced a reshuffle of the cabinet portfolio assignments.",
+            dv_body="ދައުލަތުގެ ވަޒީރުންގެ މަޖިލިސް DV body",
+        )
+        _insert_paired_article(
+            self.conn, en_id=1005, dv_id=1006,
+            en_title="OLD JSC ceremony", published_date=old,
+            en_body="In 2025, the President attended a Judicial Service Commission ceremony.",
+            dv_body="OLD DV body about JSC",
+        )
+
+    def test_topic_similar_wins_over_unrelated(self):
+        """Query about 'judicial service commission' should pull
+        articles 1001 and 1005 (which mention it) before 1003
+        (cabinet reshuffle, unrelated)."""
+        out = translator.select_few_shot(
+            self.conn, "EN",
+            "What did the President say about the judicial service commission?",
+            k=3, recency_days=365)
+        self.assertTrue(out, "Expected at least one exemplar")
+        en_ids = [r["en_article_id"] for r in out]
+        # 1001 should be in the result (recent + topic-match)
+        self.assertIn(1001, en_ids,
+            "Topic-similar recent article must be selected as a "
+            "few-shot exemplar — BM25 should rank it ahead of the "
+            "topic-unrelated 1003")
+
+    def test_recency_window_excludes_old(self):
+        """recency_days=30 should exclude the 180-day-old article."""
+        out = translator.select_few_shot(
+            self.conn, "EN",
+            "judicial service commission",
+            k=3, recency_days=30)
+        en_ids = [r["en_article_id"] for r in out]
+        self.assertNotIn(1005, en_ids,
+            "180-day-old article must be excluded from a 30-day "
+            "window — the freshness window is real, not advisory")
+
+    def test_returns_at_most_k(self):
+        out = translator.select_few_shot(
+            self.conn, "EN", "the president", k=2, recency_days=365)
+        self.assertLessEqual(len(out), 2)
+
+    def test_falls_back_to_recency_when_no_fts_match(self):
+        """If FTS5 returns nothing for the query, the function falls
+        back to the most-recent paired articles — better to provide
+        SOME exemplar than none."""
+        out = translator.select_few_shot(
+            self.conn, "EN", "asdkfjasdkfj nonsense query",
+            k=2, recency_days=365)
+        self.assertEqual(len(out), 2,
+            "Recency-fallback must yield k exemplars when FTS5 "
+            "has zero hits — otherwise the translator runs without "
+            "any few-shot context")
+
+    def test_exemplar_payload_shape(self):
+        out = translator.select_few_shot(
+            self.conn, "EN", "judicial service", k=1, recency_days=365)
+        self.assertTrue(out)
+        ex = out[0]
+        for key in ("en_article_id", "dv_article_id", "en_title",
+                    "en_body", "dv_body", "published_date"):
+            self.assertIn(key, ex)
+
+
+# ───────────────────────────────────────────────────────────────────
+# Glossary subset
+# ───────────────────────────────────────────────────────────────────
+
+class GlossarySubset(unittest.TestCase):
+    def setUp(self):
+        self.conn = _mkconn()
+        now = datetime.now(timezone.utc).isoformat()
+        # Insert glossary rows
+        for en, dv, freq in [
+            ("Judicial Service Commission", "ޝަރުޢީ ޚިދުމަތާ ބެހޭ ކޮމިޝަން", 25),
+            ("Cabinet", "ދައުލަތުގެ ވަޒީރުންގެ މަޖިލިސް", 12),
+            ("housing scheme", "ހައުސިން ސްކީމް", 8),
+            ("fishery exports", "މަސްވެރި އެކްސްޕޯޓް", 3),
+        ]:
+            self.conn.execute(
+                """INSERT INTO translation_glossary
+                   (en_term, dv_term, domain, freq, confidence,
+                    sample_en_ids, extracted_at, extracted_by)
+                   VALUES (?, ?, 'government', ?, 0.9, '[]', ?, 'test')""",
+                (en, dv, freq, now)
+            )
+        self.conn.commit()
+
+    def test_only_terms_appearing_in_input_returned(self):
+        out = translator.select_glossary_subset(
+            self.conn, "The President discussed the housing scheme.",
+            "EN", max_terms=10)
+        terms = [r["en_term"] for r in out]
+        self.assertIn("housing scheme", terms,
+            "Term that appears in the input must be returned")
+        self.assertNotIn("fishery exports", terms,
+            "Term that does NOT appear in the input must NOT be "
+            "returned — would bloat the prompt with irrelevant rows")
+        self.assertNotIn("Cabinet", terms)
+
+    def test_case_insensitive_matching(self):
+        """The input uses lower-case 'cabinet' but the glossary has
+        'Cabinet'. Must still match."""
+        out = translator.select_glossary_subset(
+            self.conn, "The cabinet decided.", "EN", max_terms=10)
+        terms = [r["en_term"] for r in out]
+        self.assertIn("Cabinet", terms,
+            "Case-insensitive match required — input casing varies")
+
+    def test_sorted_by_freq_desc(self):
+        out = translator.select_glossary_subset(
+            self.conn,
+            "Judicial Service Commission and housing scheme",
+            "EN", max_terms=10)
+        terms = [r["en_term"] for r in out]
+        # JSC has freq=25, housing scheme freq=8
+        self.assertLess(terms.index("Judicial Service Commission"),
+                          terms.index("housing scheme"),
+                          "Higher-freq terms must appear first")
+
+    def test_max_terms_respected(self):
+        # All 4 terms in the input
+        long_input = ("Judicial Service Commission Cabinet "
+                      "housing scheme fishery exports")
+        out = translator.select_glossary_subset(
+            self.conn, long_input, "EN", max_terms=2)
+        self.assertEqual(len(out), 2)
+
+    def test_dv_source_lookup(self):
+        """When source_lang='DV', the LIKE prefilter runs against
+        dv_term, not en_term."""
+        out = translator.select_glossary_subset(
+            self.conn, "ޝަރުޢީ ޚިދުމަތާ ބެހޭ ކޮމިޝަން", "DV", max_terms=5)
+        terms = [r["dv_term"] for r in out]
+        self.assertIn("ޝަރުޢީ ޚިދުމަތާ ބެހޭ ކޮމިޝަން", terms,
+            "DV-source path must match against the dv_term column")
+
+
+# ───────────────────────────────────────────────────────────────────
+# translate() with mocked LLM
+# ───────────────────────────────────────────────────────────────────
+
+class TranslateEndToEnd(unittest.TestCase):
+    def setUp(self):
+        self.conn = _mkconn()
+        # One paired article so few-shot has something to work with
+        _insert_paired_article(
+            self.conn, en_id=2001, dv_id=2002,
+            en_title="President statement",
+            en_body="The President made a statement today regarding policy.",
+            dv_body="ރައީސުލްޖުމްހޫރިއްޔާ ވިދާޅުވިއެވެ",
+            published_date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        )
+
+    def _make_mock_llm(self, response_text: str = "translated text",
+                         tokens_in: int = 100, tokens_out: int = 50):
+        """Build a MagicMock that mimics Anthropic's response shape."""
+        mock_block = MagicMock()
+        mock_block.type = "text"
+        mock_block.text = response_text
+        mock_response = MagicMock()
+        mock_response.content = [mock_block]
+        mock_response.usage.input_tokens = tokens_in
+        mock_response.usage.output_tokens = tokens_out
+        mock_llm = MagicMock()
+        mock_llm.messages.create.return_value = mock_response
+        return mock_llm
+
+    def test_returns_expected_shape(self):
+        llm = self._make_mock_llm("ރައީސުލްޖުމްހޫރިއްޔާ ބައްދަލުވި")
+        res = translator.translate(
+            self.conn, "The President met today.",
+            target_lang="DV", llm=llm,
+        )
+        self.assertEqual(res["source_lang"], "EN")
+        self.assertEqual(res["target_lang"], "DV")
+        self.assertEqual(res["translation"],
+                          "ރައީސުލްޖުމްހޫރިއްޔާ ބައްދަލުވި")
+        self.assertIn("model", res)
+        self.assertIsInstance(res["cost_usd"], float)
+        self.assertFalse(res["cache_hit"])
+        self.assertIn("disclaimer", res)
+
+    def test_writes_translation_runs_row(self):
+        llm = self._make_mock_llm()
+        translator.translate(
+            self.conn, "Hello world.", target_lang="DV", llm=llm)
+        rows = self.conn.execute(
+            "SELECT input_text, target_lang FROM translation_runs"
+        ).fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["input_text"], "Hello world.")
+        self.assertEqual(rows[0]["target_lang"], "DV")
+
+    def test_auto_target_picks_opposite_lang(self):
+        llm = self._make_mock_llm()
+        res = translator.translate(
+            self.conn, "Hello world.", target_lang="auto", llm=llm)
+        self.assertEqual(res["target_lang"], "DV")
+        # And reverse
+        res2 = translator.translate(
+            self.conn, "ރައީސުލްޖުމްހޫރިއްޔާ ވިދާޅުވިއެވެ",
+            target_lang="auto", llm=llm,
+        )
+        self.assertEqual(res2["target_lang"], "EN")
+
+    def test_same_source_and_target_rejected(self):
+        """Translating EN to EN is a no-op error — the user wanted
+        the OTHER language and probably set target wrong."""
+        llm = self._make_mock_llm()
+        with self.assertRaises(ValueError):
+            translator.translate(
+                self.conn, "Hello world.", target_lang="EN", llm=llm)
+
+    def test_empty_input_rejected(self):
+        llm = self._make_mock_llm()
+        with self.assertRaises(ValueError):
+            translator.translate(self.conn, "", llm=llm)
+        with self.assertRaises(ValueError):
+            translator.translate(self.conn, "   ", llm=llm)
+
+
+# ───────────────────────────────────────────────────────────────────
+# Cache hit (translation_runs as LRU backing store)
+# ───────────────────────────────────────────────────────────────────
+
+class CacheHit(unittest.TestCase):
+    def setUp(self):
+        self.conn = _mkconn()
+
+    def _llm(self, text="cached output"):
+        b = MagicMock(); b.type = "text"; b.text = text
+        r = MagicMock(); r.content = [b]
+        r.usage.input_tokens = 10; r.usage.output_tokens = 5
+        m = MagicMock(); m.messages.create.return_value = r
+        return m
+
+    def test_second_call_with_same_input_returns_cached(self):
+        llm = self._llm("first-result")
+        r1 = translator.translate(
+            self.conn, "Hello world.", target_lang="DV", llm=llm)
+        self.assertFalse(r1["cache_hit"])
+
+        # Second call — different mock, but the cache should hit
+        # BEFORE the LLM is called (so the new text would never
+        # appear).
+        llm2 = self._llm("WOULD-BE-DIFFERENT-RESULT")
+        r2 = translator.translate(
+            self.conn, "Hello world.", target_lang="DV", llm=llm2)
+        self.assertTrue(r2["cache_hit"])
+        self.assertEqual(r2["translation"], "first-result",
+            "Cache must return the FIRST result; if the LLM is "
+            "called again, the cache wasn't consulted")
+        # And the second LLM mock should NOT have been called.
+        llm2.messages.create.assert_not_called()
+
+    def test_different_target_lang_misses_cache(self):
+        llm = self._llm("EN→DV")
+        translator.translate(
+            self.conn, "Hello world.", target_lang="DV", llm=llm)
+        # Re-translate but as if going EN→EN (which we'd reject —
+        # use a different INPUT that goes EN→DV but is different)
+        llm2 = self._llm("different input")
+        r = translator.translate(
+            self.conn, "Goodbye world.", target_lang="DV", llm=llm2)
+        self.assertFalse(r["cache_hit"])
+        self.assertEqual(r["translation"], "different input")
+
+
+if __name__ == "__main__":
+    unittest.main()

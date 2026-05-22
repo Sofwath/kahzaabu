@@ -56,6 +56,7 @@ const ROUTES = [
     { path: "/manifesto",              expectSelector: "#root",       expectMin: 200 },
     { path: "/manifesto/1",            expectSelector: "#root",       expectMin: 100 },
     { path: "/disclaimer",             expectSelector: "main",        expectMin: 500 },
+    { path: "/translate",              expectSelector: "main",        expectMin: 500 },
 ];
 
 // Allow same-origin resource fetches (api.js, charts.js, the API

@@ -499,6 +499,50 @@ V2_SLICE15_MIGRATIONS = [
     "ALTER TABLE fact_checks ADD COLUMN source_changed_at TEXT",
 ]
 
+# Slice 16 — Press-office-style EN ↔ DV translation (ADR 0016).
+#
+# - translation_glossary: precomputed EN↔DV term pairs mined from the
+#   paired-articles corpus via a one-shot LLM extraction job. The
+#   translator injects relevant rows into every translation prompt so
+#   technical/political terminology stays consistent.
+# - translation_runs: every translation invocation persists here.
+#   Doubles as the LRU-cache backing store (same input + target_lang
+#   → fast return without a fresh LLM call). Also the audit trail.
+V2_SLICE16_TRANSLATION_SCHEMA = """
+CREATE TABLE IF NOT EXISTS translation_glossary (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    en_term         TEXT NOT NULL,
+    dv_term         TEXT NOT NULL,
+    domain          TEXT,
+    freq            INTEGER NOT NULL,
+    confidence      REAL,
+    sample_en_ids   TEXT,
+    extracted_at    TEXT NOT NULL,
+    extracted_by    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_glossary_en
+    ON translation_glossary(en_term);
+CREATE INDEX IF NOT EXISTS idx_glossary_dv
+    ON translation_glossary(dv_term);
+
+CREATE TABLE IF NOT EXISTS translation_runs (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_lang         TEXT NOT NULL,
+    target_lang         TEXT NOT NULL,
+    input_text          TEXT NOT NULL,
+    output_text         TEXT NOT NULL,
+    exemplar_ids        TEXT,
+    glossary_terms_used INTEGER,
+    model               TEXT NOT NULL,
+    cost_usd            REAL,
+    created_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_translation_runs_cache
+    ON translation_runs(target_lang, created_at);
+"""
+
+V2_SLICE16_MIGRATIONS: list = []  # no ALTERs needed; pure CREATE TABLE
+
 VALID_VERDICT_LABELS = frozenset({
     "SUPPORTED", "REFUTED", "NOT_ENOUGH_EVIDENCE", "CONFLICTING_EVIDENCE",
 })
@@ -559,12 +603,14 @@ def init_claims_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(V2_SLICE4_SCHEMA)
     conn.executescript(V2_SLICE14_AMBIENT_HOOK_SCHEMA)
     conn.executescript(V2_SLICE15_REVISIONS_SCHEMA)
+    conn.executescript(V2_SLICE16_TRANSLATION_SCHEMA)
     # Apply phase-3 ALTERs + V2 migrations idempotently
     for sql in (PUBLISH_MIGRATIONS + V2_SLICE1_MIGRATIONS
                 + V2_SLICE3_MIGRATIONS + V2_SLICE5_MIGRATIONS
                 + V2_SLICE6_MIGRATIONS + V2_SLICE_REGISTRY_MIGRATIONS
                 + V2_SLICE12_MIGRATIONS
-                + V2_SLICE15_MIGRATIONS):
+                + V2_SLICE15_MIGRATIONS
+                + V2_SLICE16_MIGRATIONS):
         try:
             conn.execute(sql)
         except sqlite3.OperationalError:
@@ -595,6 +641,23 @@ def init_claims_schema(conn: sqlite3.Connection) -> None:
         import logging
         logging.getLogger(__name__).debug(
             "fact_checks FTS5 init skipped: %s", e)
+    # articles FTS5 (Slice 16) — same pattern. Used by the press-
+    # office-style translator's few-shot exemplar selection.
+    # Backfill on first init only (the 20k-article scan takes ~30s
+    # on a fresh DB; on subsequent boots the table is already there).
+    try:
+        from kahzaabu.articles_fts import (
+            init_articles_fts, backfill_articles_fts,
+        )
+        if init_articles_fts(conn):
+            cnt = conn.execute(
+                "SELECT COUNT(*) FROM articles_fts").fetchone()[0]
+            if cnt == 0:
+                backfill_articles_fts(conn)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).debug(
+            "articles FTS5 init skipped: %s", e)
 
 
 def init_full_schema(conn: sqlite3.Connection) -> None:

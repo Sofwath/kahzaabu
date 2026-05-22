@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>kahzaabu — translate</title>
+<link rel="stylesheet" href="/static/css/kahzaabu.css" />
+<style>
+.translate-wrap { max-width: 980px; }
+.translate-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--sp-lg);
+    margin-bottom: var(--sp-lg);
+}
+@media (max-width: 800px) { .translate-row { grid-template-columns: 1fr; } }
+.translate-pane { display: flex; flex-direction: column; gap: var(--sp-sm); }
+.translate-pane label {
+    font: var(--type-caption);
+    color: var(--fg-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+textarea.translate-box, div.translate-out {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: var(--sp-lg);
+    color: var(--fg);
+    font: var(--type-body-prose);
+    min-height: 240px;
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
+    line-height: 1.55;
+    /* Thaana renders well at slightly larger size */
+}
+div.translate-out {
+    white-space: pre-wrap;
+    min-height: 240px;
+    overflow-y: auto;
+}
+div.translate-out.thaana { font-size: 18px; line-height: 1.7; }
+.translate-controls {
+    display: flex;
+    gap: var(--sp-md);
+    align-items: center;
+    margin: var(--sp-md) 0 var(--sp-lg) 0;
+}
+.translate-controls button {
+    background: var(--accent);
+    color: var(--fg-inverse);
+    border: none;
+    padding: 8px 18px;
+    border-radius: var(--r-md);
+    cursor: pointer;
+    font: var(--type-body-strong);
+}
+.translate-controls button:hover { filter: brightness(1.1); }
+.translate-controls button:disabled { opacity: 0.5; cursor: not-allowed; }
+.translate-controls select {
+    background: var(--surface-2);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 6px 10px;
+}
+.translate-meta {
+    font: var(--type-caption);
+    color: var(--fg-dim);
+    margin-top: var(--sp-sm);
+}
+.translate-error {
+    background: rgba(233,69,96,0.08);
+    border: 1px solid var(--lie);
+    color: var(--lie);
+    padding: var(--sp-md);
+    border-radius: var(--r-sm);
+}
+.provenance {
+    margin-top: var(--sp-lg);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: var(--sp-md);
+}
+.provenance summary {
+    cursor: pointer;
+    font: var(--type-body-strong);
+    color: var(--fg);
+}
+.provenance ul { margin: var(--sp-sm) 0 0 var(--sp-lg); }
+.translate-warn {
+    margin-top: var(--sp-md);
+    color: var(--deadline);
+    font: var(--type-caption);
+    border-left: 3px solid var(--deadline);
+    padding: 6px var(--sp-md);
+    background: rgba(240,160,75,0.08);
+}
+</style>
+</head>
+<body>
+<header class="site">
+    <div class="brand">kahzaabu <span class="tag">Maldives Presidency archive</span></div>
+    <nav>
+        <a href="/"        data-nav="dashboard">Dashboard</a>
+        <a href="/browse"  data-nav="browse">Articles</a>
+        <a href="/lies"    data-nav="lies">Fact-checks</a>
+        <a href="/contradictions" data-nav="contradictions">Contradictions</a>
+        <a href="/constitution" data-nav="constitution">Constitution</a>
+        <a href="/laws"    data-nav="laws">Laws</a>
+        <a href="/compare" data-nav="compare">Compare</a>
+        <a href="/manifesto" data-nav="manifesto">Manifesto</a>
+        <a href="/translate" data-nav="translate">Translate</a>
+        <a href="/ask"     data-nav="ask">Ask</a>
+    </nav>
+</header>
+
+<div class="site-disclaimer" role="note" aria-label="Reference-implementation notice">
+    ⚠️ <strong>Reference implementation</strong> — kahzaabu is a sample Hermes plugin for educational and research purposes. Verdicts are automated analysis, not findings of fact. <a href="/disclaimer">Full disclaimer</a> · sources at <a href="https://presidency.gov.mv" rel="noopener">presidency.gov.mv</a>
+</div>
+
+<main>
+    <h1>Translate (EN ↔ DV)</h1>
+    <p class="muted">
+        Translate text in the <strong>Maldives Presidency Office's
+        distinctive style</strong>. The translator pulls topic-similar
+        EN↔DV paired articles from the corpus as few-shot exemplars
+        and consults a precomputed terminology glossary — so output
+        matches the PO's preferred renderings (e.g.
+        "ރައީސުލްޖުމްހޫރިއްޔާ" not "ޕްރެޒިޑެންޓް" for "President"),
+        which a generic LLM translation doesn't.
+    </p>
+
+    <p class="muted" style="font: var(--type-tiny);">
+        Source language is auto-detected. Reference-implementation
+        only — review every output before publishing or quoting.
+        See <a href="/disclaimer">disclaimer</a> + ADR 0016.
+    </p>
+
+    <div class="translate-wrap">
+        <div class="translate-row">
+            <div class="translate-pane">
+                <label for="input-text">Input</label>
+                <textarea class="translate-box" id="input-text"
+                          placeholder="Paste English or Dhivehi text here (up to 4000 chars)…"
+                          maxlength="4000"></textarea>
+            </div>
+            <div class="translate-pane">
+                <label id="output-label" for="output-text">Translation</label>
+                <div class="translate-out" id="output-text"
+                      role="region" aria-live="polite">
+                    <span class="muted">_(translation will appear here)_</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="translate-controls">
+            <button id="translate-btn">Translate</button>
+            <label for="target-select" class="muted" style="font: var(--type-caption);">
+                Target:
+            </label>
+            <select id="target-select">
+                <option value="auto" selected>auto (opposite of source)</option>
+                <option value="EN">English</option>
+                <option value="DV">Dhivehi</option>
+            </select>
+            <span class="translate-meta" id="char-count">0 / 4000</span>
+        </div>
+
+        <details class="provenance" id="provenance" hidden>
+            <summary>Provenance — exemplars + glossary terms used</summary>
+            <div id="provenance-body"></div>
+        </details>
+
+        <p class="translate-warn">
+            ⚠️ LLM-generated translations can be grammatically valid
+            but factually wrong, especially for proper nouns and
+            numbers. Treat as a starting draft, not a final
+            translation.
+        </p>
+    </div>
+</main>
+
+<footer class="site">Automated analysis of public press releases. Not legal advice. · <a href="/methodology">Methodology</a> · <a href="/corrections">Report a correction</a></footer>
+
+<script>
+const $input   = document.getElementById("input-text");
+const $output  = document.getElementById("output-text");
+const $outLbl  = document.getElementById("output-label");
+const $btn     = document.getElementById("translate-btn");
+const $target  = document.getElementById("target-select");
+const $count   = document.getElementById("char-count");
+const $prov    = document.getElementById("provenance");
+const $provBody = document.getElementById("provenance-body");
+
+// Thaana detection (Unicode range U+0780-U+07BF). Mirrors
+// kahzaabu/translator.py::detect_language so the UI shows the
+// right label before submission.
+function detectIsDV(text) {
+    if (!text) return false;
+    const nonWs = (text.match(/\S/g) || []).length;
+    if (!nonWs) return false;
+    const thaana = (text.match(/[ހ-޿]/g) || []).length;
+    return (thaana / nonWs) > 0.5;
+}
+
+function updateCharCount() {
+    const n = $input.value.length;
+    $count.textContent = `${n} / 4000`;
+    $count.style.color = n > 3800 ? "var(--lie)" : "var(--fg-dim)";
+}
+$input.addEventListener("input", updateCharCount);
+updateCharCount();
+
+async function doTranslate() {
+    const text = $input.value.trim();
+    if (!text) {
+        $output.innerHTML = '<div class="translate-error">No input.</div>';
+        return;
+    }
+    $btn.disabled = true;
+    $btn.textContent = "Translating…";
+    $output.innerHTML = '<span class="muted">…</span>';
+    $output.classList.remove("thaana");
+    $prov.hidden = true;
+    try {
+        const r = await fetch("/api/translate", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                text: text,
+                target_language: $target.value,
+            }),
+        });
+        const body = await r.json();
+        if (!r.ok) {
+            $output.innerHTML =
+                `<div class="translate-error">${r.status}: ${(body.detail || body.error || 'unknown')}</div>`;
+            return;
+        }
+        $output.textContent = body.translation || "(empty)";
+        if (body.target_lang === "DV") $output.classList.add("thaana");
+        $outLbl.textContent = `Translation (${body.source_lang} → ${body.target_lang})`;
+        renderProvenance(body);
+    } catch (e) {
+        $output.innerHTML = `<div class="translate-error">${e.message || e}</div>`;
+    } finally {
+        $btn.disabled = false;
+        $btn.textContent = "Translate";
+    }
+}
+
+function renderProvenance(res) {
+    const ex = res.exemplar_ids || [];
+    const gl = res.glossary_terms_used || 0;
+    const cost = (res.cost_usd || 0).toFixed(4);
+    const cached = res.cache_hit ? " (cached)" : "";
+    $provBody.innerHTML = "";
+    const stats = document.createElement("p");
+    stats.innerHTML =
+        `<strong>Model:</strong> <code>${res.model || '?'}</code>${cached}<br>` +
+        `<strong>Exemplars used:</strong> ${ex.length}` +
+        (ex.length ? ` (article ids: ${ex.map(id => `<a href="/article/${id}" target="_blank">${id}</a>`).join(", ")})` : "") + "<br>" +
+        `<strong>Glossary terms applied:</strong> ${gl}<br>` +
+        `<strong>Cost:</strong> $${cost}`;
+    $provBody.appendChild(stats);
+    if (res.disclaimer) {
+        const dis = document.createElement("p");
+        dis.className = "translate-meta";
+        dis.textContent = res.disclaimer;
+        $provBody.appendChild(dis);
+    }
+    $prov.hidden = false;
+}
+
+$btn.addEventListener("click", doTranslate);
+$input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) doTranslate();
+});
+</script>
+</body>
+</html>

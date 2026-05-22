@@ -714,6 +714,65 @@ def handle_run_eval(args: Dict[str, Any], **_kw) -> str:
         return _result({"error": str(e)})
 
 
+# ── Slice 16: press-office-style EN ↔ DV translation ───────────────
+
+TRANSLATE_SCHEMA: Dict[str, Any] = {
+    "name": "kahzaabu_translate",
+    "description": (
+        "Translate text between English and Dhivehi in the Maldives "
+        "Presidency Office's distinctive style. Uses paired-corpus "
+        "few-shot (top-3 topically-similar EN↔DV press releases from "
+        "the last 90 days) + a precomputed glossary mined from the "
+        "archive. NOT a generic translation tool — use this when "
+        "style fidelity to PO press releases matters (e.g., "
+        "'ރައީސުލްޖުމްހޫރިއްޔާ' not 'ޕްރެޒިޑެންޓް' for 'President'). "
+        "Source language is auto-detected (>50% Thaana chars → DV). "
+        "Output includes provenance: which exemplars were used, "
+        "how many glossary terms applied, and the cost."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "text": {
+                "type": "string",
+                "description": "Text to translate. Up to 4000 chars.",
+                "minLength": 1,
+                "maxLength": 4000,
+            },
+            "target_language": {
+                "type": "string",
+                "enum": ["EN", "DV", "auto"],
+                "description": ("Target language. 'auto' (default) "
+                                 "translates to the opposite of the "
+                                 "detected source."),
+            },
+        },
+        "required": ["text"],
+    },
+}
+
+
+def handle_translate(args: Dict[str, Any], **_kw) -> str:
+    """kahzaabu_translate — translate EN↔DV in the press office's
+    style via paired-corpus few-shot + glossary (ADR 0016)."""
+    import json as _json
+    text = (args or {}).get("text") or ""
+    target = (args or {}).get("target_language") or "auto"
+    if not text.strip():
+        return _json.dumps({"error": "text is required"})
+    try:
+        from kahzaabu import translator as _tr
+        conn = _conn()
+        try:
+            res = _tr.translate(conn, text, target_lang=target,
+                                  llm=HOST_LLM)
+        finally:
+            conn.close()
+    except Exception as e:
+        return _json.dumps({"error": str(e)[:300]})
+    return _json.dumps(res)
+
+
 # ---------------------------------------------------------------------------
 # Tool registration table — consumed by __init__.py
 # ---------------------------------------------------------------------------
@@ -732,4 +791,5 @@ TOOLS = (
     ("kahzaabu_search_factchecks",     SEARCH_FACTCHECKS_SCHEMA,     handle_search_factchecks,     "🧐"),
     ("kahzaabu_get_promise",           GET_PROMISE_SCHEMA,           handle_get_promise,           "📌"),
     ("kahzaabu_run_eval",              RUN_EVAL_SCHEMA,              handle_run_eval,              "🧪"),
+    ("kahzaabu_translate",             TRANSLATE_SCHEMA,             handle_translate,             "🌐"),
 )

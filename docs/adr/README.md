@@ -38,3 +38,4 @@ Don't edit an accepted ADR's body in place. If you find a typo or a broken link 
 | 0013 | No in-app authentication; web UI is read-only public | Accepted |
 | 0014 | Hermes ambient `pre_llm_call` hook + sticky-session persistence | Accepted |
 | 0015 | Article-revision tracking (content-hash + history table) | Accepted |
+| 0016 | Press-office-style EN ↔ DV translation (paired-corpus few-shot + glossary) | Accepted |

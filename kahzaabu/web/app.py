@@ -73,7 +73,8 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from .api import (articles, ask, claimreview, constitution,
                   contradictions, corrections, factchecks, freshness, inspect,
-                  manifesto, registry, reproducibility, stats, viz)
+                  manifesto, registry, reproducibility, stats,
+                  translate as translate_api, viz)
 from .limits import limiter
 from .. import metrics
 
@@ -124,6 +125,7 @@ app.include_router(inspect.router, prefix="/api", tags=["inspect"])
 app.include_router(corrections.router, prefix="/api", tags=["corrections"])
 app.include_router(manifesto.router, prefix="/api", tags=["manifesto"])
 app.include_router(registry.router, prefix="/api", tags=["registry"])
+app.include_router(translate_api.router, prefix="/api", tags=["translate"])
 app.include_router(freshness.router, prefix="/api", tags=["freshness"])
 app.include_router(claimreview.router, prefix="/api", tags=["claimreview"])
 app.include_router(contradictions.router, prefix="/api", tags=["contradictions"])
@@ -255,3 +257,8 @@ def page_manifesto_detail(promise_id: int):
 @app.get("/disclaimer", include_in_schema=False)
 def page_disclaimer():
     return FileResponse(STATIC_DIR / "disclaimer.html")
+
+
+@app.get("/translate", include_in_schema=False)
+def page_translate():
+    return FileResponse(STATIC_DIR / "translate.html")

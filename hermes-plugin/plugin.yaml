@@ -1,6 +1,6 @@
 name: kahzaabu
 version: 0.2.0
-description: "REFERENCE IMPLEMENTATION (educational / research) — a sample Hermes Agent plugin demonstrating a domain-specific fact-checking tool surface. Output is automated analysis, NOT an authoritative source; agents must not present verdicts as findings of fact and should direct users to the underlying press release on presidency.gov.mv for any quote. Exposes 13 agent tools (stats, ask, list_lies, get_factcheck, manifesto, get_article, recent_activity, constitution_lookup, pipeline_run, search_articles, search_factchecks, get_promise, run_eval) over a curated SQLite corpus of 3,000+ Maldives Presidency articles, 9,800+ claims, 200+ fact-checks, 700+ manifesto promises, and 301 Constitution articles. Also registers a `hermes kahzaabu` CLI subcommand and a `/kahzaabu` slash command available in any chat session including messaging gateway (Telegram, WhatsApp, Slack, Discord). 'Kahzaabu' and 'Muizzu' refer to the same person."
+description: "REFERENCE IMPLEMENTATION (educational / research) — a sample Hermes Agent plugin demonstrating a domain-specific fact-checking tool surface. Output is automated analysis, NOT an authoritative source; agents must not present verdicts as findings of fact and should direct users to the underlying press release on presidency.gov.mv for any quote. Exposes 14 agent tools (stats, ask, list_lies, get_factcheck, manifesto, get_article, recent_activity, constitution_lookup, pipeline_run, search_articles, search_factchecks, get_promise, run_eval, translate) over a curated SQLite corpus of 3,000+ Maldives Presidency articles, 9,800+ claims, 200+ fact-checks, 700+ manifesto promises, 301 Constitution articles, and 2,648 EN↔DV paired press releases (used as few-shot exemplars for the translation tool). Also registers a `hermes kahzaabu` CLI subcommand and a `/kahzaabu` slash command available in any chat session including messaging gateway (Telegram, WhatsApp, Slack, Discord). 'Kahzaabu' and 'Muizzu' refer to the same person."
 author: Sofwathullah.Mohamed@gmail.com
 license: Apache-2.0
 kind: standalone
@@ -21,6 +21,7 @@ provides_tools:
   - kahzaabu_search_factchecks
   - kahzaabu_get_promise
   - kahzaabu_run_eval
+  - kahzaabu_translate
 provides_slash_commands:
   - /kahzaabu             # backwards-compat alias for /kahzaabu-ask
   - /kahzaabu-ask         # natural-language Q&A (agentic loop)
@@ -28,6 +29,7 @@ provides_slash_commands:
   - /kahzaabu-stats       # archive snapshot
   - /kahzaabu-promise     # search 2023 manifesto promises
   - /kahzaabu-factcheck   # fetch one fact-check by id
+  - /kahzaabu-translate   # press-office-style EN↔DV translation (Slice 16)
 provides_cli_subcommands:
   - hermes kahzaabu
 
