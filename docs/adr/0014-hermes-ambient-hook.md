@@ -168,3 +168,27 @@ Single test file pins the whole stack:
 Set `KAHZAABU_AMBIENT_DISABLE=1` in `~/.hermes/.env`. The plugin
 keeps the 9 tools + slash command + CLI; only the hook short-
 circuits at registration time.
+
+## Superseding this ADR
+
+This ADR is **append-only**. If a future change reverses or
+fundamentally changes the ambient-hook architecture (e.g., LLM-
+based intent detection replaces the regex prefilter; routine-based
+multi-turn injection replaces sticky-session memory; sticky-
+session memory itself gets removed), do **not** edit this file
+in place. Instead:
+
+1. Write a new ADR (e.g. `0015-…-supersedes-0014.md`) that
+   describes the new architecture using the same Michael Nygard
+   sections (Context, Decision, Alternatives, Consequences).
+2. Reference this ADR in its **Context** ("This supersedes ADR
+   0014").
+3. Update the **Status** line of THIS file to read
+   `Superseded by ADR 00NN (YYYY-MM-DD)` and add nothing else.
+   The original Context/Decision/etc. stay intact so future
+   readers can understand what was tried and why it was
+   replaced.
+
+The append-only convention is documented in `docs/adr/README.md`
+and is the project-wide pattern for ADR lifecycle (ADRs 0007 and
+later all follow it).

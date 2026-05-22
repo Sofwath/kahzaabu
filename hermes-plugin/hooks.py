@@ -87,6 +87,15 @@ _db_missing_warned: bool = False
 #   - "atoll" — almost-unique to Maldives in English usage
 #   - "raajje" — Dhivehi for "kingdom" (the country)
 #   - "hulhumale" / "gulhifalhu" / "ras male" — landmark place names
+# MAINTAINER NOTE:
+# When you ADD a new load-bearing keyword to this regex, also add a
+# corresponding row to `StrongKeywordInvariants.CRITICAL_KEYWORDS` in
+# `tests/test_ambient_hook.py`. The test class is the safety net
+# against a future refactor silently stripping a critical anchor —
+# without a matching row there, a regression goes uncaught.
+# When you REMOVE a keyword, also remove the corresponding test row.
+# The structural test asserts the test list ⊆ regex source, so a
+# stale test row will fail loudly.
 _AMBIENT_KEYWORDS = re.compile(
     r"("
     r"\bmuizzu|\bkahzaabu|\bmaldiv|"          # stem match, no trailing \b
@@ -142,25 +151,47 @@ _followup_built_at: Optional[float] = None
 # next vocab-rebuild (don't have to restart hermes to dial it).
 _FOLLOWUP_CACHE_TTL_DEFAULT_SECONDS = 6 * 60 * 60
 
+# Memo for the parsed TTL. Invalidated when the env-var STRING changes
+# (cheap pointer-compare/equality check on every read; int() parse only
+# runs on actual env change). Keeps the hot path zero-allocation.
+_ttl_parsed_cache: Optional[int] = None
+_ttl_parsed_env_value: Optional[str] = None
+
 
 def _followup_ttl_seconds() -> int:
-    """Return the current TTL. Reads the env var lazily so a runtime
-    change picks up on the next call — tests can patch.dict os.environ
-    and the next cache build will honour the override."""
-    raw = os.environ.get("KAHZAABU_FOLLOWUP_TTL_SECONDS", "").strip()
-    if not raw:
-        return _FOLLOWUP_CACHE_TTL_DEFAULT_SECONDS
-    try:
-        v = int(raw)
-        return v if v > 0 else _FOLLOWUP_CACHE_TTL_DEFAULT_SECONDS
-    except ValueError:
-        # Malformed env var — fall back to default. Don't crash the
-        # hook over a typo.
-        logger.debug(
-            "kahzaabu: KAHZAABU_FOLLOWUP_TTL_SECONDS=%r is not an int; "
-            "using default %d", raw, _FOLLOWUP_CACHE_TTL_DEFAULT_SECONDS,
-        )
-        return _FOLLOWUP_CACHE_TTL_DEFAULT_SECONDS
+    """Return the current TTL.
+
+    Reads KAHZAABU_FOLLOWUP_TTL_SECONDS on every call so a runtime
+    env change picks up on the next call — tests can patch.dict
+    os.environ and the next cache build will honour the override.
+
+    The PARSED value is memoised against the raw env-var string;
+    int() only runs when the env actually changes. Hot path is a
+    dict lookup + equality compare.
+    """
+    global _ttl_parsed_cache, _ttl_parsed_env_value
+    raw = os.environ.get("KAHZAABU_FOLLOWUP_TTL_SECONDS", "")
+    if raw == _ttl_parsed_env_value and _ttl_parsed_cache is not None:
+        return _ttl_parsed_cache
+    # Slow path — env-var string changed (or first call this process).
+    stripped = raw.strip()
+    if not stripped:
+        result = _FOLLOWUP_CACHE_TTL_DEFAULT_SECONDS
+    else:
+        try:
+            v = int(stripped)
+            result = v if v > 0 else _FOLLOWUP_CACHE_TTL_DEFAULT_SECONDS
+        except ValueError:
+            # Malformed env var — fall back to default. Don't crash
+            # the hook over a typo.
+            logger.debug(
+                "kahzaabu: KAHZAABU_FOLLOWUP_TTL_SECONDS=%r is not an int; "
+                "using default %d", raw, _FOLLOWUP_CACHE_TTL_DEFAULT_SECONDS,
+            )
+            result = _FOLLOWUP_CACHE_TTL_DEFAULT_SECONDS
+    _ttl_parsed_cache = result
+    _ttl_parsed_env_value = raw
+    return result
 
 # Soft cap on injected context size — agents do better with concise
 # context than a wall of text. 1.5KB is enough for 3 fact-checks +

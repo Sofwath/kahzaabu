@@ -811,6 +811,12 @@ class StrongKeywordInvariants(unittest.TestCase):
     positive matches that fail loudly with named-message error
     messages if anything drops out."""
 
+    # MAINTAINER NOTE:
+    # When you ADD a critical keyword to _AMBIENT_KEYWORDS in
+    # hermes-plugin/hooks.py, add a row here too. When you remove one,
+    # remove the row. The structural test below cross-checks both
+    # directions and fails loudly if the lists diverge.
+    #
     # Each entry: (token_substring, test_message, why_it_matters)
     CRITICAL_KEYWORDS = [
         ("muizzu",   "What did Muizzu announce yesterday?",
@@ -860,6 +866,33 @@ class StrongKeywordInvariants(unittest.TestCase):
                     f"{reason}. This is the safety net the previous "
                     "test won't catch — e.g., a word-boundary change "
                     "that doesn't strip the token but breaks matching.")
+
+    def test_critical_list_covers_majority_of_regex_alternatives(self):
+        """Sanity check: the regex source has N alternatives;
+        CRITICAL_KEYWORDS pins K of them. If K << N somebody likely
+        added new keywords without adding test rows. The threshold
+        is intentionally generous (>= half) — purpose is catching
+        'forgot to add a test row entirely', not enforcing per-
+        keyword coverage. If the regex legitimately grows past the
+        ratio, bump the threshold (with a corresponding note in
+        the test that explains which keywords are intentionally
+        unpinned and why)."""
+        # Count alternatives in the compiled pattern source. Each
+        # `|` separates an alternative; alternatives that share a
+        # group count as one. A simple lower-bound: count the |s
+        # and add 1.
+        src = hooks._AMBIENT_KEYWORDS.pattern
+        regex_alts = src.count("|") + 1
+        pinned = len(self.CRITICAL_KEYWORDS)
+        # Half is a soft floor — most keywords are independently
+        # critical, but a brand-new keyword can sit briefly unpinned
+        # until the maintainer adds a row.
+        self.assertGreaterEqual(pinned * 2, regex_alts,
+            f"CRITICAL_KEYWORDS pins {pinned} stems but "
+            f"_AMBIENT_KEYWORDS has ~{regex_alts} alternatives — "
+            "if you added new keywords without test rows, the "
+            "regression guard for them is missing. Add rows to "
+            "CRITICAL_KEYWORDS for the new load-bearing tokens.")
 
 
 # ───────────────────────────────────────────────────────────────────

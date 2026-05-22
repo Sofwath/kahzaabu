@@ -9,6 +9,16 @@ Read these when:
 
 Each file is numbered chronologically (`NNNN-short-name.md`). Once accepted, ADRs are **append-only**: superseding a decision means writing a new ADR that links back, not editing the old one.
 
+### How to supersede an ADR
+
+When the architecture genuinely changes:
+
+1. Write a new ADR (`NNNN-…-supersedes-MMMM.md`) describing the new decision using the same Michael Nygard sections. Reference the old ADR in **Context**.
+2. Update the **Status** line of the old ADR to `Superseded by ADR NNNN (YYYY-MM-DD)`. Add nothing else. The original Context / Decision / Alternatives / Consequences stay intact — that's the historical record.
+3. Update the Status column in the index table below.
+
+Don't edit an accepted ADR's body in place. If you find a typo or a broken link in an old ADR, fix it; but design-level changes are always a new ADR that supersedes the old. This is what makes the ADR history a usable timeline rather than a moving target.
+
 ## Index
 
 | # | Title | Status |
