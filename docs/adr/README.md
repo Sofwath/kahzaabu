@@ -26,3 +26,4 @@ Each file is numbered chronologically (`NNNN-short-name.md`). Once accepted, ADR
 | 0011 | Public-sector entity registry — external-reference trust anchor | Accepted |
 | 0012 | mvlaw.gov.mv: link-out, not scrape | Accepted |
 | 0013 | No in-app authentication; web UI is read-only public | Accepted |
+| 0014 | Hermes ambient `pre_llm_call` hook + sticky-session persistence | Accepted |

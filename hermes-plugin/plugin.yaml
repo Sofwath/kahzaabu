@@ -59,6 +59,10 @@ optional_env:
     description: "Path to the SQLite DB. Defaults to ~/.kahzaabu/kahzaabu.db. Override if you've installed kahzaabu in a non-standard location."
     prompt: "Override DB path? (leave empty for default)"
     password: false
+  - name: KAHZAABU_FOLLOWUP_TTL_SECONDS
+    description: "TTL for the ambient hook's corpus-derived follow-up vocabulary cache (defaults to 21600 = 6 hours). The hook re-reads fact_checks.topic from the DB after this interval so a long-lived hermes daemon picks up new pipeline-generated topics without restart. Dial down (e.g., 600) on deployments that run the pipeline frequently."
+    prompt: "Follow-up vocab TTL in seconds (leave empty for default 21600)"
+    password: false
 
 hooks:
   # Ambient context injection: when a user's message mentions Maldivian-

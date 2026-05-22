@@ -639,6 +639,31 @@ class FollowupVocabTTL(unittest.TestCase):
     def setUp(self):
         hooks._clear_followup_pattern_cache()
 
+    def test_env_var_overrides_default_ttl(self):
+        """KAHZAABU_FOLLOWUP_TTL_SECONDS=N must be honoured at next
+        read — lazy reader, so a runtime env change takes effect
+        without restart."""
+        with patch.dict("os.environ",
+                          {"KAHZAABU_FOLLOWUP_TTL_SECONDS": "120"}):
+            self.assertEqual(hooks._followup_ttl_seconds(), 120)
+        # Unset reverts to default
+        import os as _os
+        _os.environ.pop("KAHZAABU_FOLLOWUP_TTL_SECONDS", None)
+        self.assertEqual(hooks._followup_ttl_seconds(),
+                           hooks._FOLLOWUP_CACHE_TTL_DEFAULT_SECONDS)
+
+    def test_malformed_env_var_falls_back_to_default(self):
+        """A typo or negative value in KAHZAABU_FOLLOWUP_TTL_SECONDS
+        must not crash the hook — fall back to default."""
+        for bad in ("not-an-int", "-1", "0", ""):
+            with patch.dict("os.environ",
+                              {"KAHZAABU_FOLLOWUP_TTL_SECONDS": bad}):
+                self.assertEqual(
+                    hooks._followup_ttl_seconds(),
+                    hooks._FOLLOWUP_CACHE_TTL_DEFAULT_SECONDS,
+                    f"Malformed env value {bad!r} must fall back "
+                    "to the default TTL, not crash or use a bad value")
+
     def test_cache_rebuilt_after_ttl_expires(self):
         # First call builds the cache
         pat1 = hooks._followup_pattern()
@@ -650,10 +675,12 @@ class FollowupVocabTTL(unittest.TestCase):
         self.assertIs(pat1, pat2,
             "Within TTL the pattern object must be reused — no rebuild")
 
-        # Age the build-timestamp past the TTL
+        # Age the build-timestamp past the TTL (whatever the current
+        # env-derived value is — defaults to 6h, but _followup_ttl_seconds
+        # is the authoritative reader).
         with hooks._state_lock:
             hooks._followup_built_at = (
-                built1 - hooks._FOLLOWUP_CACHE_TTL_SECONDS - 1
+                built1 - hooks._followup_ttl_seconds() - 1
             )
         # Next call must rebuild — different timestamp at minimum
         pat3 = hooks._followup_pattern()
@@ -769,6 +796,73 @@ class MatchClassifier(unittest.TestCase):
 
 
 # ───────────────────────────────────────────────────────────────────
+# Critical-keyword invariants (Concern 1 follow-up)
+# ───────────────────────────────────────────────────────────────────
+
+class StrongKeywordInvariants(unittest.TestCase):
+    """The ambient-hook prefilter has no weak-anchor / co-occurrence
+    fallback (removed 2026-05-22). All ambient injection routes
+    through the strong-keyword regex. If a future refactor strips
+    a critical stem like "maldiv" or "muizzu" by accident, ambient
+    coverage silently degrades.
+
+    These tests are the safety net: a structural assertion that the
+    compiled pattern contains specific load-bearing tokens, plus
+    positive matches that fail loudly with named-message error
+    messages if anything drops out."""
+
+    # Each entry: (token_substring, test_message, why_it_matters)
+    CRITICAL_KEYWORDS = [
+        ("muizzu",   "What did Muizzu announce yesterday?",
+                     "the President's name — kahzaabu's namesake speaker"),
+        ("kahzaabu", "Tell me about kahzaabu's archive",
+                     "the project name itself"),
+        ("maldiv",   "How does the Maldives Constitution define citizenship?",
+                     "country stem matches Maldiv / Maldives / Maldivian"),
+        ("majlis",   "What's happening at the Majlis?",
+                     "the parliament — primary political institution"),
+        ("JSC",      "Are the JSC amendments lawful?",
+                     "Judicial Service Commission — load-bearing in many "
+                     "fact-checks about judicial independence"),
+        ("atoll",    "Reclamation work in the southern atolls",
+                     "almost-unique Maldivian English geography term"),
+        ("raajje",   "The Raajje vs Maldives naming convention",
+                     "Dhivehi-language country name — appears in DV-EN "
+                     "comparison contexts"),
+    ]
+
+    def test_compiled_pattern_contains_each_critical_stem(self):
+        """Structural assertion: the compiled regex's source must
+        contain each critical token. If a refactor strips one, this
+        fails with a clear named-token error message."""
+        pat_src = hooks._AMBIENT_KEYWORDS.pattern.lower()
+        for tok, _msg, reason in self.CRITICAL_KEYWORDS:
+            with self.subTest(token=tok):
+                self.assertIn(tok.lower(), pat_src,
+                    f"Critical strong-keyword stem '{tok}' is missing "
+                    f"from _AMBIENT_KEYWORDS regex source. {reason}. "
+                    "Removing this silently degrades ambient context "
+                    "injection for an important class of user queries.")
+
+    def test_each_critical_keyword_actually_matches(self):
+        """Behavioural assertion: a real message containing each
+        keyword must produce MATCH_STRONG. Structural test above
+        catches token-level drops; this catches subtler issues like
+        word-boundary regressions or accidental ordering changes."""
+        hooks._clear_sticky_state()
+        for tok, msg, reason in self.CRITICAL_KEYWORDS:
+            with self.subTest(token=tok, msg=msg):
+                self.assertEqual(
+                    hooks._classify_match(msg, session_id=f"cv-{tok}"),
+                    hooks.MATCH_STRONG,
+                    f"Critical keyword '{tok}' failed to produce "
+                    f"MATCH_STRONG on the test message {msg!r}. "
+                    f"{reason}. This is the safety net the previous "
+                    "test won't catch — e.g., a word-boundary change "
+                    "that doesn't strip the token but breaks matching.")
+
+
+# ───────────────────────────────────────────────────────────────────
 # Manifest declares the hook
 # ───────────────────────────────────────────────────────────────────
 
@@ -796,6 +890,9 @@ class ManifestDeclaresHook(unittest.TestCase):
         self.assertIn("KAHZAABU_AMBIENT_PLATFORMS", names,
             "optional_env must document the platform allowlist var "
             "so users can scope the hook without disabling it")
+        self.assertIn("KAHZAABU_FOLLOWUP_TTL_SECONDS", names,
+            "optional_env must document the TTL override var so "
+            "operators discoverable it via `hermes config`")
 
 
 if __name__ == "__main__":

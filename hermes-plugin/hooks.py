@@ -134,10 +134,33 @@ _followup_pattern_cache: Optional[re.Pattern] = None
 _followup_words_cache: Optional[frozenset[str]] = None
 _followup_built_at: Optional[float] = None
 
-# 6 hours. The pipeline typically runs daily so worst-case staleness
-# is bounded at ~6h; refresh cost is one COUNT-DISTINCT query so
-# the overhead is negligible.
-_FOLLOWUP_CACHE_TTL_SECONDS = 6 * 60 * 60
+# Default TTL is 6h. Override via KAHZAABU_FOLLOWUP_TTL_SECONDS in
+# ~/.hermes/.env or shell env — useful for deployments that run the
+# pipeline more frequently and want faster topic propagation, or
+# tests that need a short cache life. Read on every call to
+# _followup_pattern() so a runtime env change takes effect on the
+# next vocab-rebuild (don't have to restart hermes to dial it).
+_FOLLOWUP_CACHE_TTL_DEFAULT_SECONDS = 6 * 60 * 60
+
+
+def _followup_ttl_seconds() -> int:
+    """Return the current TTL. Reads the env var lazily so a runtime
+    change picks up on the next call — tests can patch.dict os.environ
+    and the next cache build will honour the override."""
+    raw = os.environ.get("KAHZAABU_FOLLOWUP_TTL_SECONDS", "").strip()
+    if not raw:
+        return _FOLLOWUP_CACHE_TTL_DEFAULT_SECONDS
+    try:
+        v = int(raw)
+        return v if v > 0 else _FOLLOWUP_CACHE_TTL_DEFAULT_SECONDS
+    except ValueError:
+        # Malformed env var — fall back to default. Don't crash the
+        # hook over a typo.
+        logger.debug(
+            "kahzaabu: KAHZAABU_FOLLOWUP_TTL_SECONDS=%r is not an int; "
+            "using default %d", raw, _FOLLOWUP_CACHE_TTL_DEFAULT_SECONDS,
+        )
+        return _FOLLOWUP_CACHE_TTL_DEFAULT_SECONDS
 
 # Soft cap on injected context size — agents do better with concise
 # context than a wall of text. 1.5KB is enough for 3 fact-checks +
@@ -342,21 +365,22 @@ def _followup_pattern() -> re.Pattern:
     """Return the compiled sticky-session follow-up pattern.
 
     Built from BASELINE ∪ CORPUS-DERIVED words. Cached with a TTL
-    (_FOLLOWUP_CACHE_TTL_SECONDS) so a long-running hermes daemon
-    picks up new pipeline-emitted topics without a restart. Tests
-    can drop the cache via _clear_followup_pattern_cache()."""
+    read lazily from `_followup_ttl_seconds()` so a long-running
+    hermes daemon picks up new pipeline-emitted topics without
+    restart and operators can dial the TTL at runtime. Tests can
+    drop the cache via _clear_followup_pattern_cache()."""
     global _followup_pattern_cache, _followup_words_cache, _followup_built_at
     now = time.monotonic()
     # Fast path: cache fresh — no lock needed for a single read
     # because Python's GIL keeps reference reads atomic.
     if _followup_pattern_cache is not None and _followup_built_at is not None:
-        if (now - _followup_built_at) < _FOLLOWUP_CACHE_TTL_SECONDS:
+        if (now - _followup_built_at) < _followup_ttl_seconds():
             return _followup_pattern_cache
     # Slow path: rebuild under the lock (double-checked).
     with _state_lock:
         if (_followup_pattern_cache is not None
                 and _followup_built_at is not None
-                and (now - _followup_built_at) < _FOLLOWUP_CACHE_TTL_SECONDS):
+                and (now - _followup_built_at) < _followup_ttl_seconds()):
             return _followup_pattern_cache
         corpus = _compute_followup_words(_resolve_db_path())
         all_words = _FOLLOWUP_BASELINE_WORDS | corpus
@@ -372,7 +396,7 @@ def _followup_pattern() -> re.Pattern:
             "kahzaabu sticky follow-up vocab: %d words "
             "(baseline %d + corpus %d) — TTL %ds",
             len(all_words), len(_FOLLOWUP_BASELINE_WORDS), len(corpus),
-            _FOLLOWUP_CACHE_TTL_SECONDS,
+            _followup_ttl_seconds(),
         )
     return _followup_pattern_cache
 
