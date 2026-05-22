@@ -180,8 +180,18 @@ def register(ctx) -> None:
         args_hint="<question>",
     )
 
-    logger.info("kahzaabu plugin registered: 8 tools + `hermes kahzaabu` CLI "
-                "+ /kahzaabu slash command")
+    # Register the pre_llm_call ambient-context hook unless opted out.
+    # The hook itself short-circuits on KAHZAABU_AMBIENT_DISABLE, but
+    # we honour the same env var at registration time too so a user
+    # who's opted out doesn't even pay the hook-dispatch overhead.
+    if not os.environ.get("KAHZAABU_AMBIENT_DISABLE"):
+        from plugins.kahzaabu.hooks import on_pre_llm_call
+        ctx.register_hook("pre_llm_call", on_pre_llm_call)
+        logger.info("kahzaabu plugin registered: 9 tools + `hermes kahzaabu` CLI "
+                    "+ /kahzaabu slash command + pre_llm_call ambient hook")
+    else:
+        logger.info("kahzaabu plugin registered: 9 tools + `hermes kahzaabu` CLI "
+                    "+ /kahzaabu slash command (ambient hook DISABLED via env)")
 
 
 def _slash_kahzaabu(raw_args: str) -> str:

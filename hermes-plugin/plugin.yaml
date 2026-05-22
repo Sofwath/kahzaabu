@@ -21,4 +21,40 @@ provides_slash_commands:
   - /kahzaabu
 provides_cli_subcommands:
   - hermes kahzaabu
-hooks: []
+
+# Hermes auto-prompts the user for these on `hermes plugin install kahzaabu`
+# and surfaces them in `hermes config`. Rich-dict form lets us contribute
+# description / prompt / url / password metadata so the setup wizard shows
+# real guidance instead of a bare variable name.
+requires_env:
+  - name: ANTHROPIC_API_KEY
+    description: "Anthropic API key. Used by the agentic Q&A loop (kahzaabu_ask) and the narrative-tricks guarantee-pass. Without it the ask tool falls back to a deterministic-only response that won't read the article body or do web search."
+    prompt: "Anthropic API key"
+    url: "https://console.anthropic.com/settings/keys"
+    password: true
+
+optional_env:
+  - name: OPENROUTER_API_KEY
+    description: "OpenRouter API key — alternative provider for the agentic Q&A loop. Useful if you don't have direct Anthropic access. Either this or ANTHROPIC_API_KEY is enough."
+    prompt: "OpenRouter API key (optional)"
+    url: "https://openrouter.ai/keys"
+    password: true
+  - name: KAHZAABU_ALLOW_PIPELINE
+    description: "Set to '1' to enable the kahzaabu_pipeline_run tool. The pipeline costs real LLM money (typical run is 1-3 USD); gated by default so an agent can't accidentally burn budget. Legacy env var KAHZAABU_MCP_ALLOW_PIPELINE is still honoured."
+    prompt: "Enable pipeline tool? (1 = yes, empty = no)"
+    password: false
+  - name: KAHZAABU_AMBIENT_DISABLE
+    description: "Set to '1' to disable the pre_llm_call ambient-injection hook. By default, when a user mentions Maldivian-politics topics in any hermes chat, the plugin auto-injects 1-3 relevant fact-checks as context. Disabling makes kahzaabu act as a pure on-demand tool."
+    prompt: "Disable ambient hook? (1 = disable)"
+    password: false
+  - name: KAHZAABU_DB
+    description: "Path to the SQLite DB. Defaults to ~/.kahzaabu/kahzaabu.db. Override if you've installed kahzaabu in a non-standard location."
+    prompt: "Override DB path? (leave empty for default)"
+    password: false
+
+hooks:
+  # Ambient context injection: when a user's message mentions Maldivian-
+  # politics topics, the hook prefilters cheaply (regex) and, on match,
+  # injects 1-3 relevant fact-checks + constitution articles as context
+  # for that turn. Opt-out: KAHZAABU_AMBIENT_DISABLE=1.
+  - pre_llm_call

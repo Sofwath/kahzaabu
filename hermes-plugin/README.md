@@ -123,6 +123,55 @@ kahzaabu:
 
 ---
 
+## Ambient context injection (the `pre_llm_call` hook)
+
+The plugin installs a `pre_llm_call` hook that turns kahzaabu from "a tool you call" into "an ambient knowledge layer that pays attention". When a user mentions a Maldivian-politics topic in **any** hermes chat — terminal, Telegram, Slack, Discord, gateway — the hook:
+
+1. Prefilters cheaply (regex against a stem-keyword list — sub-millisecond per turn).
+2. On match, runs a fast BM25 lookup against the local `fact_checks_fts` + `constitution_articles_fts` indexes.
+3. Returns up to 3 relevant fact-checks + 2 constitution articles as **user-message context** for that turn (preserves the prompt-cache prefix).
+
+Result: someone discussing the President in a hermes chat gets kahzaabu's grounding automatically; they don't have to remember `/kahzaabu`.
+
+**Opt out** — set `KAHZAABU_AMBIENT_DISABLE=1` in `~/.hermes/.env`. The hook short-circuits at registration time; the plugin keeps the 9 tools + slash command + CLI.
+
+The hook is **defensive**: missing DB → returns `None`, search throws → returns `None`. A misbehaving hook can never break a hermes turn.
+
+**Performance budget**:
+- Non-match path: < 1 ms (regex only)
+- Match path: typically < 50 ms (1 SQLite open + 2 BM25 queries)
+
+Regression-guarded by `tests/test_ambient_hook.py` (13 tests).
+
+---
+
+## Langfuse observability (optional)
+
+Kahzaabu uses `ctx.llm` for its agentic Q&A loop, which means every LLM call goes through hermes' provider abstraction. If you enable hermes' bundled Langfuse plugin, **kahzaabu's LLM calls are auto-traced with zero plugin code changes**.
+
+```bash
+pip install langfuse
+hermes plugins enable observability/langfuse
+```
+
+Set in `~/.hermes/.env`:
+```bash
+HERMES_LANGFUSE_PUBLIC_KEY=pk-lf-...
+HERMES_LANGFUSE_SECRET_KEY=sk-lf-...
+HERMES_LANGFUSE_BASE_URL=https://cloud.langfuse.com   # or self-hosted
+```
+
+What you'll see in Langfuse for each `kahzaabu_ask` invocation:
+
+- The **tool-call tree** — every internal call the agentic loop makes (web search, claims_db queries, constitution lookups, narrative-tricks guarantee-pass).
+- **Cost per question** — Sonnet + Haiku token breakdowns, USD per call, USD per session.
+- **Latency** — end-to-end + per-stage.
+- **Prompt cache hit rate** — useful for tuning the system prompt prefix.
+
+The plugin fails open: no Langfuse SDK / no credentials → silent no-op. See `~/.hermes/hermes-agent/plugins/observability/langfuse/README.md` for tuning knobs (sample rate, env tags, char caps).
+
+---
+
 ## Status
 
 - ✅ All 9 tools wired and tested via `hermes chat`
