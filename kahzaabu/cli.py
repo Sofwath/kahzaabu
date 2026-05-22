@@ -986,3 +986,68 @@ def transparency_report_cmd(ctx, since, until, output):
     else:
         path = write_report(conn, since, until)
         click.echo(f"Wrote {path}")
+
+
+@main.group()
+def revisions():
+    """V2 Slice 15 — article-revision tracking (ADR 0015).
+
+    `kahzaabu revisions list <article_id>` shows every change the
+    press office has made to a given article since we first scraped
+    it. `kahzaabu revisions show <revision_id>` prints the full
+    old body so an operator can decide whether to re-extract claims
+    on the new content."""
+    pass
+
+
+@revisions.command(name="list")
+@click.argument("article_id", type=int)
+@click.option("--language", default=None,
+               help="Filter to one language (EN or DV). Default: all.")
+@click.pass_context
+def revisions_list(ctx, article_id, language):
+    """List all revisions for an article, oldest first."""
+    from . import revisions as _rev
+    conn = ctx.obj["conn"]
+    rows = _rev.list_revisions(conn, article_id, language)
+    if not rows:
+        click.echo(f"No revisions recorded for article {article_id}.")
+        click.echo("(This means either: the article has never been "
+                    "edited since we first scraped it, OR the article "
+                    "doesn't exist in the archive.)")
+        return
+    click.echo(f"\n{len(rows)} revision(s) for article {article_id}:\n")
+    for r in rows:
+        click.echo(f"  rev#{r['id']:>5}  [{r['language']}]  "
+                    f"replaced {r['replaced_at'][:19]}")
+        click.echo(f"    hash:  {r['content_hash'][:16]}…")
+        click.echo(f"    title: {(r['title'] or '')[:80]}")
+        click.echo(f"    diff:  {r['diff_summary']}")
+        click.echo()
+
+
+@revisions.command(name="show")
+@click.argument("revision_id", type=int)
+@click.option("--body/--no-body", default=True,
+               help="Include the archived body_text in the output.")
+@click.pass_context
+def revisions_show(ctx, revision_id, body):
+    """Print the full archived old version for one revision id."""
+    from . import revisions as _rev
+    conn = ctx.obj["conn"]
+    r = _rev.get_revision(conn, revision_id)
+    if r is None:
+        click.echo(f"No revision with id {revision_id}.")
+        sys.exit(1)
+    click.echo(f"Revision #{r['id']}  (article {r['article_id']} {r['language']})")
+    click.echo(f"  hash:        {r['content_hash']}")
+    click.echo(f"  observed_at: {r['observed_at']}  (when we first saw this version)")
+    click.echo(f"  replaced_at: {r['replaced_at']}  (when we noticed the change)")
+    click.echo(f"  diff:        {r['diff_summary']}")
+    click.echo(f"  title:       {r['title']}")
+    click.echo(f"  reference:   {r.get('reference')}")
+    click.echo(f"  image_urls:  {r.get('image_urls')}")
+    if body and r.get("body_text"):
+        click.echo()
+        click.echo("── archived body_text ──")
+        click.echo(r["body_text"])

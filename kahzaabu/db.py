@@ -73,13 +73,64 @@ def article_exists(conn: sqlite3.Connection, article_id: int, language: str) -> 
 
 
 def insert_article(conn: sqlite3.Connection, article: Article) -> None:
+    """Upsert an article. If a row already exists with a different
+    content hash, the OLD version is archived to article_revisions
+    BEFORE this row's content gets overwritten (ADR 0015).
+
+    The hash compare + archive happens atomically with the upsert
+    so a concurrent scrape can't race: we open the read, do the
+    archive INSERT, do the article UPDATE, all under conn's
+    implicit transaction; conn.commit() at the end seals it.
+    """
+    from kahzaabu import revisions as _rev
     now = datetime.now(timezone.utc).isoformat()
+    image_urls_json = json.dumps(article.image_urls)
+    new_hash = _rev.compute_content_hash(
+        article.title, article.body_text, article.reference, image_urls_json,
+    )
+
+    # Read the existing row (if any). content_hash is NULL on rows
+    # written before the slice-15 migration — we treat that as
+    # "first observation, can't tell if it changed" and just store
+    # the new hash without archiving (no false-positive on the
+    # first scrape after the upgrade).
+    existing = conn.execute(
+        """SELECT id, language, paired_id, category, category_id, title,
+                  body_text, body_html, reference, published_date,
+                  image_urls, scraped_at, raw_page_html, content_hash
+           FROM articles WHERE id = ? AND language = ?""",
+        (article.id, article.language),
+    ).fetchone()
+
+    if existing is not None:
+        # sqlite3.Row supports keys; raw tuple does not. Detect.
+        if hasattr(existing, "keys"):
+            old_row = dict(existing)
+        else:
+            cols = ["id", "language", "paired_id", "category", "category_id",
+                     "title", "body_text", "body_html", "reference",
+                     "published_date", "image_urls", "scraped_at",
+                     "raw_page_html", "content_hash"]
+            old_row = {cols[i]: existing[i] for i in range(len(cols))}
+        old_hash = old_row.get("content_hash")
+        if old_hash and old_hash != new_hash:
+            # Genuine edit detected. Archive the old version.
+            new_row = {
+                "title": article.title,
+                "body_text": article.body_text,
+                "reference": article.reference,
+                "image_urls": image_urls_json,
+            }
+            _rev.archive_revision(
+                conn, article.id, article.language, old_row, new_row,
+            )
+
     conn.execute(
         """INSERT OR REPLACE INTO articles
         (id, language, paired_id, category, category_id, title,
          body_text, body_html, reference, published_date,
-         image_urls, scraped_at, raw_page_html)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+         image_urls, scraped_at, raw_page_html, content_hash)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             article.id,
             article.language,
@@ -91,9 +142,10 @@ def insert_article(conn: sqlite3.Connection, article: Article) -> None:
             article.body_html,
             article.reference,
             article.published_date,
-            json.dumps(article.image_urls),
+            image_urls_json,
             now,
             article.raw_page_html,
+            new_hash,
         ),
     )
     conn.commit()

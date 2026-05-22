@@ -459,6 +459,41 @@ CREATE INDEX IF NOT EXISTS idx_ambient_hot_until
     ON ambient_hot_sessions(hot_until);
 """
 
+# Slice 15 — Article-revision tracking (ADR 0015).
+#
+# Detects when presidency.gov.mv edits an already-archived article
+# after we've scraped it ("4 → 1" edits, photo swaps, claim
+# rewordings). Each scrape recomputes a content hash; on mismatch
+# the scraper archives the old row to article_revisions BEFORE
+# the upsert overwrites it. Full design in
+# docs/adr/0015-article-revisions.md.
+V2_SLICE15_REVISIONS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS article_revisions (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    article_id      INTEGER NOT NULL,
+    language        TEXT    NOT NULL,
+    content_hash    TEXT    NOT NULL,
+    title           TEXT    NOT NULL,
+    body_text       TEXT,
+    body_html       TEXT,
+    image_urls      TEXT,
+    reference       TEXT,
+    published_date  TEXT,
+    observed_at     TEXT    NOT NULL,
+    replaced_at     TEXT    NOT NULL,
+    diff_summary    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_article_revisions
+    ON article_revisions(article_id, language);
+"""
+
+V2_SLICE15_MIGRATIONS = [
+    # Additive: existing rows get NULL content_hash until next scrape;
+    # the scraper treats NULL == "we don't know" and stores the hash
+    # without flagging a change (no false-positive on first observation).
+    "ALTER TABLE articles ADD COLUMN content_hash TEXT",
+]
+
 VALID_VERDICT_LABELS = frozenset({
     "SUPPORTED", "REFUTED", "NOT_ENOUGH_EVIDENCE", "CONFLICTING_EVIDENCE",
 })
@@ -518,11 +553,13 @@ def init_claims_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(V2_SLICE3_SCHEMA)
     conn.executescript(V2_SLICE4_SCHEMA)
     conn.executescript(V2_SLICE14_AMBIENT_HOOK_SCHEMA)
+    conn.executescript(V2_SLICE15_REVISIONS_SCHEMA)
     # Apply phase-3 ALTERs + V2 migrations idempotently
     for sql in (PUBLISH_MIGRATIONS + V2_SLICE1_MIGRATIONS
                 + V2_SLICE3_MIGRATIONS + V2_SLICE5_MIGRATIONS
                 + V2_SLICE6_MIGRATIONS + V2_SLICE_REGISTRY_MIGRATIONS
-                + V2_SLICE12_MIGRATIONS):
+                + V2_SLICE12_MIGRATIONS
+                + V2_SLICE15_MIGRATIONS):
         try:
             conn.execute(sql)
         except sqlite3.OperationalError:
