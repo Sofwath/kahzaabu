@@ -532,5 +532,92 @@ class BackTranslationVerification(unittest.TestCase):
         self.assertEqual(llm.messages.create.call_count, 1)
 
 
+# ───────────────────────────────────────────────────────────────────
+# Glossary builder retry logic
+# ───────────────────────────────────────────────────────────────────
+
+class GlossaryBuilderRetries(unittest.TestCase):
+    """build_glossary calls _extract_pairs_from_article on every
+    sampled paired article. A transient network stall on one call
+    used to hang the whole batch. The retry wrapper survives that
+    by backing off + moving on after N failures."""
+
+    def test_succeeds_on_first_try(self):
+        """Happy path: real LLM call returns first time. No retries
+        consumed; pairs returned as expected."""
+        from kahzaabu.translator import _extract_pairs_from_article
+        # Mock chain: llm.with_options().messages.create() returns
+        # a valid JSON-bearing response on the first call.
+        block = MagicMock(); block.type = "text"
+        block.text = '{"pairs": [{"en": "Cabinet", "dv": "ކެބިނެޓް"}]}'
+        resp = MagicMock(); resp.content = [block]
+        resp.usage.input_tokens = 100; resp.usage.output_tokens = 50
+        sub_client = MagicMock()
+        sub_client.messages.create.return_value = resp
+        llm = MagicMock()
+        llm.with_options.return_value = sub_client
+
+        pairs, meta = _extract_pairs_from_article(
+            llm, "EN body about Cabinet.",
+            "DV body about ކެބިނެޓް.",
+        )
+        self.assertEqual(len(pairs), 1)
+        self.assertEqual(pairs[0]["en"], "Cabinet")
+        # Confirm only ONE create() call happened — no retries fired.
+        self.assertEqual(sub_client.messages.create.call_count, 1,
+            "Happy path must not retry — wastes API budget")
+        self.assertIn("cost_usd", meta)
+
+    def test_retries_on_transient_error(self):
+        """Two transient failures, then success on the third attempt.
+        Pairs returned cleanly; no exception leaks to the caller."""
+        from kahzaabu.translator import _extract_pairs_from_article
+        block = MagicMock(); block.type = "text"
+        block.text = '{"pairs": [{"en": "JSC", "dv": "ޖޭ.އެސް.ސީ"}]}'
+        resp = MagicMock(); resp.content = [block]
+        resp.usage.input_tokens = 100; resp.usage.output_tokens = 50
+
+        sub_client = MagicMock()
+        # First two calls raise; third returns the valid response.
+        sub_client.messages.create.side_effect = [
+            ConnectionError("simulated network stall"),
+            RuntimeError("simulated transient 500"),
+            resp,
+        ]
+        llm = MagicMock()
+        llm.with_options.return_value = sub_client
+
+        with patch("time.sleep"):  # speed up exponential backoff
+            pairs, meta = _extract_pairs_from_article(
+                llm, "EN body.", "DV body.")
+        self.assertEqual(len(pairs), 1,
+            "Retry on transient errors must eventually surface the "
+            "real result — the whole point of the retry loop")
+        self.assertEqual(sub_client.messages.create.call_count, 3)
+
+    def test_exhausted_retries_returns_empty_with_error_meta(self):
+        """All N attempts fail. Returns empty pairs + meta with
+        _error set; does NOT raise. The outer build_glossary loop
+        continues with the next article."""
+        from kahzaabu.translator import _extract_pairs_from_article
+        sub_client = MagicMock()
+        sub_client.messages.create.side_effect = ConnectionError(
+            "persistent network failure")
+        llm = MagicMock()
+        llm.with_options.return_value = sub_client
+
+        with patch("time.sleep"):
+            pairs, meta = _extract_pairs_from_article(
+                llm, "EN body.", "DV body.", retries=2)
+        self.assertEqual(pairs, [],
+            "Exhausted retries must return empty list, not raise — "
+            "raising would kill the whole batch job")
+        self.assertIn("_error", meta,
+            "Meta must carry the error reason so build_glossary "
+            "can surface it in the summary")
+        # Should have attempted exactly retries times.
+        self.assertEqual(sub_client.messages.create.call_count, 2)
+
+
 if __name__ == "__main__":
     unittest.main()

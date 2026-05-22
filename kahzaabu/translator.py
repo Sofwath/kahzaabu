@@ -601,42 +601,90 @@ _JSON_RE = re.compile(r'\{.*\}', re.DOTALL)
 
 
 def _extract_pairs_from_article(
-    llm: Any, en_body: str, dv_body: str, *, model_alias: str = "sonnet",
+    llm: Any, en_body: str, dv_body: str, *,
+    model_alias: str = "sonnet",
+    retries: int = 3,
+    timeout_seconds: float = 60.0,
 ) -> tuple[list[dict], dict]:
     """Call the LLM on one paired article. Returns (pairs, cost_meta).
-    Truncates each body to 6000 chars to bound prompt size."""
+
+    Retries on RateLimitError (exponential backoff) and generic
+    exceptions (one backoff between attempts). Per-call timeout
+    set on the Anthropic SDK so a network stall can't hang the
+    whole batch job indefinitely.
+
+    Bodies truncated to 6000 chars to bound prompt size.
+
+    Lifted from `kahzaabu/dv_compare.py`'s `_call_llm` pattern —
+    same exponential-backoff schedule. A larger glossary run
+    (~$10 / 200 articles) routinely hits the 1% of API calls
+    that stall; without retries, one stalled call kills the run."""
+    import anthropic
+    import time as _time
     user = (
         f"EN BODY:\n{en_body[:6000]}\n\n"
         f"DV BODY:\n{dv_body[:6000]}\n\n"
         f"Extract paired terms as JSON per the schema."
     )
-    resp = llm.messages.create(
-        model=pricing.model_id(model_alias), max_tokens=2000,
-        temperature=0.2,
-        system=_GLOSSARY_BUILDER_SYSTEM,
-        messages=[{"role": "user", "content": user}],
-    )
-    text = "".join(
-        getattr(b, "text", "")
-        for b in resp.content if getattr(b, "type", None) == "text"
-    )
-    m = _JSON_RE.search(text)
-    tokens_in = getattr(resp.usage, "input_tokens", 0)
-    tokens_out = getattr(resp.usage, "output_tokens", 0)
-    meta = {
-        "tokens_in":  tokens_in,
-        "tokens_out": tokens_out,
-        "cost_usd":   pricing.cost(model_alias,
-                                     tokens_in=tokens_in,
-                                     tokens_out=tokens_out),
-    }
-    if not m:
-        return [], meta
+    last_err: Optional[str] = None
+    for attempt in range(retries):
+        try:
+            resp = llm.with_options(timeout=timeout_seconds).messages.create(
+                model=pricing.model_id(model_alias), max_tokens=2000,
+                temperature=0.2,
+                system=_GLOSSARY_BUILDER_SYSTEM,
+                messages=[{"role": "user", "content": user}],
+            )
+            text = "".join(
+                getattr(b, "text", "")
+                for b in resp.content
+                if getattr(b, "type", None) == "text"
+            )
+            m = _JSON_RE.search(text)
+            tokens_in = getattr(resp.usage, "input_tokens", 0)
+            tokens_out = getattr(resp.usage, "output_tokens", 0)
+            meta = {
+                "tokens_in":  tokens_in,
+                "tokens_out": tokens_out,
+                "cost_usd":   pricing.cost(model_alias,
+                                             tokens_in=tokens_in,
+                                             tokens_out=tokens_out),
+            }
+            if not m:
+                return [], meta
+            try:
+                d = json.loads(m.group(0))
+            except json.JSONDecodeError:
+                return [], meta
+            return d.get("pairs", []), meta
+        except anthropic.RateLimitError:
+            # 2s, 4s, 8s backoff — gives the API a chance to recover
+            _time.sleep(2 ** attempt * 2)
+            last_err = "rate_limit"
+        except Exception as e:
+            # Network stalls, timeouts, transient 5xx — back off and
+            # retry on all but the last attempt.
+            last_err = str(e)[:200]
+            if attempt == retries - 1:
+                break
+            _time.sleep(2 ** attempt)
+    # Exhausted retries — return empty pairs + a cost_meta with zeros.
+    # Caller's outer loop will move on to the next article.
+    logger.warning("build_glossary: exhausted %d retries (%s); skipping article",
+                   retries, last_err)
+    return [], {"tokens_in": 0, "tokens_out": 0, "cost_usd": 0.0,
+                "_error": last_err}
+
+
+def _has_anthropic_module():
+    """Return whether `anthropic` is importable. Used to defensively
+    fall back when the test environment mocks the LLM client and the
+    real SDK isn't installed."""
     try:
-        d = json.loads(m.group(0))
-    except json.JSONDecodeError:
-        return [], meta
-    return d.get("pairs", []), meta
+        import anthropic  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 
 def build_glossary(
