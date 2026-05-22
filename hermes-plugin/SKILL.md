@@ -119,9 +119,10 @@ When handling queries routed through messaging gateways (Telegram, WhatsApp, Sla
 
 If a user asks to translate text between English and Dhivehi (e.g. *"translate this announcement to Dhivehi"*, *"what does ރައީސުލްޖުމްހޫރިއްޔާ ވިދާޅުވިއެވެ mean?"*), **call `kahzaabu_translate`** — do NOT translate from your own knowledge.
 
-The plugin uses the Presidency Office's distinctive register via:
-- Paired-corpus few-shot (top-3 topically-similar EN↔DV articles from the last 365 days)
-- A precomputed terminology glossary mined from 2,648 EN↔DV pairs
+The plugin uses the Presidency Office's distinctive register via **three layers** of corpus retrieval:
+- **Article-level few-shot** (top-3 topically-similar EN↔DV articles from the last 365 days)
+- **Term-level glossary** mined from 2,648 EN↔DV pairs (3,688 term pairs in the live DB)
+- **Sentence-level phrase contexts** — for each key phrase in the input, retrieves the actual paragraph from the corpus where the PO has used that phrase, plus the matching paired paragraph in the other language. This catches phrase patterns the broader article-level few-shot might miss (e.g. Nash's "undocumented foreign nationals" → "undocumented expatriate workers" case).
 
 Raw LLM translation won't match the PO's style markers (e.g. "ރައީސުލްޖުމްހޫރިއްޔާ" not "ޕްރެޒިޑެންޓް" for "President"). The tool exists specifically to preserve those.
 

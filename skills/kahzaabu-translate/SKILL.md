@@ -120,22 +120,32 @@ they are:
 
 ## How the tool produces this style
 
-Three layers feed every translation prompt:
+**Four layers** feed every translation prompt, from most-general
+to most-specific:
 
 1. **System prompt** — a hand-written description of the PO's
-   register with explicit examples of preferred renderings.
+   register with explicit examples of preferred renderings + a
+   load-bearing TERMINOLOGY FIDELITY RULE that tells the LLM to
+   defer to exemplar phrasing over literal translation.
 2. **Glossary subset** — relevant rows from
    `translation_glossary`, a precomputed dictionary mined from the
-   paired corpus via a one-shot LLM extraction job. Provides
-   institutional-name pairs sorted by frequency in the corpus.
-3. **Few-shot exemplars** — 3 paired EN↔DV press releases from
-   the last 90 days that are topic-similar to the input (via BM25
-   over `articles_fts`). Recency matters because the PO's
-   terminology can drift over years; the most recent corpus
-   reflects current style.
+   paired corpus via a one-shot LLM extraction job (3,688 term
+   pairs in the live DB). Provides institutional-name pairs
+   sorted by frequency in the corpus.
+3. **Phrase contexts** — sentence-level retrieval. For each key
+   phrase in the input (proper-noun runs in EN, multi-Thaana-word
+   sequences in DV), the system runs an FTS5 phrase query and
+   pulls the actual paragraph from the corpus where the PO has
+   used that phrase — plus the matching paired paragraph in the
+   other language. This is what catches phrase patterns the
+   broader article-level few-shot might miss.
+4. **Article-level few-shot exemplars** — 3 paired EN↔DV press
+   releases from the last 365 days that are topic-similar to the
+   input (via BM25 over `articles_fts`). Broader context for the
+   register and overall tone.
 
 The LLM (Claude Sonnet at temperature 0.3 for consistency)
-synthesises the translation from these three layers. Each
+synthesises the translation from these four layers. Each
 invocation persists to `translation_runs` — both for the audit
 trail and as an LRU cache (same input within 1h returns the
 cached translation without a fresh LLM call).

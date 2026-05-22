@@ -158,6 +158,215 @@ def select_few_shot(
     return out[:k]
 
 
+# ── Phrase-anchored context retrieval ──────────────────────────────
+#
+# Beyond the article-level few-shot, we extract specific phrases
+# from the input and pull paragraph-level snippets where the PO
+# has used those exact phrases. The LLM sees not just topically-
+# similar articles but the specific sentence patterns it should
+# match. This is what addresses Nash's case more robustly than
+# whole-article BM25 — when the input has "judicial independence"
+# or "expatriate workers", we point the LLM directly at sentences
+# where the PO has used that phrase.
+
+
+# Phrase extraction:
+#  - EN: runs of 2+ capitalised words (proper nouns / institutions).
+#    Filters single-capital-then-lowercase ("The" at sentence start)
+#    by requiring at least one INTERIOR capital word — i.e., a
+#    capital word that's NOT the very first token after a sentence
+#    break.
+#  - DV: 2-3 word Thaana sequences. Thaana doesn't have case, so
+#    we can't extract proper nouns reliably. Instead we just take
+#    all bigrams + trigrams; the FTS5 phrase-existence check
+#    filters out ones that don't actually appear in the corpus.
+
+_EN_CAP_RUN_RE = re.compile(
+    r"\b(?:[A-Z][a-z]+(?:\s+(?:of|the|and|for|de|du|al)?\s*[A-Z][a-z]+){1,5})\b"
+)
+_THAANA_WORD = r"[ހ-޿]+"
+_DV_NGRAM_RE = re.compile(
+    rf"({_THAANA_WORD}(?:\s+{_THAANA_WORD}){{1,2}})"
+)
+_STOPPHRASE_EN = frozenset({
+    "the maldives", "the president", "the government", "the cabinet",
+    "the ministry", "today", "yesterday", "this week", "this year",
+    "this month",
+})
+
+
+def _extract_phrases(
+    text: str, source_lang: str, max_phrases: int = 8,
+) -> list[str]:
+    """Heuristic phrase extraction. Returns up to max_phrases
+    candidate strings, longest-first.
+
+    The result is fed into FTS5 phrase queries — order doesn't
+    matter, but longer phrases tend to be more distinctive (better
+    BM25 hits) so we prefer them when capping at max_phrases."""
+    if not text:
+        return []
+    out: list[str] = []
+    if source_lang == "EN":
+        for m in _EN_CAP_RUN_RE.finditer(text):
+            phrase = m.group(0).strip()
+            # Strip leading article ("The Judicial Service Commission"
+            # → "Judicial Service Commission") — articles are caught by
+            # the cap-run regex when at sentence start, but the FTS5
+            # phrase query is more specific without them.
+            for prefix in ("The ", "A ", "An "):
+                if phrase.startswith(prefix):
+                    phrase = phrase[len(prefix):]
+                    break
+            if phrase.lower() in _STOPPHRASE_EN:
+                continue
+            # Skip pure "Word Word" where neither is a known
+            # institution marker. Loose filter — corpus FTS5 will
+            # confirm relevance downstream.
+            if len(phrase) < 6:
+                continue
+            out.append(phrase)
+    else:
+        for m in _DV_NGRAM_RE.finditer(text):
+            phrase = m.group(1).strip()
+            if len(phrase) < 6:
+                continue
+            out.append(phrase)
+    # Dedupe preserving order, then sort by length DESC (longer →
+    # more distinctive).
+    seen: set = set()
+    deduped = []
+    for p in out:
+        if p not in seen:
+            seen.add(p)
+            deduped.append(p)
+    deduped.sort(key=lambda p: (-len(p), p))
+    return deduped[:max_phrases]
+
+
+def _paragraph_of(text: str, phrase: str) -> Optional[str]:
+    """Find the paragraph in `text` containing `phrase`. Paragraphs
+    are \\n\\n-separated. Returns None if not found."""
+    if not text or not phrase:
+        return None
+    idx = text.find(phrase)
+    if idx < 0:
+        return None
+    # Find paragraph boundaries
+    start = text.rfind("\n\n", 0, idx)
+    start = 0 if start < 0 else start + 2
+    end = text.find("\n\n", idx)
+    end = len(text) if end < 0 else end
+    return text[start:end].strip()
+
+
+def _paired_paragraph_at_index(
+    paired_text: Optional[str], index_in_source: int,
+    n_source_paragraphs: int,
+) -> Optional[str]:
+    """Best-effort paragraph alignment: if the source's matching
+    paragraph is the i-th paragraph, return the i-th paragraph
+    of the paired text.
+
+    Articles aren't always perfectly aligned but the press office
+    typically structures EN/DV pairs in parallel — paragraph N in
+    EN corresponds to paragraph N in DV. When they don't, the
+    snippet just provides loose context; the LLM can interpret."""
+    if not paired_text:
+        return None
+    paras = [p.strip() for p in paired_text.split("\n\n") if p.strip()]
+    if not paras:
+        return None
+    if index_in_source < 0 or index_in_source >= n_source_paragraphs:
+        # Clamp to last paragraph
+        return paras[-1][:600]
+    # Map proportionally if paragraph counts don't match
+    if len(paras) == n_source_paragraphs:
+        return paras[index_in_source][:600]
+    ratio = len(paras) / max(n_source_paragraphs, 1)
+    target = min(len(paras) - 1, int(round(index_in_source * ratio)))
+    return paras[target][:600]
+
+
+def select_phrase_contexts(
+    conn: sqlite3.Connection,
+    input_text: str,
+    source_lang: str,
+    *,
+    max_phrases: int = 4,
+    snippets_per_phrase: int = 1,
+) -> list[dict]:
+    """For each extracted phrase, find paragraph-level snippets
+    where the PO has used that phrase. Returns a list of:
+        {phrase, source_snippet, target_snippet, article_id}
+
+    Caps total snippets at max_phrases * snippets_per_phrase.
+    Per-phrase de-dup against the same article — so 5 hits on the
+    same article still produce snippets from at most 1 article."""
+    phrases = _extract_phrases(input_text, source_lang,
+                                  max_phrases=max_phrases)
+    if not phrases:
+        return []
+    contexts: list[dict] = []
+    seen_articles: set = set()
+    for phrase in phrases:
+        if len(contexts) >= max_phrases * snippets_per_phrase:
+            break
+        # FTS5 phrase query — quoted to match as exact phrase
+        try:
+            hits = conn.execute(
+                """SELECT a.id, a.language, a.paired_id, a.body_text,
+                          p.body_text AS paired_body
+                   FROM articles_fts f
+                   JOIN articles a ON a.id = f.article_id
+                                  AND a.language = f.language
+                   LEFT JOIN articles p ON p.id = a.paired_id
+                                       AND p.language != a.language
+                   WHERE articles_fts MATCH ?
+                     AND a.language = ?
+                     AND a.paired_id IS NOT NULL
+                     AND a.body_text IS NOT NULL AND a.body_text != ''
+                     AND p.body_text IS NOT NULL AND p.body_text != ''
+                   ORDER BY bm25(articles_fts, 3.0, 1.0)
+                   LIMIT ?""",
+                (f'"{phrase}"', source_lang, snippets_per_phrase * 3),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            continue
+        added_for_phrase = 0
+        for row in hits:
+            if added_for_phrase >= snippets_per_phrase:
+                break
+            art_id, lang, paired_id, body, paired_body = row
+            if art_id in seen_articles:
+                continue
+            seen_articles.add(art_id)
+            src_para = _paragraph_of(body or "", phrase)
+            if not src_para:
+                continue
+            # Compute the index of this paragraph in the source body
+            # so we can fetch the same-position paragraph from paired.
+            src_paras = [p.strip() for p in (body or "").split("\n\n") if p.strip()]
+            try:
+                src_idx = src_paras.index(src_para.strip())
+            except ValueError:
+                src_idx = 0
+            tgt_para = _paired_paragraph_at_index(
+                paired_body, src_idx, len(src_paras),
+            )
+            if not tgt_para:
+                continue
+            contexts.append({
+                "phrase":         phrase,
+                "source_snippet": src_para[:600],
+                "target_snippet": tgt_para,
+                "article_id":     art_id,
+                "paired_id":      paired_id,
+            })
+            added_for_phrase += 1
+    return contexts
+
+
 # ── Glossary subset ──────────────────────────────────────────────────
 
 def select_glossary_subset(
@@ -267,6 +476,7 @@ def _compose_prompt(
     target_lang: str,
     glossary: list[dict],
     exemplars: list[dict],
+    phrase_contexts: Optional[list[dict]] = None,
 ) -> tuple[str, str]:
     """Return (system_prompt, user_message)."""
     target_name = "Dhivehi (Thaana script)" if target_lang == "DV" else "English"
@@ -290,10 +500,31 @@ def _compose_prompt(
         for g in glossary:
             parts.append(f"  - \"{g['en_term']}\" ↔ \"{g['dv_term']}\"")
         parts.append("")
+
+    # PHRASE CONTEXTS — added 2026-05-22. Per-phrase sentence-level
+    # context for phrases that appear in the input. The LLM gets to
+    # see HOW the PO has used these specific phrases in surrounding
+    # text, not just at the article level. This is what makes the
+    # translator pick up phrasing patterns like "expatriate workers"
+    # (Nash's case) when the broader article-level few-shot might
+    # miss them.
+    if phrase_contexts:
+        parts.append(
+            f"PHRASE CONTEXTS — sentences from the press office "
+            f"corpus showing how specific phrases in your input "
+            f"are used in real {source_name} → {target_name} "
+            f"pairs. Match these sentence-level patterns closely:"
+        )
+        for ctx in phrase_contexts:
+            parts.append(f"\n[\"{ctx['phrase']}\" — from art #{ctx['article_id']}]:")
+            parts.append(f"  {source_name}: {ctx['source_snippet']}")
+            parts.append(f"  {target_name}: {ctx['target_snippet']}")
+        parts.append("")
+
     if exemplars:
         parts.append(
             f"EXAMPLES of the press office's {source_name}↔{target_name} "
-            f"style (use these as your style guide):"
+            f"style (broader article-level context):"
         )
         for i, ex in enumerate(exemplars, start=1):
             en_snippet = (ex["en_body"] or "")[:600]
@@ -344,6 +575,7 @@ def _cache_lookup(
         "target_lang":         row[1],
         "exemplar_ids":        exemplar_ids,
         "glossary_terms_used": row[4] or 0,
+        "phrase_contexts":     [],  # not persisted; empty on cache hit
         "model":               row[5],
         "cost_usd":            row[6] or 0.0,
         "cache_hit":           True,
@@ -401,12 +633,20 @@ def translate(
         hit["disclaimer"] = _DISCLAIMER
         return hit
 
-    # Gather context
+    # Gather context — three layers, increasingly granular:
+    #   1. article-level few-shot (exemplars): topic similarity
+    #   2. term-level glossary subset: phrase-pair dictionary
+    #   3. sentence-level phrase contexts: per-phrase actual usage
     exemplars = select_few_shot(conn, source_lang, text, k=3)
     glossary = select_glossary_subset(conn, text, source_lang, max_terms=20)
+    phrase_contexts = select_phrase_contexts(
+        conn, text, source_lang,
+        max_phrases=4, snippets_per_phrase=1,
+    )
 
     system, user = _compose_prompt(
         text, source_lang, target_lang, glossary, exemplars,
+        phrase_contexts=phrase_contexts,
     )
 
     # Call LLM
@@ -456,6 +696,10 @@ def translate(
         "target_lang":         target_lang,
         "exemplar_ids":        exemplar_ids,
         "glossary_terms_used": len(glossary),
+        "phrase_contexts":     [
+            {"phrase": c["phrase"], "article_id": c["article_id"]}
+            for c in phrase_contexts
+        ],
         "model":               model_id,
         "cost_usd":            cost,
         "cache_hit":           False,

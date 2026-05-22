@@ -533,6 +533,84 @@ class BackTranslationVerification(unittest.TestCase):
 
 
 # ───────────────────────────────────────────────────────────────────
+# Phrase-anchored context retrieval (sentence-level)
+# ───────────────────────────────────────────────────────────────────
+
+class PhraseExtraction(unittest.TestCase):
+    """The heuristic phrase extractor pulls candidate strings from
+    the input that the per-phrase FTS5 lookup will use. Quality of
+    these phrases directly controls quality of the snippet context
+    we inject — bad phrases means weak context."""
+
+    def test_en_extracts_multi_word_capitalised(self):
+        from kahzaabu.translator import _extract_phrases
+        ps = _extract_phrases(
+            "The Judicial Service Commission met with the Cabinet today.",
+            "EN")
+        self.assertIn("Judicial Service Commission", ps,
+            "Three-word capitalised institution must be extracted")
+
+    def test_en_skips_stopphrases(self):
+        from kahzaabu.translator import _extract_phrases
+        ps = _extract_phrases("The President said this.", "EN")
+        # "The President" is in _STOPPHRASE_EN; must not appear
+        self.assertNotIn("The President", ps)
+
+    def test_en_skips_short_phrases(self):
+        from kahzaabu.translator import _extract_phrases
+        ps = _extract_phrases("AB CD said this.", "EN")
+        # "AB CD" is short (< 6 chars) — must be filtered
+        for p in ps:
+            self.assertGreaterEqual(len(p), 6)
+
+    def test_dv_extracts_thaana_ngrams(self):
+        from kahzaabu.translator import _extract_phrases
+        ps = _extract_phrases(
+            "ރައީސުލްޖުމްހޫރިއްޔާ ޑޮކްޓަރ މުޢިއްޒު ވިދާޅުވިއެވެ",
+            "DV")
+        # Should extract the multi-word Thaana title
+        self.assertTrue(any("ރައީސުލްޖުމްހޫރިއްޔާ" in p for p in ps),
+            "DV extractor must surface multi-Thaana-word sequences")
+
+    def test_extraction_respects_max_phrases(self):
+        from kahzaabu.translator import _extract_phrases
+        text = (
+            "The Judicial Service Commission, the Cabinet of Ministers, "
+            "the People's Majlis, the Anti-Corruption Commission, "
+            "and the Elections Commission met today."
+        )
+        ps = _extract_phrases(text, "EN", max_phrases=3)
+        self.assertLessEqual(len(ps), 3)
+
+
+class ParagraphAlignment(unittest.TestCase):
+    """Paragraph-of + paired-paragraph helpers — paragraph alignment
+    is best-effort but should at least produce sensible output for
+    typical paired-article structure."""
+
+    def test_paragraph_of_finds_containing_para(self):
+        from kahzaabu.translator import _paragraph_of
+        text = ("First paragraph here.\n\n"
+                "Second paragraph with the key phrase Judicial Service Commission "
+                "in the middle.\n\n"
+                "Third paragraph unrelated.")
+        p = _paragraph_of(text, "Judicial Service Commission")
+        self.assertIn("Second paragraph", p)
+        self.assertNotIn("First", p)
+        self.assertNotIn("Third", p)
+
+    def test_paragraph_of_returns_none_for_missing(self):
+        from kahzaabu.translator import _paragraph_of
+        self.assertIsNone(_paragraph_of("any text", "nonexistent phrase"))
+
+    def test_paired_paragraph_at_index_picks_corresponding(self):
+        from kahzaabu.translator import _paired_paragraph_at_index
+        paired = "Para 0.\n\nPara 1.\n\nPara 2.\n\nPara 3."
+        out = _paired_paragraph_at_index(paired, 1, n_source_paragraphs=4)
+        self.assertEqual(out, "Para 1.")
+
+
+# ───────────────────────────────────────────────────────────────────
 # Terminology fidelity rule (Nash's "expatriate workers" feedback)
 # ───────────────────────────────────────────────────────────────────
 
