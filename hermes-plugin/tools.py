@@ -261,6 +261,80 @@ CONSTITUTION_LOOKUP_SCHEMA: Dict[str, Any] = {
     },
 }
 
+SEARCH_ARTICLES_SCHEMA: Dict[str, Any] = {
+    "name": "kahzaabu_search_articles",
+    "description": (
+        "Search public English press releases from presidency.gov.mv in the archive. "
+        "Filter by keyword query (title or body_text), category (e.g. 'press_release', 'speech'), "
+        "and published date range. Good for finding statements on housing, budget, projects, etc."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "q": {"type": "string", "description": "keyword query to match in title or body text"},
+            "category": {"type": "string", "description": "optional category match (e.g., 'press_release', 'speech')"},
+            "date_from": {"type": "string", "description": "optional ISO date (YYYY-MM-DD) representing starting date"},
+            "date_to": {"type": "string", "description": "optional ISO date (YYYY-MM-DD) representing ending date"},
+            "limit": {"type": "integer", "description": "default 10, max 30"},
+        },
+        "required": [],
+    },
+}
+
+SEARCH_FACTCHECKS_SCHEMA: Dict[str, Any] = {
+    "name": "kahzaabu_search_factchecks",
+    "description": (
+        "Search curated fact-checks in the archive by keyword (matching claim or evidence), "
+        "category (e.g., 'LIE', 'MISLEADING', 'CONTRADICTION'), topic, and date range. "
+        "Returns the list of matching checks, their topic, and evidence summaries."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "q": {"type": "string", "description": "keyword query to match in claim or evidence summary"},
+            "category": {"type": "string", "description": "optional category filter (e.g. 'LIE', 'MISLEADING', 'CONTRADICTION')"},
+            "topic": {"type": "string", "description": "optional topic name"},
+            "date_from": {"type": "string", "description": "optional ISO date (YYYY-MM-DD) representing starting date"},
+            "date_to": {"type": "string", "description": "optional ISO date (YYYY-MM-DD) representing ending date"},
+            "limit": {"type": "integer", "description": "default 10, max 30"},
+        },
+        "required": [],
+    },
+}
+
+GET_PROMISE_SCHEMA: Dict[str, Any] = {
+    "name": "kahzaabu_get_promise",
+    "description": "Retrieve detailed information of a specific manifesto promise by ID, including its category, deadline, text, delivery status, and delivery evidence.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "id": {"type": "integer", "description": "the promise ID"},
+        },
+        "required": ["id"],
+    },
+}
+
+RUN_EVAL_SCHEMA: Dict[str, Any] = {
+    "name": "kahzaabu_run_eval",
+    "description": (
+        "Run the quality evaluation suite across pipeline stages against golden fixtures. "
+        "Returns accuracy, macro-F1, precision, recall, and a summary of misses/errors. "
+        "Use this to evaluate the impact of changes to prompts or pipeline logic and check for regressions."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "small": {"type": "boolean", "description": "if true, runs a subset of fixtures for speed (fast CI mode); default false"},
+            "stages": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "optional list of stages to run (e.g., 'extractor', 'matcher', 'decomposer', 'contradictions', 'verifier', 'truth_score')"
+            }
+        },
+        "required": [],
+    },
+}
+
 
 # ---------------------------------------------------------------------------
 # Handlers — each takes (args, **_kw) and returns a JSON-encoded string.
@@ -581,6 +655,65 @@ def handle_pipeline_run(args: Dict[str, Any], **_kw) -> str:
         return _result({"error": str(e)})
 
 
+def handle_search_articles(args: Dict[str, Any], **_kw) -> str:
+    from kahzaabu.qna_agentic import _tool_search_articles
+    conn = _conn()
+    try:
+        q = args.get("q", "")
+        category = args.get("category")
+        date_from = args.get("date_from")
+        date_to = args.get("date_to")
+        limit = max(1, min(int(args.get("limit", 10)), 30))
+        res = _tool_search_articles(conn, q=q, date_from=date_from, date_to=date_to, category=category, limit=limit)
+        return _result(res)
+    except Exception as e:
+        return _result({"error": str(e)})
+    finally:
+        conn.close()
+
+
+def handle_search_factchecks(args: Dict[str, Any], **_kw) -> str:
+    from kahzaabu.qna_agentic import _tool_search_factchecks
+    conn = _conn()
+    try:
+        q = args.get("q", "")
+        category = args.get("category")
+        topic = args.get("topic")
+        date_from = args.get("date_from")
+        date_to = args.get("date_to")
+        limit = max(1, min(int(args.get("limit", 10)), 30))
+        res = _tool_search_factchecks(conn, q=q, category=category, topic=topic, date_from=date_from, date_to=date_to, limit=limit)
+        return _result(res)
+    except Exception as e:
+        return _result({"error": str(e)})
+    finally:
+        conn.close()
+
+
+def handle_get_promise(args: Dict[str, Any], **_kw) -> str:
+    from kahzaabu.qna_agentic import _tool_get_promise
+    conn = _conn()
+    try:
+        pid = int(args["id"])
+        res = _tool_get_promise(conn, promise_id=pid)
+        return _result(res)
+    except Exception as e:
+        return _result({"error": str(e)})
+    finally:
+        conn.close()
+
+
+def handle_run_eval(args: Dict[str, Any], **_kw) -> str:
+    from kahzaabu.eval import run_eval
+    try:
+        small = bool(args.get("small", False))
+        stages = args.get("stages")
+        res = run_eval(stages=stages, small=small)
+        return _result(res)
+    except Exception as e:
+        return _result({"error": str(e)})
+
+
 # ---------------------------------------------------------------------------
 # Tool registration table — consumed by __init__.py
 # ---------------------------------------------------------------------------
@@ -595,4 +728,8 @@ TOOLS = (
     ("kahzaabu_recent_activity",       RECENT_ACTIVITY_SCHEMA,       handle_recent_activity,       "📅"),
     ("kahzaabu_constitution_lookup",   CONSTITUTION_LOOKUP_SCHEMA,   handle_constitution_lookup,   "⚖️"),
     ("kahzaabu_pipeline_run",          PIPELINE_RUN_SCHEMA,          handle_pipeline_run,          "🔄"),
+    ("kahzaabu_search_articles",       SEARCH_ARTICLES_SCHEMA,       handle_search_articles,       "🔎"),
+    ("kahzaabu_search_factchecks",     SEARCH_FACTCHECKS_SCHEMA,     handle_search_factchecks,     "🧐"),
+    ("kahzaabu_get_promise",           GET_PROMISE_SCHEMA,           handle_get_promise,           "📌"),
+    ("kahzaabu_run_eval",              RUN_EVAL_SCHEMA,              handle_run_eval,              "🧪"),
 )

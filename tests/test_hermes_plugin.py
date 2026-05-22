@@ -232,6 +232,38 @@ class HandlerSmokeTests(unittest.TestCase):
         self.assertIn("items", r)
         self.assertIsInstance(r["items"], list)
 
+    def test_search_articles_returns_items(self):
+        from plugins.kahzaabu.tools import handle_search_articles
+        r = self._call(handle_search_articles, {"q": "Test"})
+        self.assertGreaterEqual(r["count"], 2)
+        self.assertEqual(r["items"][0]["title"], "Test article 2")
+
+    def test_search_factchecks_returns_items(self):
+        from plugins.kahzaabu.tools import handle_search_factchecks
+        r = self._call(handle_search_factchecks, {"q": "fictional"})
+        self.assertEqual(r["count"], 1)
+        self.assertEqual(r["items"][0]["category"], "LIE")
+
+    def test_get_promise_returns_details(self):
+        from plugins.kahzaabu.tools import handle_get_promise
+        pid = self.conn.execute("SELECT id FROM manifesto_promises LIMIT 1").fetchone()[0]
+        r = self._call(handle_get_promise, {"id": pid})
+        self.assertIn("promise_text_en", r)
+        self.assertIn("delivery_rationale", r)
+
+    def test_get_promise_missing_returns_error(self):
+        from plugins.kahzaabu.tools import handle_get_promise
+        r = self._call(handle_get_promise, {"id": 999999})
+        self.assertIn("error", r)
+
+    @patch("kahzaabu.eval.run_eval")
+    def test_run_eval_delegates_correctly(self, mock_run_eval):
+        from plugins.kahzaabu.tools import handle_run_eval
+        mock_run_eval.return_value = {"accuracy": 0.95}
+        r = self._call(handle_run_eval, {"small": True, "stages": ["truth_score"]})
+        self.assertEqual(r, {"accuracy": 0.95})
+        mock_run_eval.assert_called_once_with(stages=["truth_score"], small=True)
+
 
 # ───────────────────────────────────────────────────────────────────
 # Error contract — every error path returns {"error": "..."}

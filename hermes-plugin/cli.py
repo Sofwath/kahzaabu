@@ -308,8 +308,29 @@ def _cmd_doctor(_args) -> int:
     else:
         print(f"\n  hermes default model : {provider}/{model}")
 
-    pipeline_allowed = os.environ.get("KAHZAABU_MCP_ALLOW_PIPELINE") == "1"
+    pipeline_allowed = (
+        os.environ.get("KAHZAABU_ALLOW_PIPELINE") == "1"
+        or os.environ.get("KAHZAABU_MCP_ALLOW_PIPELINE") == "1"
+    )
     print(f"  pipeline gated      : {'OPEN (agent can trigger)' if pipeline_allowed else 'closed'}")
+
+    # Ambient hook status — three operationally-distinct states all
+    # look identical to a casual log inspection, so surface them here
+    # for the operator running `hermes kahzaabu doctor`.
+    try:
+        from plugins.kahzaabu.hooks import hook_status
+        h = hook_status()
+        if h["disable_reason"] == "env":
+            print("  ambient hook         : DISABLED (KAHZAABU_AMBIENT_DISABLE=1)")
+        elif h["disable_reason"] == "no_db":
+            print("  ambient hook         : ⚠️  enabled but no DB → silent no-op")
+            print(f"                            run `hermes kahzaabu update` to populate")
+        else:
+            allow = ",".join(h["platform_allowlist"]) if h["platform_allowlist"] else "all"
+            print(f"  ambient hook         : enabled (platforms: {allow}, "
+                  f"hot sessions: {h['hot_sessions']})")
+    except Exception as e:
+        print(f"  ambient hook         : status unavailable ({e})")
 
     # Try hermes mcp list to verify the legacy MCP server is or is not registered
     try:

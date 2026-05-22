@@ -5,58 +5,110 @@ description: Search and reason over the Maldives Presidency fact-checking archiv
 
 # kahzaabu — fact-check archive
 
-You have 9 in-process tools for querying a curated SQLite archive of Maldives Presidency communications + the 301-article Constitution of the Republic of Maldives. **"Kahzaabu" and "Muizzu" refer to the same person** — translate freely between the two names.
+You have 12 in-process tools for querying a curated SQLite archive of Maldives Presidency communications + the 301-article Constitution of the Republic of Maldives. **"Kahzaabu" and "Muizzu" refer to the same person** — translate freely between the two names.
 
-## When to use which tool
+---
 
-**Default: call `kahzaabu_ask` for any natural-language question.** It's an internal agent loop with 9 DB tools + web_search and produces better answers than chaining the low-level tools yourself. Only call the low-level tools when you need a *specific* row by id, or to compose data the user explicitly asked you to compose (e.g. "make a CSV of all BROKEN DEADLINE entries").
+## Direct Agentic Orchestration (Preferred)
 
-| User asks… | Tool |
-|---|---|
-| Anything natural-language: "what's he up to", "what lies", "what about housing" | **`kahzaabu_ask`** ← almost always this |
-| "show me fact-check #87" (specific id) | `kahzaabu_get_factcheck` |
-| "show article 32675" (specific id) | `kahzaabu_get_article` |
-| Pure stats: archive size, fact-check breakdown by category | `kahzaabu_stats` |
-| Pure listing with filters (no synthesis): "list every BROKEN DEADLINE in 2025" | `kahzaabu_list_lies` |
-| "what did the manifesto say about housing" (filterable) | `kahzaabu_manifesto` |
-| "anything in the past N days" (raw list, no synthesis) | `kahzaabu_recent_activity` |
-| "is this action constitutional / what does the constitution say about X" | `kahzaabu_constitution_lookup` |
-| User explicitly asks to refresh the archive | `kahzaabu_pipeline_run` (gated; check `kahzaabu_stats.freshness` first) |
+Rather than delegating to the opaque `kahzaabu_ask` tool, you should **directly orchestrate your own search, retrieval, and reasoning loops** over the archive. This gives you complete control over which articles, fact-checks, and promises to correlate, and lets the user see your step-by-step thinking.
 
-## Constitutional cross-check
+### Tool Selection Guide
 
-`kahzaabu_ask` automatically calls `constitution_lookup` (its internal twin of `kahzaabu_constitution_lookup`) when the question touches presidential powers, judicial independence, fundamental rights, religion of the State, separation of powers, emergency declarations, or election qualifications. The answer cites article numbers inline as `[Const. Art. NN]`.
+| Action Needed | Primary Tool | Description |
+|---|---|---|
+| Search press releases | **`kahzaabu_search_articles`** | Search text of press releases/speeches by query, category, and date. |
+| Get a press release body | **`kahzaabu_get_article`** | Fetch full text, extracted claims, and linked fact-checks by `article_id`. |
+| Search fact-checks | **`kahzaabu_search_factchecks`** | Search published fact-checks by claim text, topic, category, or dates. |
+| Get fact-check details | **`kahzaabu_get_factcheck`** | Fetch details, web evidence logs, and source articles by fact-check `id`. |
+| Filter/list promises | **`kahzaabu_manifesto`** | List manifesto promises matching status/category/query. |
+| Get promise details | **`kahzaabu_get_promise`** | Fetch detailed promise text and delivery status evidence by promise `id`. |
+| Analyze statistics | **`kahzaabu_stats`** | Check database sizing, status distribution, and ingestion freshness. |
+| Consult statute law | **`kahzaabu_constitution_lookup`** | Search Maldivian Constitution articles matching a query topic. |
+| Trigger pipeline run | **`kahzaabu_pipeline_run`** | Run ingestion/scraping (only if user explicitly asks to update/refresh). |
+| Quick/Cached synthesis | **`kahzaabu_ask`** | Delegation fallback for simple questions or continuous conversation sessions. |
 
-If you call `kahzaabu_constitution_lookup` directly: treat hits as **textual citations**, not legal opinions. The Supreme Court interprets the constitution, not us. Use phrases like *"Article 16 protects X; whether this action violates it is a matter for the courts."* Skip the cross-check entirely if the user's question has no constitutional dimension (most housing/budget/deadline questions don't).
+---
 
-**Always disclaim**: the lookup uses a 2008 functional translation (Dheena Hussain); the legally binding text is the Dhivehi original, and the constitution has been amended since 2008.
+## Fact-Checking Workflow
 
-## Session memory
+When asked a factual or investigative question:
+1. **Check Freshness:** If the query is about recent events, call `kahzaabu_stats` first. If `freshness.is_stale` is true, warn the user at the end of your response.
+2. **Search the Archive:** Use `kahzaabu_search_articles`, `kahzaabu_search_factchecks`, and `kahzaabu_manifesto` to locate relevant material.
+3. **Inspect Records:** Fetch detailed bodies and evidence using `kahzaabu_get_article`, `kahzaabu_get_factcheck`, or `kahzaabu_get_promise`.
+4. **Cross-Reference:** Check for conflicts between manifesto commitments (`manifesto`/`get_promise`) and subsequent government press releases (`search_articles`/`get_article`) or verified fact-checks (`search_factchecks`/`get_factcheck`).
+5. **Web Corroboration:** If the archive does not have enough information, use your built-in web search tools (e.g., Brave Search, Google Search) to look for external articles, independent news, or official reports.
 
-`kahzaabu_ask` returns a `session_id`. **Pass it back unchanged on every follow-up turn** so the internal agent retains prior tool results and quotes — otherwise it re-fetches everything and the user pays twice. The `/kahzaabu` slash command auto-continues the most recent session; you should do the same when invoking the tool directly.
+---
 
-## Always-on: narrative-tricks analysis
+## Constitutional Cross-Checks
 
-Every answer from `kahzaabu_ask` that quotes press-release text ends with a `🎭 Narrative tricks observed` section flagging communication techniques (hero framing, manufactured momentum, goalpost shifting, empty markers of action, vague timeframes, etc.). Treat this as **part of the answer**, not metadata.
+Whenever a fact-check, promise, or statement touches on the following areas, use `kahzaabu_constitution_lookup` to check for statutory relevance:
+- Presidential powers, conduct, election, qualifications, or removal (Chapter IV, Art. 105-128)
+- Judicial process, judges, courts, or independence (Chapter VI, Art. 141-159)
+- Fundamental rights (Chapter II, Art. 16-69)
+- Separation of powers or legislative authority (Chapter III)
+- State religion / Islamic law prohibition (Art. 10)
+- Emergency declarations or war powers (Art. 253-258)
 
-## Data freshness
+**Disclaimers:**
+- Treat constitution hits as **textual citations**, not legal opinions. Use phrasing like: *"Article 16 protects X; whether this action violates it is a matter for the courts."*
+- State that the database uses a 2008 functional translation (Dheena Hussain); the legally binding text is the Dhivehi original, and the constitution may have been amended since.
 
-If the user asks about *recent* events, call `kahzaabu_stats` first. The result's `freshness.is_stale` field tells you whether the data is older than the configured threshold (default 24h). If stale, say so in your answer and suggest `hermes kahzaabu update`. Do not call `kahzaabu_pipeline_run` yourself without explicit user approval — it costs money.
+---
 
-## Channel-routed messages
+## ALWAYS-ON: Narrative-Tricks Analysis
 
-When this skill is reached via the messaging gateway (Telegram, WhatsApp, Slack, Discord), follow chat etiquette:
+Whenever your answer quotes or summarizes official press releases or speeches, you **MUST** append a section titled exactly:
 
-- **Keep answers under ~1,500 chars on first response.** Long answers get truncated by some platforms (Telegram caps at 4,096 chars; WhatsApp at 4,096; Slack splits at 40,000 but that's still rude). If the answer is necessarily long, lead with a 3-line TL;DR and offer to expand any section on request.
-- **Skip the tool trace.** Web users have a `[Show tool trace ▾]` toggle; chat users don't. Don't paste tool-call lists or iteration counts unless the user explicitly asks "how did you get that".
-- **Don't surface cost in chat.** The slash command's footer already shows it. Repeating it in the body is noise.
-- **Markdown works on Telegram/Discord, partially on WhatsApp, fully in Slack.** Headings, bullets, **bold**, *italic*, `code` and tables all degrade gracefully. Don't rely on the agent renderer.
-- **Keep the 🎭 Narrative tricks observed section** — it's part of the answer, not an appendix. Chat users get value from spotting framing on the small screen too.
+### 🎭 Narrative tricks observed
 
-## Citation discipline
+List the framing and PR techniques noticed in the text. For each, state:
+* The **technique name** (from the catalog below)
+* The **verbatim phrase** in quotes
+* A **one-line explanation** of what the technique is doing
 
-Cite article ids inline as `[NNNNN]`, fact_check ids as `[FC #NN]`, promise ids as `[promise NN]`. The user expects citations on factual claims. Don't fabricate ids — if the underlying tool didn't return one, say so plainly rather than guess.
+#### Catalog of Narrative Tricks:
+1. **Hero framing** — Superlatives without objective metrics: *"first ever"*, *"historic"*, *"unprecedented"*, *"in less than X months"*.
+2. **Active voice for wins** — *"the President personally directed"* / *"officiated"* when ministries or contractors carried out the work.
+3. **Passive voice for failures** — *"mistakes were made"*, *"delays occurred"*, *"challenges arose"* (no agent blamed).
+4. **Inherited-project credit** — Claiming credit while using disclosure words like *"previously stalled"*, *"inherited"*, *"revived"*.
+5. **Manufactured momentum** — *"progress is on track"*, *"rapid pace"*, *"significant strides"* without stating a measurable target.
+6. **Vague timeframes** — *"soon"*, *"in due course"*, *"very near future"* replacing concrete target dates.
+7. **Goalpost shifting** — Changing metrics (e.g., currency vs % of GDP), scope, or deadlines without acknowledging the change.
+8. **Empty markers of action** — Reporting *"directives issued"*, *"committee formed"*, or *"discussions underway"* as achievements.
+9. **Crisis externalization** — Attributing setbacks to the *"previous administration"* or *"global situations"* while claiming all wins.
+10. **Religious / national legitimacy** — Appending *"God willing"* or *"by Allah's grace"* to commitments to make them harder to question.
+11. **Adverb inflation** — Using *"successfully"*, *"expertly"*, *"fully"*, or *"comprehensively"* without presenting actual metrics.
+12. **Future-tense crowding** — Heavy usage of *"will"* rather than *"did"* or *"completed"*, signaling announcements over delivery.
 
-## Web search budget
+*If you read press release texts but found no notable tricks, write:*
+> *No notable framing tricks observed beyond standard institutional language.*
 
-`kahzaabu_ask` accepts `enable_web` (default true). If the user's question is clearly archive-only ("how many fact-checks", "show me the broken deadlines for 2025") pass `enable_web=false` to skip the web_search tool and save ~$0.10 per call. Use web only when the question genuinely needs external corroboration the archive can't provide.
+---
+
+## Continuous Improvement & Eval Loop (Self-Correction)
+
+When a user requests prompt refinements, logic updates, or complains about inaccurate extraction/matching results in the pipeline:
+1. **Establish Baseline:** Call `kahzaabu_run_eval` with `small: false` (or specifying the target stage in `stages`) to retrieve the baseline F1-score, accuracy, and current JSON `misses`.
+2. **Analyze Failure Cases:** Review the exact mismatch between predicted and expected outputs in the `misses` list.
+3. **Iterate on Prompt/Code:** Modify the prompt string or classification logic in the corresponding stage file (e.g. `kahzaabu/extractor.py`, `kahzaabu/matcher.py`, `kahzaabu/curator.py`, `kahzaabu/contradictions.py`).
+4. **Validate Improvements:** Re-run `kahzaabu_run_eval` for the edited stage. Confirm:
+   - The accuracy/F1 of the target stage has increased.
+   - Zero regressions were introduced in other fixtures.
+5. **Report Metrics:** Always present a clear before-and-after comparison of the stage's F1/accuracy in your final response.
+
+---
+
+## Citation Discipline
+
+Strictly cite article IDs inline as `[NNNNN]`, fact-check IDs as `[FC #NN]`, and promise IDs as `[promise NN]`. Never fabricate IDs.
+
+---
+
+## Channel-Routed Chat Constraints
+
+When handling queries routed through messaging gateways (Telegram, WhatsApp, Slack, Discord):
+- **TL;DR First:** Limit responses to ~1,500 characters. If complex, start with a 3-line TL;DR and offer to expand.
+- **No Cost Footers:** Do not print API cost info in chat windows.
+- **Keep the 🎭 Narrative Tricks Section:** It remains mandatory for chat audiences.

@@ -187,10 +187,10 @@ def register(ctx) -> None:
     if not os.environ.get("KAHZAABU_AMBIENT_DISABLE"):
         from plugins.kahzaabu.hooks import on_pre_llm_call
         ctx.register_hook("pre_llm_call", on_pre_llm_call)
-        logger.info("kahzaabu plugin registered: 9 tools + `hermes kahzaabu` CLI "
+        logger.info("kahzaabu plugin registered: 13 tools + `hermes kahzaabu` CLI "
                     "+ /kahzaabu slash command + pre_llm_call ambient hook")
     else:
-        logger.info("kahzaabu plugin registered: 9 tools + `hermes kahzaabu` CLI "
+        logger.info("kahzaabu plugin registered: 13 tools + `hermes kahzaabu` CLI "
                     "+ /kahzaabu slash command (ambient hook DISABLED via env)")
 
 

@@ -19,6 +19,8 @@ Integration with the actual hermes process is verified separately
 """
 from __future__ import annotations
 
+import logging
+import logging.handlers
 import sqlite3
 import sys
 import time
@@ -219,6 +221,213 @@ class ContextFormat(unittest.TestCase):
 
 
 # ───────────────────────────────────────────────────────────────────
+# Sticky-session memory (Concern 2)
+# ───────────────────────────────────────────────────────────────────
+
+class StickySessionMemory(unittest.TestCase):
+    """A session that's been marked hot (saw a strong Maldivian-politics
+    match) should keep returning True for loose follow-up turns that
+    would otherwise fail the strict prefilter.
+
+    The motivating example: user asks "What did Muizzu announce?"
+    (strong match, marks session hot). Next turn they say "what about
+    housing?" — that alone has no Maldivian anchor, but in the context
+    of THIS session it's obviously still on-topic."""
+
+    def setUp(self):
+        hooks._clear_sticky_state()
+
+    def tearDown(self):
+        hooks._clear_sticky_state()
+
+    def test_loose_followup_in_hot_session_matches(self):
+        sid = "session-abc"
+        # Strong match — marks the session as hot.
+        self.assertTrue(hooks._is_relevant(
+            "What did Muizzu announce today?", session_id=sid))
+        # Loose follow-up: "what about housing?" — no Maldivian anchor,
+        # would normally not match. But the session is hot, so it
+        # should still trigger the prefilter.
+        self.assertTrue(hooks._is_relevant(
+            "what about the housing scheme?", session_id=sid),
+            "Sticky-session: loose follow-up in a hot session must "
+            "still match — this is the whole point of session "
+            "broadening")
+
+    def test_loose_followup_in_cold_session_does_not_match(self):
+        # No prior strong match: loose follow-up alone should NOT match.
+        self.assertFalse(hooks._is_relevant(
+            "what about the housing scheme?", session_id="brand-new"),
+            "Sticky-session must NOT fire for sessions that never had "
+            "a strong match — would be a global false-positive otherwise")
+
+    def test_hot_session_eventually_expires(self):
+        """Verify the TTL is wired. We patch the TTL constant down
+        and then manually-age the session entry."""
+        sid = "session-ttl"
+        self.assertTrue(hooks._is_relevant(
+            "Tell me about Muizzu's manifesto", session_id=sid))
+        # Manually age the session beyond the TTL.
+        with hooks._state_lock:
+            hooks._session_hits[sid] = (
+                hooks.time.monotonic() - hooks._STICKY_TTL_SECONDS - 1
+            )
+        # Now loose follow-ups should NOT match.
+        self.assertFalse(hooks._is_relevant(
+            "what about housing?", session_id=sid),
+            "Expired hot session must fall back to strict prefilter "
+            "— otherwise sessions stay hot forever")
+
+    def test_empty_session_id_does_not_corrupt_state(self):
+        """When hermes sends an empty session_id, the sticky-session
+        path must be a no-op (don't pollute the global state with an
+        empty-string key)."""
+        hooks._is_relevant("Muizzu announces JSC amendments", session_id="")
+        with hooks._state_lock:
+            self.assertNotIn("", hooks._session_hits,
+                "Empty session_id must not be recorded as hot — would "
+                "make EVERY session with empty id share the same hot "
+                "state, defeating the per-session contract")
+
+    def test_lru_eviction_caps_dict_size(self):
+        """Memory bound: the sticky-session dict can't grow unboundedly
+        under runaway session-id churn (automated test harnesses, etc.).
+        We push past the cap and verify the size stays bounded."""
+        # Push 1.5x the cap
+        for i in range(int(hooks._STICKY_MAX_ENTRIES * 1.5)):
+            hooks._mark_session_hot(f"session-{i}")
+        with hooks._state_lock:
+            self.assertLessEqual(
+                len(hooks._session_hits),
+                hooks._STICKY_MAX_ENTRIES,
+                "LRU eviction must cap the dict size — otherwise a "
+                "test harness firing many sessions could OOM the "
+                "hermes process")
+
+
+# ───────────────────────────────────────────────────────────────────
+# Per-platform whitelist (Concern 3)
+# ───────────────────────────────────────────────────────────────────
+
+class PlatformAllowlist(unittest.TestCase):
+    """KAHZAABU_AMBIENT_PLATFORMS=cli,telegram lets users enable the
+    ambient hook in their personal flow (CLI, Telegram DMs) while
+    keeping it quiet in group chats (Slack, Discord)."""
+
+    def test_unset_allowlist_means_all_platforms(self):
+        with patch.dict("os.environ", {}, clear=False):
+            import os as _os
+            _os.environ.pop("KAHZAABU_AMBIENT_PLATFORMS", None)
+            self.assertTrue(hooks._platform_allowed("cli"))
+            self.assertTrue(hooks._platform_allowed("telegram"))
+            self.assertTrue(hooks._platform_allowed("slack"))
+            self.assertTrue(hooks._platform_allowed("anything"))
+
+    def test_allowlist_honoured(self):
+        with patch.dict("os.environ",
+                          {"KAHZAABU_AMBIENT_PLATFORMS": "cli,telegram"}):
+            self.assertTrue(hooks._platform_allowed("cli"))
+            self.assertTrue(hooks._platform_allowed("telegram"))
+            self.assertTrue(hooks._platform_allowed("TELEGRAM"),
+                "case-insensitive — operators write 'Telegram' or "
+                "'telegram' interchangeably")
+            self.assertFalse(hooks._platform_allowed("slack"))
+            self.assertFalse(hooks._platform_allowed("discord"))
+
+    def test_hook_returns_none_for_disallowed_platform(self):
+        with patch.dict("os.environ", {"KAHZAABU_AMBIENT_PLATFORMS": "cli"}):
+            r = hooks.on_pre_llm_call(
+                user_message="What did Muizzu announce?",
+                platform="slack")
+            self.assertIsNone(r,
+                "Hook must NOT fire on a platform that's not on the "
+                "allowlist — that's the whole point of the env var")
+
+
+# ───────────────────────────────────────────────────────────────────
+# One-time DB-missing warning (Concern 1)
+# ───────────────────────────────────────────────────────────────────
+
+class DBMissingWarning(unittest.TestCase):
+    def setUp(self):
+        hooks._reset_db_missing_warning()
+        hooks._clear_sticky_state()
+
+    def test_warns_once_on_match_with_no_db(self):
+        """The warning fires only on the FIRST match-without-DB, then
+        stays quiet so the log doesn't flood. We assert by checking
+        the module-level flag is set after the first call — a second
+        call would short-circuit (see _warn_db_missing_once)."""
+        with patch.object(hooks, "_resolve_db_path", return_value=None):
+            with self.assertLogs("plugins.kahzaabu.hooks",
+                                  level="WARNING") as cm:
+                # First match — should warn
+                hooks.on_pre_llm_call(
+                    user_message="What did Muizzu announce?",
+                    session_id="s1")
+                self.assertTrue(any("hermes kahzaabu setup" in m
+                                     for m in cm.output),
+                    f"First DB-missing match must log a setup hint; "
+                    f"got: {cm.output}")
+
+            # Confirm the flag is set — guarantees a second call
+            # would short-circuit inside _warn_db_missing_once.
+            self.assertTrue(hooks._db_missing_warned,
+                "First warning must set the once-only flag so a "
+                "second invocation skips the log call entirely")
+
+            # Belt-and-braces: actually call again and verify no
+            # NEW "kahzaabu setup" log appears (we can't use
+            # assertNoLogs because it's Python 3.10+).
+            handler = logging.handlers.MemoryHandler(capacity=10)
+            log = logging.getLogger("plugins.kahzaabu.hooks")
+            log.addHandler(handler)
+            try:
+                hooks.on_pre_llm_call(
+                    user_message="Tell me about Muizzu's JSC reforms",
+                    session_id="s2")
+                second_call_warnings = [
+                    r for r in handler.buffer
+                    if r.levelno >= logging.WARNING
+                    and "kahzaabu setup" in r.getMessage()
+                ]
+                self.assertEqual(second_call_warnings, [],
+                    "Second DB-missing match must NOT re-warn — "
+                    "otherwise every user turn floods the log")
+            finally:
+                log.removeHandler(handler)
+
+
+# ───────────────────────────────────────────────────────────────────
+# hook_status() — consumed by `hermes kahzaabu doctor`
+# ───────────────────────────────────────────────────────────────────
+
+class HookStatusDiagnostic(unittest.TestCase):
+    def test_disabled_by_env(self):
+        with patch.dict("os.environ", {"KAHZAABU_AMBIENT_DISABLE": "1"}):
+            s = hooks.hook_status()
+            self.assertFalse(s["enabled"])
+            self.assertEqual(s["disable_reason"], "env")
+
+    def test_no_db(self):
+        with patch.object(hooks, "_resolve_db_path", return_value=None):
+            import os as _os
+            _os.environ.pop("KAHZAABU_AMBIENT_DISABLE", None)
+            s = hooks.hook_status()
+            self.assertFalse(s["enabled"])
+            self.assertEqual(s["disable_reason"], "no_db",
+                "Doctor needs to distinguish 'env-disabled' from "
+                "'DB-missing' — they have different fixes")
+
+    def test_allowlist_surfaced(self):
+        with patch.dict("os.environ",
+                          {"KAHZAABU_AMBIENT_PLATFORMS": "cli,telegram"}):
+            s = hooks.hook_status()
+            self.assertEqual(sorted(s["platform_allowlist"]),
+                              ["cli", "telegram"])
+
+
+# ───────────────────────────────────────────────────────────────────
 # Manifest declares the hook
 # ───────────────────────────────────────────────────────────────────
 
@@ -243,6 +452,9 @@ class ManifestDeclaresHook(unittest.TestCase):
         self.assertIn("KAHZAABU_AMBIENT_DISABLE", names,
             "optional_env must document the opt-out var so the "
             "setup wizard surfaces it")
+        self.assertIn("KAHZAABU_AMBIENT_PLATFORMS", names,
+            "optional_env must document the platform allowlist var "
+            "so users can scope the hook without disabling it")
 
 
 if __name__ == "__main__":

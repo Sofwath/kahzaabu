@@ -1,6 +1,6 @@
 name: kahzaabu
 version: 0.2.0
-description: "REFERENCE IMPLEMENTATION (educational / research) — a sample Hermes Agent plugin demonstrating a domain-specific fact-checking tool surface. Output is automated analysis, NOT an authoritative source; agents must not present verdicts as findings of fact and should direct users to the underlying press release on presidency.gov.mv for any quote. Exposes 9 agent tools (stats, ask, list_lies, get_factcheck, manifesto, get_article, recent_activity, constitution_lookup, pipeline_run) over a curated SQLite corpus of 3,000+ Maldives Presidency articles, 9,800+ claims, 200+ fact-checks, 700+ manifesto promises, and 301 Constitution articles. Also registers a `hermes kahzaabu` CLI subcommand and a `/kahzaabu` slash command available in any chat session including messaging gateway (Telegram, WhatsApp, Slack, Discord). 'Kahzaabu' and 'Muizzu' refer to the same person."
+description: "REFERENCE IMPLEMENTATION (educational / research) — a sample Hermes Agent plugin demonstrating a domain-specific fact-checking tool surface. Output is automated analysis, NOT an authoritative source; agents must not present verdicts as findings of fact and should direct users to the underlying press release on presidency.gov.mv for any quote. Exposes 13 agent tools (stats, ask, list_lies, get_factcheck, manifesto, get_article, recent_activity, constitution_lookup, pipeline_run, search_articles, search_factchecks, get_promise, run_eval) over a curated SQLite corpus of 3,000+ Maldives Presidency articles, 9,800+ claims, 200+ fact-checks, 700+ manifesto promises, and 301 Constitution articles. Also registers a `hermes kahzaabu` CLI subcommand and a `/kahzaabu` slash command available in any chat session including messaging gateway (Telegram, WhatsApp, Slack, Discord). 'Kahzaabu' and 'Muizzu' refer to the same person."
 author: Sofwathullah.Mohamed@gmail.com
 license: Apache-2.0
 kind: standalone
@@ -17,6 +17,10 @@ provides_tools:
   - kahzaabu_recent_activity
   - kahzaabu_constitution_lookup
   - kahzaabu_pipeline_run
+  - kahzaabu_search_articles
+  - kahzaabu_search_factchecks
+  - kahzaabu_get_promise
+  - kahzaabu_run_eval
 provides_slash_commands:
   - /kahzaabu
 provides_cli_subcommands:
@@ -46,6 +50,10 @@ optional_env:
   - name: KAHZAABU_AMBIENT_DISABLE
     description: "Set to '1' to disable the pre_llm_call ambient-injection hook. By default, when a user mentions Maldivian-politics topics in any hermes chat, the plugin auto-injects 1-3 relevant fact-checks as context. Disabling makes kahzaabu act as a pure on-demand tool."
     prompt: "Disable ambient hook? (1 = disable)"
+    password: false
+  - name: KAHZAABU_AMBIENT_PLATFORMS
+    description: "Comma-separated allowlist of platforms where the ambient hook may fire. Unset = all platforms. Example: 'cli,telegram' enables ambient injection on the terminal and Telegram DMs but keeps it quiet on group chats (slack, discord). Useful when you want kahzaabu's grounding in your personal flow without surprising other participants in group conversations."
+    prompt: "Platform allowlist (e.g. cli,telegram) or empty for all"
     password: false
   - name: KAHZAABU_DB
     description: "Path to the SQLite DB. Defaults to ~/.kahzaabu/kahzaabu.db. Override if you've installed kahzaabu in a non-standard location."
