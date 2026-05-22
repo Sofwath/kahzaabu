@@ -65,7 +65,7 @@ def select_few_shot(
     query_text: str,
     *,
     k: int = 3,
-    recency_days: int = 90,
+    recency_days: int = 365,
 ) -> list[dict]:
     """Hybrid topic + recency: top-k paired articles within
     recency_days that BM25-match the query_text, falling back to
@@ -240,6 +240,24 @@ _PO_STYLE_NOTES = (
     "  - 'ރައްޔިތުންގެ މަޖިލިސް' for 'People's Majlis' (Parliament)\n"
     "  - Full institutional names, not abbreviations\n"
     "  - No colloquial Thaana; preserves classical political register\n"
+    "\n"
+    "===  TERMINOLOGY FIDELITY RULE (LOAD-BEARING)  ===\n"
+    "The PO has a preferred phrasing for many recurring concepts "
+    "that DIFFERS from the literal translation of the input. "
+    "Before producing your output, scan the EXAMPLES below for the "
+    "same concept as anything in the input — if the examples use a "
+    "specific phrase, you MUST use that exact phrase in your "
+    "translation, even if the input uses different wording for the "
+    "same concept.\n"
+    "\n"
+    "Worked example: an input that says 'undocumented foreign "
+    "nationals' must be translated using the PO's actual phrase "
+    "for that concept (e.g. 'undocumented expatriate workers' in "
+    "the EN direction, or 'ބިދޭސީން' in the DV direction) — NOT a "
+    "literal translation of the input's words. The examples carry "
+    "the PO's canonical phrasing; defer to them.\n"
+    "\n"
+    "This rule overrides literal accuracy when the two conflict.\n"
 )
 
 

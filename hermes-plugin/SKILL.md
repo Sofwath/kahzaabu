@@ -120,10 +120,12 @@ When handling queries routed through messaging gateways (Telegram, WhatsApp, Sla
 If a user asks to translate text between English and Dhivehi (e.g. *"translate this announcement to Dhivehi"*, *"what does ރައީސުލްޖުމްހޫރިއްޔާ ވިދާޅުވިއެވެ mean?"*), **call `kahzaabu_translate`** — do NOT translate from your own knowledge.
 
 The plugin uses the Presidency Office's distinctive register via:
-- Paired-corpus few-shot (top-3 topically-similar EN↔DV articles from the last 90 days)
+- Paired-corpus few-shot (top-3 topically-similar EN↔DV articles from the last 365 days)
 - A precomputed terminology glossary mined from 2,648 EN↔DV pairs
 
 Raw LLM translation won't match the PO's style markers (e.g. "ރައީސުލްޖުމްހޫރިއްޔާ" not "ޕްރެޒިޑެންޓް" for "President"). The tool exists specifically to preserve those.
+
+**Critical rule — terminology fidelity over literal accuracy.** When the user's input describes a concept the PO routinely covers, the translator MUST defer to the PO's actual phrasing for that concept, not produce a literal word-for-word translation. Worked example: input "undocumented foreign nationals" → PO's actual EN phrasing is "undocumented expatriate workers" (35 articles vs 14 with "foreign nationals" in the corpus). The DV side: "ބިދޭސީން". The exemplars carry the canonical phrasing; the LLM is instructed to scan them and adopt the matching phrase. If you're reviewing a translation and a phrase looks "too literal" — that's a real signal. Run `kahzaabu_search_articles` against recent press releases to verify the PO's usage before publishing the translation.
 
 ```
 kahzaabu_translate({text: "...", target_language: "auto"})

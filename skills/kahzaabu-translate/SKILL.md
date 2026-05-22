@@ -54,6 +54,45 @@ kahzaabu_translate({
 Thaana characters → source is Dhivehi) and translates to the
 other.
 
+## Terminology fidelity over literal accuracy
+
+**The single most important rule** when reviewing translation
+output: the PO has a preferred phrasing for many recurring
+concepts, and the translator must defer to that phrasing — not
+produce a literal word-for-word translation of the input.
+
+**Worked example** (the real-world case that motivated this
+rule):
+
+| Input | Literal translation | PO's actual usage |
+|---|---|---|
+| "undocumented foreign nationals" | "undocumented foreign nationals" | "undocumented expatriate workers" |
+| Frequency in corpus: | "foreign nationals" — 14 articles | "expatriate workers" — **35 articles** |
+
+A literal translation would produce the first column; the PO's
+press releases use the third. The few-shot exemplars carry the
+canonical phrasing, and the system prompt explicitly instructs
+the LLM to adopt the exemplar's wording when the same concept
+appears.
+
+**Verifier workflow for any translation you propagate further:**
+
+1. Re-read the input — identify any phrase that has an
+   institutional / political flavour (proper nouns, government
+   programmes, labour categories, legal terms).
+2. For each such phrase, search recent articles (last 365 days)
+   via `kahzaabu_search_articles` — does the PO use that exact
+   phrasing, or a different one?
+3. If the PO uses a different phrasing, the translation's
+   rendering of that phrase should match the PO's — not the
+   input's literal wording.
+
+This rule applies to the EN→DV direction (where the user might
+input casual EN that needs the PO's formal Thaana) AND the DV→EN
+direction (where Thaana terms have specific EN renderings the PO
+prefers — "ބިދޭސީން" → "expatriate workers", not "foreigners" or
+"foreign nationals").
+
 ## The PO's distinctive register
 
 Markers the tool tries to preserve, in order of how-load-bearing

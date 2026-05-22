@@ -533,6 +533,69 @@ class BackTranslationVerification(unittest.TestCase):
 
 
 # ───────────────────────────────────────────────────────────────────
+# Terminology fidelity rule (Nash's "expatriate workers" feedback)
+# ───────────────────────────────────────────────────────────────────
+
+class TerminologyFidelityPrompt(unittest.TestCase):
+    """The system prompt has a load-bearing TERMINOLOGY FIDELITY RULE
+    block instructing the LLM to defer to exemplar phrasing over
+    literal translation. This is what makes the translator produce
+    'undocumented expatriate workers' (PO's actual 35-article
+    phrasing) instead of 'undocumented foreign nationals' (the only-
+    14-article rendering) when handling immigration topics.
+
+    These tests pin the prompt's structure — if a future refactor
+    softens the rule or drops Nash's worked example, they fail
+    loudly. Empirical verification against the live DB happens
+    separately (in /tmp/manual-translator-verify scripts);
+    these are static-content guards."""
+
+    def test_terminology_fidelity_rule_block_present(self):
+        from kahzaabu import translator
+        self.assertIn("TERMINOLOGY FIDELITY RULE",
+                       translator._PO_STYLE_NOTES,
+            "The TERMINOLOGY FIDELITY RULE block must remain in the "
+            "system prompt — it's the load-bearing instruction that "
+            "makes the LLM prefer exemplar phrasing over literal "
+            "translation. Softening or removing this regresses "
+            "Nash's 'expatriate workers' case.")
+
+    def test_rule_says_must_use_exemplar_phrase(self):
+        from kahzaabu import translator
+        notes = translator._PO_STYLE_NOTES.lower()
+        self.assertTrue(
+            "must use" in notes or "you must" in notes,
+            "Rule must be IMPERATIVE ('must use'), not advisory — "
+            "advisory framing in prior versions let the LLM ignore "
+            "the exemplar phrasing for literal translation")
+
+    def test_nash_worked_example_in_prompt(self):
+        """Nash's specific case is in the prompt as a concrete
+        example. This makes the abstract rule actionable for the
+        LLM and serves as a regression marker."""
+        from kahzaabu import translator
+        notes = translator._PO_STYLE_NOTES
+        self.assertIn("expatriate workers", notes,
+            "Nash's worked example must remain in the prompt — "
+            "concrete examples make abstract rules actionable")
+        self.assertIn("foreign nationals", notes,
+            "The contrasting (avoided) phrasing must remain too — "
+            "the LLM needs to see the pair to learn the rule")
+
+    def test_recency_window_default_is_365(self):
+        """Earlier default was 90 days. With ~50-100 paired articles
+        in a 90-day window, the few-shot pool was too tight to
+        catch phrase patterns that appear in only some articles.
+        365 days expands to ~500+ paired exemplars."""
+        import inspect
+        from kahzaabu import translator
+        sig = inspect.signature(translator.select_few_shot)
+        self.assertEqual(sig.parameters["recency_days"].default, 365,
+            "Default recency window must be 365 days; 90 was too "
+            "tight to surface phrase patterns reliably")
+
+
+# ───────────────────────────────────────────────────────────────────
 # Glossary builder retry logic
 # ───────────────────────────────────────────────────────────────────
 
