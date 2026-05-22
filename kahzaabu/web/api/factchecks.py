@@ -13,6 +13,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..db_dep import get_db
+from kahzaabu import registry
 
 router = APIRouter()
 
@@ -106,11 +107,38 @@ def get_factcheck(
     except Exception:
         d["reasoning_chain"] = []
     ev = conn.execute(
-        """SELECT id, url, title, snippet, relevance, summary, retrieved_at
+        """SELECT id, url, title, snippet, relevance, summary, retrieved_at,
+                  authoritative_entity_id
            FROM fact_check_evidence WHERE fact_check_id = ? ORDER BY id""",
         (fc_id,)
     ).fetchall()
-    d["web_evidence"] = [dict(e) for e in ev]
+    web_evidence = []
+    for e in ev:
+        row = dict(e)
+        ent_id = row.get("authoritative_entity_id")
+        if ent_id:
+            ent = registry.entity_by_id(ent_id)
+            row["authoritative_entity"] = {
+                "id": ent_id,
+                "name": ent["official_name"],
+                "domain": ent["domain"],
+                "type": ent["entity_type"],
+            } if ent else None
+        else:
+            row["authoritative_entity"] = None
+        web_evidence.append(row)
+    d["web_evidence"] = web_evidence
+    # Also surface a deduped list of authoritative entities for this
+    # fact-check, so the UI can render a "Verified against:" header
+    # without re-grouping client-side.
+    seen = set()
+    auth_entities = []
+    for row in web_evidence:
+        ent = row.get("authoritative_entity")
+        if ent and ent["id"] not in seen:
+            seen.add(ent["id"])
+            auth_entities.append(ent)
+    d["authoritative_entities"] = auth_entities
     # source articles
     if d["source_article_ids"]:
         placeholders = ",".join("?" * len(d["source_article_ids"]))

@@ -254,6 +254,42 @@ async function load() {
     fetchJSON(`/api/article/${art.id}/factcard?language=${art.language}`)
         .then(fc => renderFactCard(fc, document.querySelector(".article-meta")))
         .catch(() => {});
+
+    // ── Cross-reference: Constitution articles relevant to this
+    //    press release. Reuses the same BM25 FTS5 endpoint the
+    //    factcheck page uses; query is built from the title + the
+    //    article's claim subjects (more selective than full body).
+    if (art.language === "EN") {
+        const query = [
+            art.title || "",
+            ...(art.claims || []).map(c => c.subject || "").filter(Boolean),
+        ].join(" ").slice(0, 240);  // FTS5 input cap
+        if (query.trim()) {
+            fetchJSON(`/api/constitution/search?q=${encodeURIComponent(query)}&limit=3`)
+                .then(r => {
+                    if (!r.items || !r.items.length) return;
+                    const wrap = el("div");
+                    for (const a of r.items) {
+                        const body = (a.body || "").slice(0, 200);
+                        wrap.appendChild(el("a",
+                            { href: `/constitution#article-${a.article_no}`,
+                              class: "const-pin clickable" },
+                            el("div", { class: "num" }, `Article ${a.article_no}`),
+                            el("div", { class: "title" }, a.title || ""),
+                            el("div", { class: "excerpt" },
+                                body + (body.length === 200 ? "…" : ""))));
+                    }
+                    wrap.appendChild(el("p", { class: "fc-empty" },
+                        "Cross-referenced from the Constitution of the Republic of Maldives. ",
+                        el("a", { href: "/constitution" },
+                            "Browse the full text →")));
+                    root.appendChild(el("section", { class: "fc-section" },
+                        el("h2", null, "Constitutional context"),
+                        wrap));
+                })
+                .catch(() => {});
+        }
+    }
 }
 
 load();

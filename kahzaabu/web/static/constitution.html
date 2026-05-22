@@ -130,6 +130,44 @@
     padding: 0 2px;
     border-radius: 2px;
 }
+.citing-fcs {
+    margin-top: var(--sp-md);
+    padding-top: var(--sp-sm);
+    border-top: 1px dashed var(--border);
+}
+.citing-fcs-head {
+    font: var(--type-caption);
+    color: var(--fg-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 var(--sp-xs) 0;
+}
+.citing-fcs-list {
+    margin: 0;
+    padding-left: 0;
+    list-style: none;
+}
+.citing-fcs-list li {
+    padding: 4px 0;
+    font: var(--type-body);
+}
+.citing-fcs-list a {
+    color: var(--fg);
+    text-decoration: none;
+}
+.citing-fcs-list a:hover { text-decoration: underline; }
+.verdict-pill {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: var(--r-pill);
+    font: var(--type-tiny);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.verdict-pill.v-refuted { background: rgba(233,69,96,0.20); color: var(--lie); }
+.verdict-pill.v-supported { background: rgba(91,199,135,0.20); color: var(--good); }
+.verdict-pill.v-conflicting_evidence { background: rgba(240,160,75,0.20); color: var(--deadline); }
+.verdict-pill.v-not_enough_evidence { background: rgba(157,176,194,0.20); color: var(--fg-dim); }
 .const-empty {
     color: var(--fg-dim);
     font: var(--type-body);
@@ -206,14 +244,43 @@ function renderArticle(a, highlight) {
         const re = new RegExp(`(${safe})`, "gi");
         body = body.replace(re, "<mark>$1</mark>");
     }
-    return el("article", { class: "const-article" },
+    const node = el("article", { class: "const-article" },
         el("div", { class: "num" }, `Article ${a.article_no}`),
         a.chapter
             ? el("span", { class: "chapter-pill" }, a.chapter)
             : null,
         el("h2", {}, a.title || ""),
-        el("div", { class: "body", html: body })
+        el("div", { class: "body", html: body }),
+        // Citing-factchecks slot — populated lazily by maybeLoadCitingFcs()
+        // to avoid 301 API calls during full-list rendering. Only populated
+        // by callers that pass loadCiting=true.
+        el("div", { class: "citing-fcs", "data-art-no": String(a.article_no) })
     );
+    return node;
+}
+
+async function maybeLoadCitingFcs(node) {
+    const slot = node.querySelector(".citing-fcs");
+    if (!slot || slot.dataset.loaded === "1") return;
+    slot.dataset.loaded = "1";
+    const n = slot.dataset.artNo;
+    try {
+        const r = await fetchJSON(`/api/constitution/${n}/citing-factchecks?limit=5`);
+        if (!r.items || !r.items.length) return;
+        slot.appendChild(el("h4", { class: "citing-fcs-head" },
+            `🔍 ${r.items.length} fact-check${r.items.length === 1 ? "" : "s"} reference this article`));
+        const ul = el("ul", { class: "citing-fcs-list" });
+        for (const fc of r.items) {
+            ul.appendChild(el("li", null,
+                el("a", { href: `/factcheck/${fc.id}` },
+                    el("span", { class: `verdict-pill v-${(fc.verdict_label || "").toLowerCase()}` },
+                        fc.verdict_label || "—"),
+                    " ",
+                    fc.claim.slice(0, 120) + (fc.claim.length > 120 ? "…" : "")
+                )));
+        }
+        slot.appendChild(ul);
+    } catch { /* silent — citing-factchecks is best-effort */ }
 }
 
 async function loadFull() {
@@ -265,7 +332,14 @@ async function doSearch(query) {
     }
     $results.appendChild(el("div", { class: "muted" },
         `${data.items.length} match${data.items.length === 1 ? "" : "es"} for “${query}”`));
-    for (const a of data.items) $results.appendChild(renderArticle(a, query));
+    for (const a of data.items) {
+        const node = renderArticle(a, query);
+        $results.appendChild(node);
+        // Search mode: 1-10 results, lazy-fetch citing fact-checks
+        // for each. Skipped in full-list mode (loadFull) because 301
+        // round-trips would block the page.
+        maybeLoadCitingFcs(node);
+    }
 }
 
 async function goToArticle(n) {
@@ -273,7 +347,10 @@ async function goToArticle(n) {
     try {
         const a = await fetchJSON(`/api/constitution/${n}`);
         $results.innerHTML = "";
-        $results.appendChild(renderArticle(a));
+        const node = renderArticle(a);
+        $results.appendChild(node);
+        // Direct lookup → single article → always show citing fact-checks
+        maybeLoadCitingFcs(node);
     } catch (e) {
         $results.innerHTML = `<div class='const-empty'>Article #${n} not found.</div>`;
     }

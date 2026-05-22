@@ -170,8 +170,30 @@ def get_manifest(conn: sqlite3.Connection,
         """,
         (fact_check_id,),
     ).fetchall()
-    verification_evidence = [
-        {
+    # Resolve authoritative-entity IDs to the public-sector registry
+    # (ADR 0011) so the UI can render entity name/type/domain without
+    # making a second round-trip. Adds a top-level deduped list too.
+    from kahzaabu import registry as _registry
+    def _resolve(ent_id):
+        if not ent_id: return None
+        e = _registry.entity_by_id(ent_id)
+        if not e: return None
+        return {
+            "id":     e["entity_id"],
+            "name":   e["official_name"],
+            "domain": e["domain"],
+            "type":   e["entity_type"],
+        }
+    verification_evidence = []
+    seen_entities = set()
+    authoritative_entities = []
+    for r in evidence_rows:
+        ent_id = r["authoritative_entity_id"]
+        resolved = _resolve(ent_id)
+        if resolved and resolved["id"] not in seen_entities:
+            seen_entities.add(resolved["id"])
+            authoritative_entities.append(resolved)
+        verification_evidence.append({
             "evidence_id":             r["id"],
             "url":                     r["url"],
             "title":                   r["title"],
@@ -180,12 +202,11 @@ def get_manifest(conn: sqlite3.Connection,
             "summary":                 r["summary"],
             "retrieved_at":            r["retrieved_at"],
             "verification_run_id":     r["verification_run_id"],
-            "authoritative_entity_id": r["authoritative_entity_id"],
+            "authoritative_entity_id": ent_id,
+            "authoritative_entity":    resolved,
             "verifier_model":          pricing.MODELS["haiku"].id,
             "verification_cost_usd":   r["verification_cost_usd"],
-        }
-        for r in evidence_rows
-    ]
+        })
 
     # ── decomposition_questions: for the (canonical) claims that
     #     feed this fact-check
@@ -265,6 +286,7 @@ def get_manifest(conn: sqlite3.Connection,
         "produced_by":             produced_by or None,
         "supporting_claims":       supporting_claims,
         "verification_evidence":   verification_evidence,
+        "authoritative_entities":  authoritative_entities,
         "decomposition_questions": decomposition,
         "contradiction_pair":      contradiction_pair,
         "claimreview_jsonld":      claimreview,

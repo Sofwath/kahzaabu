@@ -143,6 +143,45 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
 }
+
+/* ── ADR 0011 authoritative-entity cards ───────────────────────────── */
+.auth-entities {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: var(--sp-sm);
+    margin-top: var(--sp-md);
+}
+.auth-entity-card {
+    display: block;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--good);
+    border-radius: var(--r-sm);
+    padding: var(--sp-md);
+    text-decoration: none;
+    color: var(--fg);
+    transition: border-color 0.1s, background 0.1s;
+}
+.auth-entity-card:hover {
+    border-color: var(--good);
+    background: rgba(91,199,135,0.05);
+}
+.auth-entity-card .auth-name {
+    font: var(--type-body-strong);
+    color: var(--fg);
+    margin-bottom: 2px;
+}
+.auth-entity-card .auth-domain {
+    font: var(--type-mono-sm, var(--type-tiny));
+    color: var(--good);
+    margin-bottom: 4px;
+}
+.auth-entity-card .auth-type {
+    font: var(--type-tiny);
+    color: var(--fg-muted);
+    text-transform: capitalize;
+    letter-spacing: 0.02em;
+}
 .evidence-row .title {
     font: var(--type-body-strong);
     color: var(--fg);
@@ -303,10 +342,14 @@ function renderEvidence(rows) {
             el("div", { class: "meta" },
                 el("span", { class: "relevance r-" + (r.relevance || "unclear") },
                     (r.relevance || "unclear").replace(/_/g, " ")),
-                r.authoritative_entity_id
-                    ? el("span", { class: "auth-badge" },
-                        `primary source: ${r.authoritative_entity_id}`)
-                    : null,
+                r.authoritative_entity
+                    ? el("span", { class: "auth-badge",
+                                   title: r.authoritative_entity.domain },
+                        `🏛️ ${r.authoritative_entity.name}`)
+                    : (r.authoritative_entity_id
+                        ? el("span", { class: "auth-badge" },
+                            `primary source: ${r.authoritative_entity_id}`)
+                        : null),
                 r.url
                     ? el("a", { href: r.url, target: "_blank", rel: "noopener noreferrer" }, r.url)
                     : null,
@@ -351,6 +394,33 @@ async function loadConstitutionLinks(query) {
     }
     $content.innerHTML = "";
     $content.appendChild(renderHero(m));
+
+    // Section: authoritative sources (ADR 0011 entity registry) —
+    // surfaced ABOVE evidence so the reader sees "this fact-check
+    // was verified against these official Maldivian institutions"
+    // before scrolling into the raw evidence rows. Only renders if
+    // any of the evidence URLs matched an entry in the registry.
+    if ((m.authoritative_entities || []).length) {
+        const wrap = el("div", { class: "auth-entities" });
+        for (const e of m.authoritative_entities) {
+            wrap.appendChild(el("a",
+                { href: `https://${e.domain}`, target: "_blank",
+                  rel: "noopener noreferrer",
+                  class: `auth-entity-card auth-type-${e.type}` },
+                el("div", { class: "auth-name" }, e.name),
+                el("div", { class: "auth-domain" }, e.domain),
+                el("div", { class: "auth-type" }, e.type.replace(/_/g, " "))
+            ));
+        }
+        $content.appendChild(el("section", { class: "fc-section" },
+            el("h3", {}, `Verified against authoritative sources (${m.authoritative_entities.length})`),
+            el("p", { class: "fc-empty" },
+                "Evidence URLs matched against the public-sector entity registry ",
+                "(ADR 0011) — these are the official Maldivian institutions ",
+                "the pipeline cross-referenced for this fact-check."),
+            wrap,
+        ));
+    }
 
     // Section: supporting claims
     $content.appendChild(el("section", { class: "fc-section" },

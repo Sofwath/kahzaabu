@@ -82,6 +82,16 @@ class ListContradictionsTests(unittest.TestCase):
         app.dependency_overrides[db_dep.get_db] = lambda: memconn
         return TestClient(app), memconn, cid
 
+    def tearDown(self):
+        # Restore the global app's get_db dependency so subsequent
+        # test classes hit the real DB instead of this test's
+        # in-memory fixture. (Without this, every test that later
+        # constructs TestClient(app) inherits our memconn and
+        # silently 404s on rows that don't exist there.)
+        from kahzaabu.web.app import app
+        import kahzaabu.web.db_dep as db_dep
+        app.dependency_overrides.pop(db_dep.get_db, None)
+
     def test_list_returns_items(self):
         client, _, cid = self._client()
         r = client.get("/api/contradictions")
@@ -130,6 +140,14 @@ class DetailContradictionTests(unittest.TestCase):
         from kahzaabu.web.app import app
         app.dependency_overrides[db_dep.get_db] = lambda: memconn
         return TestClient(app), memconn, cid
+
+    def tearDown(self):
+        # See note in ListContradictionsTests.tearDown — restoring the
+        # global app's dependency overrides prevents leakage to later
+        # tests that construct their own TestClient(app).
+        from kahzaabu.web.app import app
+        import kahzaabu.web.db_dep as db_dep
+        app.dependency_overrides.pop(db_dep.get_db, None)
 
     def test_detail_returns_reasoning_chain(self):
         client, _, cid = self._client()

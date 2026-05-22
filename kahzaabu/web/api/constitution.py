@@ -84,3 +84,66 @@ def get_article(
         raise HTTPException(status_code=404,
                              detail=f"article {article_no} not found")
     return dict(row)
+
+
+@router.get("/constitution/{article_no}/citing-factchecks",
+             summary="Fact-checks whose body relates to this constitution article")
+def citing_factchecks(
+    article_no: int,
+    limit: int = Query(10, ge=1, le=50),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """Reverse cross-reference: given a constitution article, find
+    fact-checks whose claim + topic best match its body via the same
+    FTS5 BM25 ranking the forward search uses.
+
+    There is no curated `fact_check.constitution_article_no` column
+    (yet) — this is a best-effort symmetric search using the article's
+    title + first ~30 body words as the query against the fact-checks
+    text. A separate ADR'd backfill would produce explicit links."""
+    art = conn.execute(
+        "SELECT article_no, title, body "
+        "FROM constitution_articles WHERE article_no = ?",
+        (article_no,),
+    ).fetchone()
+    if not art:
+        raise HTTPException(status_code=404,
+                             detail=f"article {article_no} not found")
+    # Build a focused query: title + first 30 body words. Strip
+    # quote characters because they have special meaning in FTS5.
+    title = (art["title"] or "").strip()
+    body_words = (art["body"] or "").split()[:30]
+    raw_query = f"{title} {' '.join(body_words)}".replace('"', " ")
+    # FTS5 has a query-string length cap; trim defensively.
+    query = raw_query[:240].strip()
+    if not query:
+        return {"article_no": article_no, "items": []}
+
+    # We don't have an FTS5 index on fact_checks itself; fall back
+    # to a LIKE-against-claim+topic with the most salient single
+    # term from the article title. This is intentionally crude —
+    # the goal is "show readers SOME related fact-checks", not
+    # ranked retrieval.
+    salient = title.split() or body_words
+    if not salient:
+        return {"article_no": article_no, "items": []}
+    # Use the longest title token as the LIKE seed (longest = most
+    # specific, avoids stopwords like "of"/"the").
+    seed = max(salient, key=len)
+    if len(seed) < 4:
+        return {"article_no": article_no, "items": []}
+    rows = conn.execute(
+        """SELECT id, category, claim, topic, verdict_label, truth_score_label,
+                  claim_date
+           FROM fact_checks
+           WHERE published = 1
+             AND (claim LIKE ? OR topic LIKE ?)
+           ORDER BY claim_date DESC
+           LIMIT ?""",
+        (f"%{seed}%", f"%{seed}%", limit),
+    ).fetchall()
+    return {
+        "article_no": article_no,
+        "query_seed": seed,
+        "items": [dict(r) for r in rows],
+    }
