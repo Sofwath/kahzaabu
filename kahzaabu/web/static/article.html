@@ -255,6 +255,37 @@ async function load() {
         .then(fc => renderFactCard(fc, document.querySelector(".article-meta")))
         .catch(() => {});
 
+    // ── Revision history (ADR 0015). Lazy-fetched; the badge only
+    //    renders if the press office has edited this article since
+    //    we first scraped it. Clicking the badge expands inline.
+    fetchJSON(`/api/article/${art.id}/revisions`)
+        .then(r => {
+            if (!r.items || !r.items.length) return;
+            const meta = document.querySelector(".article-meta");
+            if (!meta) return;
+            const badge = el("a",
+                { class: "rev-badge", href: "#", title:
+                  "presidency.gov.mv has edited this article since we first scraped it" },
+                `✎ Edited ${r.items.length}× — view history`);
+            const panel = el("div",
+                { class: "rev-panel", style: "display: none;" });
+            for (const rev of r.items) {
+                panel.appendChild(el("div", { class: "rev-row" },
+                    el("div", { class: "rev-when" },
+                        `${rev.replaced_at.slice(0, 19)}  (rev #${rev.id})`),
+                    el("div", { class: "rev-summary" },
+                        rev.diff_summary || "(no detectable change)")));
+            }
+            badge.addEventListener("click", (ev) => {
+                ev.preventDefault();
+                panel.style.display =
+                    panel.style.display === "none" ? "block" : "none";
+            });
+            meta.appendChild(badge);
+            meta.parentElement.insertBefore(panel, meta.nextSibling);
+        })
+        .catch(() => {});
+
     // ── Cross-reference: Constitution articles relevant to this
     //    press release. Skipped when there are no extracted claims
     //    (attendance/meeting press releases generate noise hits on

@@ -180,5 +180,38 @@ class ArticlesAPITests(unittest.TestCase):
         self.assertEqual(r.status_code, 404)
 
 
+@unittest.skipUnless(DEFAULT_DB.exists() and EN_ID,
+                      "no EN articles in live DB")
+class ArticleRevisionsAPI(unittest.TestCase):
+    """The /api/article/{id}/revisions endpoint feeds the badge on
+    /article/{id} that surfaces "Edited N times — view history"
+    when the press office has edited an article since we scraped it."""
+
+    @classmethod
+    def setUpClass(cls):
+        # Clear any leftover dependency overrides from earlier tests
+        # in the suite (test_contradictions_api installs one; without
+        # this guard we'd hit a stale in-memory DB).
+        app.dependency_overrides.clear()
+        cls.c = TestClient(app)
+
+    def test_returns_empty_items_for_unrevised_article(self):
+        """Live articles have no revisions yet — empty list,
+        not 404."""
+        r = self.c.get(f"/api/article/{EN_ID}/revisions")
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["article_id"], EN_ID)
+        self.assertIsInstance(body["items"], list)
+
+    def test_returns_empty_for_nonexistent_article(self):
+        """Endpoint is shape-stable: missing article doesn't 500.
+        Just empty list — that way the badge JS can do a single
+        fetch without 404-handling for legitimately new articles."""
+        r = self.c.get("/api/article/99999999/revisions")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["items"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

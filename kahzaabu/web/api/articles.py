@@ -55,6 +55,21 @@ def list_articles(
         "items": [dict(r) for r in rows],
     }
 
+@router.get("/article/{article_id}/revisions")
+def get_article_revisions(
+    article_id: int,
+    conn: sqlite3.Connection = Depends(get_db)
+) -> dict:
+    """List all edit revisions tracked for this article (ADR 0015).
+
+    Returns the chronological list of diff_summary + timestamps.
+    Used by the article-page badge to render "Edited N times — view
+    history" inline."""
+    from kahzaabu import revisions as _rev
+    items = _rev.list_revisions(conn, article_id)
+    return {"article_id": article_id, "items": items}
+
+
 @router.get("/article/{article_id}")
 def get_article(
     article_id: int,

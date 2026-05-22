@@ -411,6 +411,34 @@ table.kz tbody tr:hover { background: rgba(255,255,255,0.02); }
 }
 .article-body p { margin: 0 0 1em 0; }
 
+/* ─── revision badge + history panel (ADR 0015) ──────────────────── */
+.rev-badge {
+    display: inline-block;
+    margin-left: var(--sp-md);
+    padding: 2px 10px;
+    background: rgba(240,160,75,0.12);
+    color: var(--deadline);
+    border: 1px solid var(--deadline);
+    border-radius: var(--r-pill);
+    font: var(--type-tiny);
+    text-decoration: none;
+    cursor: pointer;
+}
+.rev-badge:hover { background: rgba(240,160,75,0.20); }
+.rev-panel {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--deadline);
+    border-radius: var(--r-sm);
+    padding: var(--sp-md) var(--sp-lg);
+    margin: var(--sp-md) 0 var(--sp-lg) 0;
+    max-width: 720px;
+}
+.rev-row { padding: 6px 0; border-bottom: 1px dashed var(--border); }
+.rev-row:last-child { border-bottom: none; }
+.rev-when { font: var(--type-caption); color: var(--fg-dim); }
+.rev-summary { font: var(--type-body); color: var(--fg); margin-top: 2px; }
+
 /* ─── claim pills ───────────────────────────────────────────────────── */
 .claim-pill {
     display: inline-block;
