@@ -20,9 +20,50 @@ Routes:
 from __future__ import annotations
 
 import logging
+import os
+import time
 from pathlib import Path
 
-import time
+
+def _load_hermes_env() -> None:
+    """Hydrate os.environ from ~/.hermes/.env on web-server startup.
+
+    Mirrors `hermes-plugin/__init__.py::_load_hermes_env()` so the web
+    server picks up ANTHROPIC_API_KEY, KAHZAABU_DAILY_BUDGET_USD, etc.
+    regardless of how it was launched:
+
+      - `hermes kahzaabu web`  inherits hermes' env naturally
+      - `kahzaabu web`         goes through CLI → here (where it's
+                                already typically loaded by the CLI)
+      - bare `uvicorn ...`     would miss the env without THIS loader
+      - IDE debug runs         same
+
+    Source-of-truth is ~/.hermes/.env per the project's env-
+    consolidation convention. We never overwrite values already in
+    os.environ — the operator's shell-exported values win.
+    """
+    hermes_env = Path.home() / ".hermes" / ".env"
+    if not hermes_env.exists():
+        return
+    try:
+        for line in hermes_env.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = val
+    except Exception as e:
+        logging.getLogger(__name__).debug(
+            "kahzaabu web: env hydration skipped: %s", e)
+
+
+# Hydrate the env BEFORE the API modules are imported — some of them
+# read environment values at import time (e.g., to build base URLs
+# or initialise Anthropic clients).
+_load_hermes_env()
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, PlainTextResponse, Response
